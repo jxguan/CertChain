@@ -1,0 +1,9 @@
+[package]
+name = "certchain"
+version = "0.1.0"
+authors = ["Matt Quinn <matt@mattjquinn.com>"]
+
+[dependencies]
+hyper = "0.6.1"
+rust-crypto = "*"
+rustc-serialize = "0.3.15"
