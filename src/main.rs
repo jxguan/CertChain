@@ -10,6 +10,7 @@ use hyper::server::Request;
 use hyper::server::Response;
 use hyper::net::Fresh;
 use std::thread;
+use std::sync::{Arc, RwLock};
 
 #[derive(RustcEncodable, RustcDecodable)]
 enum TxnOutputAction {
@@ -46,26 +47,29 @@ struct TxnOutput {
  */
 fn main() {
 
+    let blockchain: Arc<RwLock<Vec<Block>>>
+        = Arc::new(RwLock::new(Vec::new()));
+
+    let blockchain_refclone = blockchain.clone();
     thread::spawn(move || {
         /*
          * TODO: Save the Listening struct returned here
          * and call close() on it once graceful shutdown is supported.
          */
-        let _ = Server::http("127.0.0.1:3000").unwrap().handle(hello);
+        let _ = Server::http("127.0.0.1:3000").unwrap().handle(
+            move |_: Request, res: Response<Fresh>| {
+                let len = &blockchain_refclone.read().unwrap().len();
+                res.send(format!("Blockchain length: {}", len).as_bytes()).unwrap();
+        });
     });
 
-    let mut blockchain: Vec<Block> = Vec::new();
-    blockchain.push(get_genesis_block());
-
+    blockchain.write().unwrap().push(get_genesis_block());
     loop {
-        let mut block = create_new_block(blockchain.last().unwrap());
+        let mut block = create_new_block(
+            blockchain.read().unwrap().last().unwrap());
         mine_block(&mut block);
-        blockchain.push(block);
+        blockchain.write().unwrap().push(block);
     }
-}
-
-fn hello(_: Request, res: Response<Fresh>) {
-        res.send(b"Hello World!").unwrap();
 }
 
 fn get_genesis_block() -> Block {
