@@ -40,9 +40,6 @@ struct TxnOutput {
 
 /*
  * TODO:
- *  - Create genesis block.
- *  - Add previous block hash field to block header.
- *  - Parameterize proof-of-work difficulty.
  *  - Hash raw bytes of *header only* rather than JSON string representation.
  */
 fn main() {
@@ -58,8 +55,9 @@ fn main() {
          */
         let _ = Server::http("127.0.0.1:3000").unwrap().handle(
             move |_: Request, res: Response<Fresh>| {
-                let len = &blockchain_refclone.read().unwrap().len();
-                res.send(format!("Blockchain length: {}", len).as_bytes()).unwrap();
+                let ref blockchain_ref: Vec<Block> = *blockchain_refclone.read().unwrap();
+                let blockchain_json = json::as_pretty_json(blockchain_ref);
+                res.send(format!("{}", blockchain_json).as_bytes()).unwrap();
         });
     });
 
