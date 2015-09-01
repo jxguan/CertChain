@@ -6,14 +6,15 @@ extern crate getopts;
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use rustc_serialize::{json, Encodable};
-use hyper::Server;
-use hyper::server::Request;
-use hyper::server::Response;
+use hyper::client::Client;
+use hyper::server::{Server, Request, Response};
+use hyper::status::StatusCode;
 use hyper::net::Fresh;
 use std::thread;
 use std::sync::{Arc, RwLock};
 use std::env;
 use getopts::Options;
+use std::io::Read;
 
 #[derive(RustcEncodable, RustcDecodable)]
 enum TxnOutputAction {
@@ -52,6 +53,7 @@ fn main() {
 
     let mut opts = Options::new();
     opts.optopt("p", "port", "set HTTP comm port", "PORT");
+    opts.optopt("o", "otherport", "set HTTP comm port for peer", "PEER_PORT");
     opts.optflag("h", "help", "print this help menu");
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => { m },
@@ -67,6 +69,11 @@ fn main() {
         None => { panic!("You must provide a port number; use -p or --port.") }
     };
 
+    let peer_port = match matches.opt_str("o") {
+        Some(p) => { p },
+        None => { panic!("You must provide the peer's port number; use -o or --otherport.") }
+    };
+
     let blockchain: Arc<RwLock<Vec<Block>>>
         = Arc::new(RwLock::new(Vec::new()));
 
@@ -78,18 +85,41 @@ fn main() {
          */
         let hostname_port = "127.0.0.1:".to_string() + &port[..];
         let _ = Server::http(&hostname_port[..]).unwrap().handle(
-            move |_: Request, res: Response<Fresh>| {
-                let ref blockchain_ref: Vec<Block> = *blockchain_refclone.read().unwrap();
-                let blockchain_json = json::as_pretty_json(blockchain_ref);
-                res.send(format!("{}", blockchain_json).as_bytes()).unwrap();
+            move |mut req: Request, mut res: Response<Fresh>| {
+                match req.method {
+                    hyper::Get => {
+                        let ref blockchain_ref: Vec<Block> = *blockchain_refclone.read().unwrap();
+                        let blockchain_json = json::as_pretty_json(blockchain_ref);
+                        res.send(format!("{}", blockchain_json).as_bytes()).unwrap();
+                    },
+                    hyper::Post => {
+                        let mut body = String::new();
+                        req.read_to_string(&mut body).unwrap();
+                        println!("Received data from peer: {}", body);
+                    },
+                    _ => *res.status_mut() = StatusCode::MethodNotAllowed
+                }
         });
     });
 
+    let client = Client::new();
+    let hostname_peer_port = "http:////127.0.0.1:".to_string() + &peer_port[..];
     blockchain.write().unwrap().push(get_genesis_block());
     loop {
         let mut block = create_new_block(
             blockchain.read().unwrap().last().unwrap());
         mine_block(&mut block);
+        let block_json = json::encode(&block).unwrap();
+        match client.post(&hostname_peer_port[..]).body(block_json.as_bytes()).send() {
+            Ok(mut resp) => {
+                let mut body = String::new();
+                resp.read_to_string(&mut body).unwrap();
+                println!("Sent data to peer: {}", body);
+            },
+            Err(err) => {
+                println!("Failed to send block to peer: {}", err);
+            }
+        }
         blockchain.write().unwrap().push(block);
     }
 }
