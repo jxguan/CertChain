@@ -1,6 +1,7 @@
 extern crate hyper;
 extern crate crypto;
 extern crate rustc_serialize;
+extern crate getopts;
 
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
@@ -11,6 +12,8 @@ use hyper::server::Response;
 use hyper::net::Fresh;
 use std::thread;
 use std::sync::{Arc, RwLock};
+use std::env;
+use getopts::Options;
 
 #[derive(RustcEncodable, RustcDecodable)]
 enum TxnOutputAction {
@@ -44,6 +47,26 @@ struct TxnOutput {
  */
 fn main() {
 
+    let args: Vec<String> = env::args().collect();
+    let program = args[0].clone();
+
+    let mut opts = Options::new();
+    opts.optopt("p", "port", "set HTTP comm port", "PORT");
+    opts.optflag("h", "help", "print this help menu");
+    let matches = match opts.parse(&args[1..]) {
+        Ok(m) => { m },
+        Err(f) => { panic!(f.to_string()) }
+    };
+    if matches.opt_present("h") {
+        print_usage(&program, opts);
+        return;
+    }
+
+    let port = match matches.opt_str("p") {
+        Some(p) => { p },
+        None => { panic!("You must provide a port number; use -p or --port.") }
+    };
+
     let blockchain: Arc<RwLock<Vec<Block>>>
         = Arc::new(RwLock::new(Vec::new()));
 
@@ -53,7 +76,8 @@ fn main() {
          * TODO: Save the Listening struct returned here
          * and call close() on it once graceful shutdown is supported.
          */
-        let _ = Server::http("127.0.0.1:3000").unwrap().handle(
+        let hostname_port = "127.0.0.1:".to_string() + &port[..];
+        let _ = Server::http(&hostname_port[..]).unwrap().handle(
             move |_: Request, res: Response<Fresh>| {
                 let ref blockchain_ref: Vec<Block> = *blockchain_refclone.read().unwrap();
                 let blockchain_json = json::as_pretty_json(blockchain_ref);
@@ -68,6 +92,11 @@ fn main() {
         mine_block(&mut block);
         blockchain.write().unwrap().push(block);
     }
+}
+
+fn print_usage(program: &str, opts: Options) {
+    let brief = format!("Usage: {} [options]", program);
+    print!("{}", opts.usage(&brief));
 }
 
 fn get_genesis_block() -> Block {
