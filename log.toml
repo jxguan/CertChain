@@ -1,0 +1,6 @@
+[appender.stdout]
+kind = "console"
+
+[root]
+level = "debug"
+appenders = ["stdout"]

@@ -2,6 +2,8 @@ extern crate hyper;
 extern crate crypto;
 extern crate rustc_serialize;
 extern crate getopts;
+extern crate certchain;
+extern crate log4rs;
 
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
@@ -15,6 +17,7 @@ use std::sync::{Arc, RwLock};
 use std::env;
 use getopts::Options;
 use std::io::Read;
+use std::default::Default;
 
 #[derive(RustcEncodable, RustcDecodable)]
 enum TxnOutputAction {
@@ -48,6 +51,8 @@ struct TxnOutput {
  */
 fn main() {
 
+    log4rs::init_file("log.toml", Default::default()).unwrap();
+
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
 
@@ -73,6 +78,10 @@ fn main() {
         Some(p) => { p },
         None => { panic!("You must provide the peer's port number; use -o or --otherport.") }
     };
+
+    thread::spawn(move || {
+        certchain::daemon::start();
+    });
 
     let blockchain: Arc<RwLock<Vec<Block>>>
         = Arc::new(RwLock::new(Vec::new()));
