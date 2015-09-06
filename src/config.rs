@@ -11,11 +11,13 @@ use toml;
 #[derive(Debug, RustcDecodable)]
 pub struct CertChainConfig {
     pub listener_port: u16,
+    pub rpc_port: u16,
     pub peers: Vec<CertChainConfigPeer>,
 }
 
 #[derive(Debug, RustcDecodable)]
 pub struct CertChainConfigPeer {
+    pub name: String,
     pub hostname: String,
     pub port: u16,
 }
