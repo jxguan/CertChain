@@ -10,8 +10,8 @@ use toml;
 
 #[derive(Debug, RustcDecodable)]
 pub struct CertChainConfig {
-    listener_port: u16,
-    peers: Vec<String>,
+    pub listener_port: u16,
+    pub peers: Vec<String>,
 }
 
 #[derive(Debug)]

@@ -1,6 +1,9 @@
 extern crate certchain;
 extern crate log4rs;
 
+#[macro_use]
+extern crate log;
+
 use std::thread;
 use std::default::Default;
 
@@ -16,9 +19,15 @@ fn main() {
     };
 
     // Kick off the main daemon thread.
-    thread::spawn(move || {
+    info!("Config loaded; spawning daemon thread.");
+    let daemon_thread = thread::spawn(move || {
         certchain::daemon::start(config);
     });
 
-    // TODO: Kick of RPC server in separate thread here.
+    info!("Daemon thread spawned.");
+    info!("TODO: Kick off RPC server in separate thread here.");
+
+    // Join on the daemon thread, otherwise it will be terminated
+    // prematurely when main finishes.
+    let _ = daemon_thread.join();
 }

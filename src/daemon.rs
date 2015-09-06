@@ -39,6 +39,7 @@ struct TxnOutput {
 
 pub fn start(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
+    info!("Listener port: {}", config.listener_port);
     /*
      * Connect to network of peers.
      */
