@@ -13,14 +13,16 @@ use blockchain::Block;
 
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
-    let rpc_port = config.rpc_port;
 
-    // Connect to all trusted peers on the network.
-    network::listen(config);
+    // Listen on the network, and connect to all
+    // trusted peers on the network.
+    network::listen(&config);
+    network::connect_to_peers(&config);
 
     let blockchain: Arc<RwLock<Vec<Block>>>
         = Arc::new(RwLock::new(Vec::new()));
 
+    let rpc_port = config.rpc_port;
     let blockchain_refclone = blockchain.clone();
     thread::spawn(move || {
         /*

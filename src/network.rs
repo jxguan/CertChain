@@ -38,18 +38,19 @@ fn handle_client(stream: TcpStream) {
     info!("TODO: Handle client.");
 }
 
-pub fn listen(config: CertChainConfig) -> () {
+pub fn listen(config: &CertChainConfig) -> () {
 
     // Start listening on the listener port in the provided config.
+    let listener_port: &u16 = &config.listener_port;
     let listener = match TcpListener::bind(
-            (&"127.0.0.1"[..], config.listener_port)) {
+            (&"127.0.0.1"[..], *listener_port)) {
         Ok(listener) => {
             info!("Successfully established listener on port {}.",
-                  config.listener_port);
+                  listener_port);
             listener
         },
         Err(e) => panic!("Unable to listen on port {}: {}",
-                         config.listener_port, e),
+                         listener_port, e),
     };
 
     thread::spawn(move || {
@@ -64,9 +65,12 @@ pub fn listen(config: CertChainConfig) -> () {
             }
         }
     });
+}
+
+pub fn connect_to_peers(config: &CertChainConfig) -> () {
 
     // Connect to trusted peers.
-    for peer in config.peers {
+    for peer in &config.peers {
         info!("Connecting to {}...", peer.name);
         let mut attempts = 1;
         loop {
