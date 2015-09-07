@@ -3,11 +3,17 @@ use std::net::{TcpListener, TcpStream};
 use std::io;
 use config::CertChainConfig;
 use std::thread;
+use std::sync::mpsc::{channel, Sender};
 
 const MAX_PEER_CONN_ATTEMPTS: u8 = 3;
 const PEER_CONN_ATTEMPT_INTERVAL_IN_MS: u32 = 3000;
 
-pub struct Socket {
+#[derive(Debug)]
+pub struct Message {
+    pub placeholder: u8,
+}
+
+struct Socket {
     tcp_sock: Arc<Mutex<Option<TcpStream>>>,
 }
 
@@ -32,10 +38,6 @@ impl Socket {
             }
         }
     }
-}
-
-fn handle_client(stream: TcpStream) {
-    info!("TODO: Handle client.");
 }
 
 pub fn listen(config: &CertChainConfig) -> () {
@@ -67,9 +69,8 @@ pub fn listen(config: &CertChainConfig) -> () {
     });
 }
 
-pub fn connect_to_peers(config: &CertChainConfig) -> () {
-
-    // Connect to trusted peers.
+pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<Message>> {
+    let mut peer_txs = Vec::new();
     for peer in &config.peers {
         info!("Connecting to {}...", peer.name);
         let mut attempts = 1;
@@ -78,6 +79,14 @@ pub fn connect_to_peers(config: &CertChainConfig) -> () {
             match sock.connect(&peer.hostname[..], peer.port) {
                 Ok(_) => {
                     info!("Successfully connected to {}.", peer.name);
+                    let (tx, rx) = channel();
+                    thread::spawn(move || {
+                        loop {
+                            let msg = rx.recv().unwrap();
+                            info!("TODO: Send message: {:?}", msg);
+                        }
+                    });
+                    peer_txs.push(tx);
                     break
                 },
                 Err(e) => {
@@ -95,4 +104,9 @@ pub fn connect_to_peers(config: &CertChainConfig) -> () {
             }
         }
     }
+    peer_txs
+}
+
+fn handle_client(stream: TcpStream) {
+    info!("TODO: Handle client.");
 }

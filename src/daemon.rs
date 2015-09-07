@@ -8,6 +8,7 @@ use std::io::Read;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use network;
+use network::Message;
 use blockchain;
 use blockchain::Block;
 
@@ -17,7 +18,7 @@ pub fn run(config: CertChainConfig) -> () {
     // Listen on the network, and connect to all
     // trusted peers on the network.
     network::listen(&config);
-    network::connect_to_peers(&config);
+    let peer_txs = network::connect_to_peers(&config);
 
     let blockchain: Arc<RwLock<Vec<Block>>>
         = Arc::new(RwLock::new(Vec::new()));
@@ -43,10 +44,18 @@ pub fn run(config: CertChainConfig) -> () {
     });
 
     blockchain.write().unwrap().push(blockchain::get_genesis_block());
+    let mut placeholder_inc: u8 = 0;
     loop {
         let mut block = blockchain::create_new_block(
             blockchain.read().unwrap().last().unwrap());
         blockchain::mine_block(&mut block);
+        for peer_tx in &peer_txs {
+            // TODO: Check status.
+            let _ = peer_tx.send(Message {
+                placeholder: placeholder_inc,
+            });
+            placeholder_inc += 1;
+        }
         blockchain.write().unwrap().push(block);
     }
 }
