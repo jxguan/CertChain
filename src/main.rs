@@ -1,8 +1,17 @@
-extern crate certchain;
 extern crate log4rs;
+extern crate getopts;
+extern crate hyper;
+extern crate rustc_serialize;
+extern crate crypto;
+extern crate toml;
 
 #[macro_use]
 extern crate log;
+
+pub mod daemon;
+pub mod config;
+pub mod network;
+pub mod blockchain;
 
 use std::thread;
 use std::default::Default;
@@ -13,7 +22,7 @@ fn main() {
     log4rs::init_file("log.toml", Default::default()).unwrap();
 
     // Load configuration settings from file.
-    let config = match certchain::config::load() {
+    let config = match config::load() {
         Ok(c) => c,
         Err(err) => panic!("Unable to load config file: {:?}", err)
     };
@@ -21,11 +30,10 @@ fn main() {
     // Kick off the main daemon thread.
     info!("Config loaded; spawning daemon thread.");
     let daemon_thread = thread::spawn(move || {
-        certchain::daemon::start(config);
+        daemon::run(config);
     });
 
     info!("Daemon thread spawned.");
-    info!("TODO: Kick off RPC server in separate thread here.");
 
     // Join on the daemon thread, otherwise it will be terminated
     // prematurely when main finishes.

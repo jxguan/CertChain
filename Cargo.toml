@@ -3,10 +3,6 @@ name = "certchain"
 version = "0.1.0"
 authors = ["Matt Quinn <matt@mattjquinn.com>"]
 
-[lib]
-name = "certchain"
-path = "src/lib.rs"
-
 [dependencies]
 hyper = "0.6.1"
 rust-crypto = "*"

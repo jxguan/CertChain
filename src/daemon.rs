@@ -11,7 +11,7 @@ use network;
 use blockchain;
 use blockchain::Block;
 
-pub fn start(config: CertChainConfig) -> () {
+pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
     let rpc_port = config.rpc_port;
 
