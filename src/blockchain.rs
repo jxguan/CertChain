@@ -80,8 +80,8 @@ pub fn mine_block(block: &mut Block) -> () {
         if digest_bytes[0] == 0x0
             && digest_bytes[1] == 0x0 {
             info!("Block mined: {}", json::encode(block).unwrap());
-            info!("Nonce: {}", next_nonce);
-            info!("Block hash: {}", double_sha256.result_str());
+            //info!("Nonce: {}", next_nonce);
+            //info!("Block hash: {}", double_sha256.result_str());
             /*for i in sha256_twice_arr.iter() {
                 println!("{}", i);
             }

@@ -4,6 +4,8 @@ use std::io;
 use config::CertChainConfig;
 use std::thread;
 use std::sync::mpsc::{channel, Sender};
+use std::ops::DerefMut;
+use std::io::{Read, Write};
 
 const MAX_PEER_CONN_ATTEMPTS: u8 = 3;
 const PEER_CONN_ATTEMPT_INTERVAL_IN_MS: u32 = 3000;
@@ -38,6 +40,64 @@ impl Socket {
             }
         }
     }
+
+    pub fn send(&self, msg: Message) -> io::Result<()> {
+        match self.tcp_sock.lock() {
+            Err(err) => {
+                Err(io::Error::new(io::ErrorKind::NotConnected,
+                                   "Socket mutex is poisoned."))
+            },
+            Ok(mut guard) => {
+                match *guard.deref_mut() {
+                    Some(ref mut tcp_stream) => {
+                        info!("Writing out message to socket.");
+                        let _ = tcp_stream.write(&[1u8,3u8,5u8,0u8]);
+                        let _ = tcp_stream.flush();
+                        info!("Sent placeholder bytes; TODO: send actual msg.");
+                        Ok(())
+                    },
+                    None => {
+                        Err(io::Error::new(io::ErrorKind::NotConnected,
+                                           "Socket not connected to peer."))
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn receive(&self) -> io::Result<()> {
+        match self.tcp_sock.lock() {
+            Err(err) => {
+                Err(io::Error::new(io::ErrorKind::NotConnected,
+                                   "Socket mutex is poisoned."))
+            },
+            Ok(mut guard) => {
+                match *guard.deref_mut() {
+                    Some(ref mut tcp_stream) => {
+                        let mut buffer = [0u8; 10];
+                        match tcp_stream.read(&mut buffer) {
+                            Ok(0) => Err(io::Error::new(io::ErrorKind::NotConnected,
+                                    "Received 0-length message; peer disconnected.")),
+                            Ok(n) => {
+                                let mut data_str = String::new();
+                                for b in buffer.iter() {
+                                    data_str = data_str + &format!("{:x}", b)[..];
+                                }
+                                info!("Received data of length {} on \
+                                      listener socket: {}", n, data_str);
+                                Ok(())
+                            },
+                            Err(err) => Err(err)
+                        }
+                    },
+                    None => {
+                        Err(io::Error::new(io::ErrorKind::NotConnected,
+                                           "Socket not connected to peer."))
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn listen(config: &CertChainConfig) -> () {
@@ -60,7 +120,12 @@ pub fn listen(config: &CertChainConfig) -> () {
             match stream {
                 Ok(stream) => {
                     thread::spawn(move || {
-                        handle_client(stream)
+                        let recv_sock = Socket {
+                            tcp_sock: Arc::new(Mutex::new(Some(stream))),
+                        };
+                        loop {
+                            recv_sock.receive();
+                        }
                     });
                 },
                 Err(e) => warn!("Ignoring client request due to error: {}", e)
@@ -83,7 +148,8 @@ pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<Message>> {
                     thread::spawn(move || {
                         loop {
                             let msg = rx.recv().unwrap();
-                            info!("TODO: Send message: {:?}", msg);
+                            info!("Received MSPC message; forwarding to socket.");
+                            sock.send(msg);
                         }
                     });
                     peer_txs.push(tx);
@@ -105,8 +171,4 @@ pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<Message>> {
         }
     }
     peer_txs
-}
-
-fn handle_client(stream: TcpStream) {
-    info!("TODO: Handle client.");
 }
