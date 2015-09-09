@@ -8,7 +8,7 @@ use std::io::Read;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use network;
-use network::Message;
+use network::NetworkMessage;
 use blockchain;
 use blockchain::Block;
 
@@ -51,8 +51,8 @@ pub fn run(config: CertChainConfig) -> () {
         blockchain::mine_block(&mut block);
         for peer_tx in &peer_txs {
             // TODO: Check status.
-            let _ = peer_tx.send(Message {
-                placeholder: placeholder_inc,
+            let _ = peer_tx.send(NetworkMessage {
+                magic: 4096555,
             });
             placeholder_inc += 1;
         }

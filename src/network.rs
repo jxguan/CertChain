@@ -1,22 +1,32 @@
 use std::sync::{Arc, Mutex};
 use std::net::{TcpListener, TcpStream};
 use std::io;
+use std::io::Result;
 use config::CertChainConfig;
 use std::thread;
 use std::sync::mpsc::{channel, Sender};
 use std::ops::DerefMut;
-use std::io::{Read, Write};
+use std::io::{Read, Write, BufRead, BufReader};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 const MAX_PEER_CONN_ATTEMPTS: u8 = 3;
 const PEER_CONN_ATTEMPT_INTERVAL_IN_MS: u32 = 3000;
 
-#[derive(Debug)]
-pub struct Message {
-    pub placeholder: u8,
-}
-
 struct Socket {
     tcp_sock: Arc<Mutex<Option<TcpStream>>>,
+}
+
+#[derive(Debug)]
+pub struct NetworkMessage {
+    pub magic: u32,
+}
+
+impl NetworkMessage {
+    pub fn deserialize<R: Read>(mut reader: R) -> Result<NetworkMessage> {
+        Ok(NetworkMessage {
+            magic: reader.read_u32::<BigEndian>().unwrap()
+        })
+    }
 }
 
 impl Socket {
@@ -27,8 +37,7 @@ impl Socket {
         }
     }
 
-    pub fn connect(&mut self, hostname: &str, port: u16)
-            -> io::Result<()> {
+    pub fn connect(&mut self, hostname: &str, port: u16) -> Result<()> {
         match TcpStream::connect((hostname, port)) {
             Ok(sock) => {
                 self.tcp_sock = Arc::new(Mutex::new(Some(sock)));
@@ -41,7 +50,7 @@ impl Socket {
         }
     }
 
-    pub fn send(&self, msg: Message) -> io::Result<()> {
+    pub fn send(&self, msg: NetworkMessage) -> Result<()> {
         match self.tcp_sock.lock() {
             Err(err) => {
                 Err(io::Error::new(io::ErrorKind::NotConnected,
@@ -51,8 +60,8 @@ impl Socket {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
                         info!("Writing out message to socket.");
-                        let _ = tcp_stream.write(&[1u8,3u8,5u8,0u8]);
-                        let _ = tcp_stream.flush();
+                        tcp_stream.write_u32::<BigEndian>(msg.magic).unwrap();
+                        try!(tcp_stream.flush());
                         info!("Sent placeholder bytes; TODO: send actual msg.");
                         Ok(())
                     },
@@ -65,7 +74,7 @@ impl Socket {
         }
     }
 
-    pub fn receive(&self) -> io::Result<()> {
+    pub fn receive(&self) -> Result<()> {
         match self.tcp_sock.lock() {
             Err(err) => {
                 Err(io::Error::new(io::ErrorKind::NotConnected,
@@ -74,21 +83,12 @@ impl Socket {
             Ok(mut guard) => {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
-                        let mut buffer = [0u8; 10];
-                        match tcp_stream.read(&mut buffer) {
-                            Ok(0) => Err(io::Error::new(io::ErrorKind::NotConnected,
-                                    "Received 0-length message; peer disconnected.")),
-                            Ok(n) => {
-                                let mut data_str = String::new();
-                                for b in buffer.iter() {
-                                    data_str = data_str + &format!("{:x}", b)[..];
-                                }
-                                info!("Received data of length {} on \
-                                      listener socket: {}", n, data_str);
-                                Ok(())
-                            },
-                            Err(err) => Err(err)
+                        match NetworkMessage::deserialize(
+                                BufReader::new(tcp_stream)) {
+                            Ok(msg) => info!("Received message from peer: {:?}", msg),
+                            Err(err) => panic!("Received malformed msg: {}", err)
                         }
+                        Ok(())
                     },
                     None => {
                         Err(io::Error::new(io::ErrorKind::NotConnected,
@@ -134,7 +134,7 @@ pub fn listen(config: &CertChainConfig) -> () {
     });
 }
 
-pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<Message>> {
+pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<NetworkMessage>> {
     let mut peer_txs = Vec::new();
     for peer in &config.peers {
         info!("Connecting to {}...", peer.name);
