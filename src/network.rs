@@ -6,7 +6,7 @@ use config::CertChainConfig;
 use std::thread;
 use std::sync::mpsc::{channel, Sender};
 use std::ops::DerefMut;
-use std::io::{Read, Write, BufRead, BufReader};
+use std::io::{Read, Write, BufReader, BufWriter};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 const MAX_PEER_CONN_ATTEMPTS: u8 = 3;
@@ -19,13 +19,30 @@ struct Socket {
 #[derive(Debug)]
 pub struct NetworkMessage {
     pub magic: u32,
+    pub cmd: String,
 }
 
 impl NetworkMessage {
     pub fn deserialize<R: Read>(mut reader: R) -> Result<NetworkMessage> {
+        let magic = reader.read_u32::<BigEndian>().unwrap();
+        let mut cmd_buf = [0u8; 12];
+        reader.read(&mut cmd_buf).unwrap();
+        let mut cmd_vec = Vec::new();
+        for b in cmd_buf.iter() {
+            if *b == 0 { break; }
+            cmd_vec.push(*b);
+        }
+        let cmd = String::from_utf8(cmd_vec).unwrap();
         Ok(NetworkMessage {
-            magic: reader.read_u32::<BigEndian>().unwrap()
+            magic: magic,
+            cmd: cmd,
         })
+    }
+    pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
+        writer.write_u32::<BigEndian>(self.magic).unwrap();
+        writer.write(&self.cmd.as_bytes()).unwrap();
+        try!(writer.flush());
+        Ok(())
     }
 }
 
@@ -60,9 +77,7 @@ impl Socket {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
                         info!("Writing out message to socket.");
-                        tcp_stream.write_u32::<BigEndian>(msg.magic).unwrap();
-                        try!(tcp_stream.flush());
-                        info!("Sent placeholder bytes; TODO: send actual msg.");
+                        msg.serialize(BufWriter::new(tcp_stream)).unwrap();
                         Ok(())
                     },
                     None => {

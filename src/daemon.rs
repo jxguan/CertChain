@@ -53,6 +53,7 @@ pub fn run(config: CertChainConfig) -> () {
             // TODO: Check status.
             let _ = peer_tx.send(NetworkMessage {
                 magic: 4096555,
+                cmd: "version".to_string(),
             });
             placeholder_inc += 1;
         }
