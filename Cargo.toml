@@ -12,3 +12,13 @@ log = "0.3.1"
 log4rs = "0.3.3"
 toml = "0.1.22"
 byteorder = "0.3.13"
+rand = "0.3.10"
+
+# As of this writing (09/11/2015), the rust-secp256k1
+# version in crates is not up-to-date with the author's
+# repo, which has changes that integrate recent API
+# changes made to the underlying/wrapped secp256k1
+# C++ library. Building from the repo for now,
+# eventually use the crates version.
+[dependencies.secp256k1]
+git = "https://github.com/apoelstra/rust-secp256k1"
