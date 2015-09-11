@@ -19,7 +19,9 @@ struct Socket {
 #[derive(Debug)]
 pub struct NetworkMessage {
     pub magic: u32,
-    pub cmd: String,
+    pub cmd: [u8; 12],
+    pub payload_len: u32,
+    pub payload_checksum: u32,
 }
 
 impl NetworkMessage {
@@ -27,20 +29,20 @@ impl NetworkMessage {
         let magic = reader.read_u32::<BigEndian>().unwrap();
         let mut cmd_buf = [0u8; 12];
         reader.read(&mut cmd_buf).unwrap();
-        let mut cmd_vec = Vec::new();
-        for b in cmd_buf.iter() {
-            if *b == 0 { break; }
-            cmd_vec.push(*b);
-        }
-        let cmd = String::from_utf8(cmd_vec).unwrap();
+        let payload_len = reader.read_u32::<BigEndian>().unwrap();
+        let payload_checksum = reader.read_u32::<BigEndian>().unwrap();
         Ok(NetworkMessage {
             magic: magic,
-            cmd: cmd,
+            cmd: cmd_buf,
+            payload_len: payload_len,
+            payload_checksum: payload_checksum,
         })
     }
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
         writer.write_u32::<BigEndian>(self.magic).unwrap();
-        writer.write(&self.cmd.as_bytes()).unwrap();
+        writer.write(&self.cmd[..]).unwrap();
+        writer.write_u32::<BigEndian>(self.payload_len).unwrap();
+        writer.write_u32::<BigEndian>(self.payload_checksum).unwrap();
         try!(writer.flush());
         Ok(())
     }
