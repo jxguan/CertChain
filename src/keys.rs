@@ -3,9 +3,14 @@ use std::io::Result;
 use rustc_serialize::hex::{FromHex, ToHex};
 use secp256k1::Secp256k1;
 use rand::os::OsRng;
+use crypto::sha2::Sha256;
+use crypto::ripemd160::Ripemd160;
+use crypto::digest::Digest;
+use rust_base58::base58::ToBase58;
 
 const SECRET_KEY_LEN_BYTES: usize = 32;
 const COMPRESSED_PUB_KEY_LEN_BYTES: usize = 33;
+const MAINNET_ADDRESS_VERSION_PREFIX: u8 = 88; // "c" in Base58
 
 pub fn secret_key_from_string(key_str: &String)
         -> Result<SecretKey> {
@@ -48,6 +53,36 @@ pub fn print_new_keypair() {
     // Compress the public key.
     let compressed_pub_key = pub_key.serialize_vec(&context, true);
 
+    // Generate the address from the public key.
+    let mut sha256 = Sha256::new();
+    let mut sha256_arr = [0u8; 32];
+    sha256.input(&compressed_pub_key[..]);
+    sha256.result(&mut sha256_arr);
+    let mut ripemd160 = Ripemd160::new();
+    let mut address_arr = [0u8; 25];
+    // First byte is the version prefix.
+    address_arr[0] = MAINNET_ADDRESS_VERSION_PREFIX;
+    ripemd160.input(&sha256_arr[..]);
+    // The next 20 bytes are the hash of the public key.
+    ripemd160.result(&mut address_arr[1..21]);
+    // The last 4 bytes are the checksum.
+    checksum_address(&mut address_arr[..]);
+
     println!("Secret key: {:?}", priv_key);
     println!("Compressed public key: {}", &compressed_pub_key[..].to_hex());
+    println!("Address: {:?}", &address_arr[..].to_base58());
+}
+
+pub fn checksum_address(addr: &mut [u8]) {
+    let mut sha256 = Sha256::new();
+    let mut sha256_arr = [0u8; 32];
+    sha256.input(&addr[0..21]);
+    sha256.result(&mut sha256_arr);
+    sha256.reset();
+    sha256.input(&sha256_arr[..]);
+    sha256.result(&mut sha256_arr);
+    addr[21] = sha256_arr[0];
+    addr[22] = sha256_arr[1];
+    addr[23] = sha256_arr[2];
+    addr[24] = sha256_arr[3];
 }
