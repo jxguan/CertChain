@@ -15,22 +15,13 @@ pub mod daemon;
 pub mod config;
 pub mod network;
 pub mod blockchain;
+pub mod keys;
 
 use std::thread;
 use std::default::Default;
-use secp256k1::Secp256k1;
-use rand::os::OsRng;
+use secp256k1::key::{SecretKey, PublicKey};
 
 fn main() {
-
-    /* BEGIN TEMPORARY */
-    let mut crypto_rng = OsRng::new().unwrap();
-    let ctx = Secp256k1::new();
-    let (priv_key, pub_key) = ctx.generate_keypair(&mut crypto_rng).unwrap();
-    println!("Priv key: {:?}", priv_key);
-    println!("Pub key: {:?}", pub_key);
-    return;
-    /* END TEMPORARY */
 
     // Using log4rs as the concrete logging implementation.
     log4rs::init_file("log.toml", Default::default()).unwrap();
@@ -40,6 +31,12 @@ fn main() {
         Ok(c) => c,
         Err(err) => panic!("Unable to load config file: {:?}", err)
     };
+
+    /* BEGIN TEMPORARY */
+    let sec_key: SecretKey = keys::secret_key_from_string(&config.secret_key).unwrap();
+    let pub_key: PublicKey = keys::compressed_public_key_from_string(
+            &config.compressed_public_key).unwrap();
+    /* END TEMPORARY */
 
     // Kick off the main daemon thread.
     info!("Config loaded; spawning daemon thread.");

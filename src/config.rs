@@ -13,6 +13,8 @@ pub struct CertChainConfig {
     pub listener_port: u16,
     pub rpc_port: u16,
     pub peers: Vec<CertChainConfigPeer>,
+    pub secret_key: String,
+    pub compressed_public_key: String,
 }
 
 #[derive(Debug, RustcDecodable)]

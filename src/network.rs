@@ -16,13 +16,27 @@ struct Socket {
     tcp_sock: Arc<Mutex<Option<TcpStream>>>,
 }
 
+// TODO: This should be private to network module eventually.
 #[derive(Debug)]
 pub struct NetworkMessage {
     pub magic: u32,
     pub cmd: [u8; 12],
     pub payload_len: u32,
     pub payload_checksum: u32,
+//    pub payload: Payload,
 }
+
+/*pub enum Payload {
+    Trust(TrustPayload),
+}*/
+
+// TODO: Represent fields as abstracted structs (i.e., Address)
+// rather than raw arrays.
+/*pub struct TrustPayload {
+    pub truster_addr: [u8; 20],
+    pub trustee_addr: [u8; 20],
+    pub truster_pubkey: [u8; 65],
+}*/
 
 impl NetworkMessage {
     pub fn deserialize<R: Read>(mut reader: R) -> Result<NetworkMessage> {
