@@ -13,6 +13,8 @@ use network;
 use network::NetworkMessage;
 use blockchain;
 use blockchain::Block;
+use address;
+use address::Address;
 
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
@@ -44,9 +46,9 @@ pub fn run(config: CertChainConfig) -> () {
                         let mut req_body = String::new();
                         req.read_to_string(&mut req_body);
                         let req_json = Json::from_str(&req_body[..]).unwrap();
-                        let address = req_json.as_object().unwrap()
-                                .get("address").unwrap().as_string().unwrap();
-                        info!("Received trust request for address: {}", address);
+                        let address: Address = address::from_string(req_json.as_object().unwrap()
+                                .get("address").unwrap().as_string().unwrap()).unwrap();
+                        info!("Received trust request for address: {}", address.to_base58());
                     },
                     _ => {
                         *res.status_mut() = hyper::NotFound
