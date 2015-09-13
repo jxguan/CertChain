@@ -8,61 +8,109 @@ use std::sync::mpsc::{channel, Sender};
 use std::ops::DerefMut;
 use std::io::{Read, Write, BufReader, BufWriter};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use secp256k1::key::{SecretKey, PublicKey};
+use address;
+use address::Address;
+use keys;
 
 const MAX_PEER_CONN_ATTEMPTS: u8 = 3;
 const PEER_CONN_ATTEMPT_INTERVAL_IN_MS: u32 = 3000;
+const TRUST_CMD: u8 = 1;
 
 struct Socket {
     tcp_sock: Arc<Mutex<Option<TcpStream>>>,
 }
 
 // TODO: This should be private to network module eventually.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct NetworkMessage {
     pub magic: u32,
-    pub cmd: [u8; 12],
+    pub cmd: u8,
     pub payload_len: u32,
     pub payload_checksum: u32,
-  //  pub payload: Payload,
+    pub payload: Payload,
 }
 
-/*pub enum Payload {
+#[derive(Debug, Copy, Clone)]
+pub enum Payload {
     Trust(TrustPayload),
-}*/
+}
 
-/*pub struct TrustPayload {
+#[derive(Debug, Copy, Clone)]
+pub struct TrustPayload {
+    pub trustee_addr: Address,
     pub truster_addr: Address,
-}*/
+    pub truster_pubkey: PublicKey,
+}
 
 impl NetworkMessage {
-    pub fn deserialize<R: Read>(mut reader: R) -> Result<NetworkMessage> {
-        let magic = reader.read_u32::<BigEndian>().unwrap();
-        let mut cmd_buf = [0u8; 12];
-        reader.read(&mut cmd_buf).unwrap();
-        let payload_len = reader.read_u32::<BigEndian>().unwrap();
-        let payload_checksum = reader.read_u32::<BigEndian>().unwrap();
-        Ok(NetworkMessage {
-            magic: magic,
-            cmd: cmd_buf,
-            payload_len: payload_len,
-            payload_checksum: payload_checksum,
+    pub fn new(payload: Payload) -> NetworkMessage {
+        NetworkMessage {
+            magic: 101,
+            cmd: TRUST_CMD,
+            payload_len: 44,
+            payload_checksum: 55,
+            payload: payload
+        }
+    }
+}
+
+impl TrustPayload {
+    pub fn new(addr: Address, secret_key: SecretKey,
+               public_key: PublicKey) -> Result<TrustPayload> {
+        Ok(TrustPayload {
+            trustee_addr: addr,
+            truster_addr: address::from_pubkey(&public_key).unwrap(),
+            truster_pubkey: public_key,
+        })
+    }
+    pub fn deserialize<R: Read>(mut reader: R) -> Result<TrustPayload> {
+        Ok(TrustPayload {
+            trustee_addr: address::deserialize(&mut reader).unwrap(),
+            truster_addr: address::deserialize(&mut reader).unwrap(),
+            truster_pubkey: keys::deserialize_pubkey(&mut reader).unwrap()
         })
     }
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
-        writer.write_u32::<BigEndian>(self.magic).unwrap();
-        writer.write(&self.cmd[..]).unwrap();
-        writer.write_u32::<BigEndian>(self.payload_len).unwrap();
-        writer.write_u32::<BigEndian>(self.payload_checksum).unwrap();
-        try!(writer.flush());
+        self.trustee_addr.serialize(&mut writer);
+        self.truster_addr.serialize(&mut writer);
+        keys::serialize_pubkey(&self.truster_pubkey, &mut writer);
         Ok(())
     }
 }
 
-/*impl TrustPayload {
-    pub fn new(address: &str) -> Result<TrustPayload> {
-        return;
+impl NetworkMessage {
+    pub fn deserialize<R: Read>(mut reader: R) -> Result<NetworkMessage> {
+        let magic = reader.read_u32::<BigEndian>().unwrap();
+        let cmd = reader.read_u8().unwrap();
+        let payload_len = reader.read_u32::<BigEndian>().unwrap();
+        let payload_checksum = reader.read_u32::<BigEndian>().unwrap();
+        let payload = match cmd {
+            TRUST_CMD => {
+                Payload::Trust(TrustPayload::deserialize(&mut reader).unwrap())
+            },
+            _ => panic!("Unsupported message type.")
+        };
+        Ok(NetworkMessage {
+            magic: magic,
+            cmd: cmd,
+            payload_len: payload_len,
+            payload_checksum: payload_checksum,
+            payload: payload,
+        })
     }
-}*/
+    pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
+        writer.write_u32::<BigEndian>(self.magic).unwrap();
+        writer.write_u8(self.cmd).unwrap();
+        writer.write_u32::<BigEndian>(self.payload_len).unwrap();
+        writer.write_u32::<BigEndian>(self.payload_checksum).unwrap();
+        match self.payload {
+            Payload::Trust(ref payload) => payload.serialize(&mut writer).unwrap()
+        }
+        try!(writer.flush());
+        Ok(())
+    }
+}
 
 impl Socket {
 
