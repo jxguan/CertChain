@@ -25,7 +25,7 @@ struct Socket {
 }
 
 // TODO: This should be private to network module eventually.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct NetworkMessage {
     pub magic: u32,
     pub cmd: u8,
@@ -34,12 +34,12 @@ pub struct NetworkMessage {
     pub payload: Payload,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub enum Payload {
     Trust(TrustPayload),
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct TrustPayload {
     pub trustee_addr: Address,
     pub truster_addr: Address,
