@@ -2,8 +2,10 @@ use config::CertChainConfig;
 use hyper;
 use hyper::server::{Server, Request, Response};
 use hyper::status::StatusCode;
+use hyper::uri::RequestUri::AbsolutePath;
 use hyper::net::Fresh;
-use rustc_serialize::{json};
+use rustc_serialize::json;
+use rustc_serialize::json::Json;
 use std::io::Read;
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -31,14 +33,24 @@ pub fn run(config: CertChainConfig) -> () {
          * and call close() on it once graceful shutdown is supported.
          */
         let _ = Server::http((&"127.0.0.1"[..], rpc_port)).unwrap().handle(
-            move |req: Request, mut res: Response<Fresh>| {
-                match req.method {
-                    hyper::Get => {
+            move |mut req: Request, mut res: Response<Fresh>| {
+                match (req.method.clone(), req.uri.clone()) {
+                    (hyper::Get, _) => {
                         let ref blockchain_ref: Vec<Block> = *blockchain_refclone.read().unwrap();
                         let blockchain_json = json::as_pretty_json(blockchain_ref);
                         res.send(format!("{}", blockchain_json).as_bytes()).unwrap();
                     },
-                    _ => *res.status_mut() = StatusCode::MethodNotAllowed
+                    (hyper::Post, AbsolutePath(ref path)) if path == "/trust_institution" => {
+                        let mut req_body = String::new();
+                        req.read_to_string(&mut req_body);
+                        let req_json = Json::from_str(&req_body[..]).unwrap();
+                        let address = req_json.as_object().unwrap()
+                                .get("address").unwrap().as_string().unwrap();
+                        info!("Received trust request for address: {}", address);
+                    },
+                    _ => {
+                        *res.status_mut() = hyper::NotFound
+                    }
                 }
         });
     });

@@ -34,8 +34,6 @@ fn main() {
     };
 
     /* BEGIN TEMPORARY */
-    keys::print_new_keypair();
-    return;
     let sec_key: SecretKey = keys::secret_key_from_string(&config.secret_key).unwrap();
     let pub_key: PublicKey = keys::compressed_public_key_from_string(
             &config.compressed_public_key).unwrap();

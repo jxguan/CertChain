@@ -23,19 +23,15 @@ pub struct NetworkMessage {
     pub cmd: [u8; 12],
     pub payload_len: u32,
     pub payload_checksum: u32,
-//    pub payload: Payload,
+  //  pub payload: Payload,
 }
 
 /*pub enum Payload {
     Trust(TrustPayload),
 }*/
 
-// TODO: Represent fields as abstracted structs (i.e., Address)
-// rather than raw arrays.
 /*pub struct TrustPayload {
-    pub truster_addr: [u8; 20],
-    pub trustee_addr: [u8; 20],
-    pub truster_pubkey: [u8; 65],
+    pub truster_addr: Address,
 }*/
 
 impl NetworkMessage {
@@ -61,6 +57,12 @@ impl NetworkMessage {
         Ok(())
     }
 }
+
+/*impl TrustPayload {
+    pub fn new(address: &str) -> Result<TrustPayload> {
+        return;
+    }
+}*/
 
 impl Socket {
 
