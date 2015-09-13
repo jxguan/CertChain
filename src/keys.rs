@@ -21,10 +21,8 @@ pub fn deserialize_pubkey<R: Read>(mut reader: R) -> Result<PublicKey> {
 }
 
 pub fn serialize_pubkey<W: Write>(pubkey: &PublicKey, mut writer: W) -> Result<()> {
-    let context = Secp256k1::new();
-    let compressed_pubkey = pubkey.serialize_vec(&context, true);
-    assert_eq!(compressed_pubkey.len(), COMPRESSED_PUB_KEY_LEN_BYTES);
-    writer.write(&compressed_pubkey[..]).unwrap();
+    assert_eq!(pubkey.len(), COMPRESSED_PUB_KEY_LEN_BYTES);
+    writer.write(&pubkey[..]).unwrap();
     Ok(())
 }
 
@@ -64,16 +62,17 @@ pub fn compressed_public_key_from_string(key_str: &String)
 pub fn print_new_keypair() {
     let mut crypto_rng = OsRng::new().unwrap();
     let context = Secp256k1::new();
-    let (priv_key, pub_key) = context.generate_keypair(&mut crypto_rng).unwrap();
+
+    // A compressed public key is generated here using
+    // the true argument to generate_keypair().
+    let (priv_key, pub_key) = context.generate_keypair(
+        &mut crypto_rng, true).unwrap();
 
     // Generate the address from public key.
     let address = address::from_pubkey(&pub_key).unwrap();
 
-    // Serialize the public_key to its compressed form.
-    let compressed_pubkey = pub_key.serialize_vec(&context, true);
-
     println!("Secret key: {:?}", priv_key);
-    println!("Compressed public key: {}", &compressed_pubkey[..].to_hex());
+    println!("Compressed public key: {}", &pub_key[..].to_hex());
     println!("Address: {}", address.to_base58());
 }
 

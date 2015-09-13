@@ -10,7 +10,7 @@ use std::io::Read;
 use std::sync::{Arc, RwLock, Mutex};
 use std::thread;
 use network;
-use network::{NetworkMessage, TrustPayload, Payload};
+use network::{NetworkMessage, TrustPayload, Payload, PeerNotice};
 use blockchain;
 use blockchain::Block;
 use address;
@@ -62,11 +62,8 @@ pub fn run(config: CertChainConfig) -> () {
                                 req_json.as_object().unwrap()
                                 .get("address").unwrap().as_string().unwrap()).unwrap();
                         info!("Received trust request for address: {}", &addr.to_base58());
-                        let trust_payload = TrustPayload::new(
-                               addr, secret_key.clone(), public_key.clone()).unwrap();
-                        let net_msg = NetworkMessage::new(Payload::Trust(trust_payload));
                         for tx in peer_txs.lock().unwrap().deref() {
-                            tx.send(net_msg.clone());
+                            tx.send(PeerNotice::Trust(addr, secret_key.clone(), public_key.clone()));
                         }
                     },
                     _ => {

@@ -60,15 +60,10 @@ pub fn from_string(addr_str: &str) -> Result<Address> {
 }
 
 pub fn from_pubkey(pub_key: &PublicKey) -> Result<Address> {
-
-    // First, compress the public key.
-    let context = Secp256k1::new();
-    let compressed_pubkey = pub_key.serialize_vec(&context, true);
-
     // Generate the address from the compressed public key.
     let mut sha256 = Sha256::new();
     let mut sha256_arr = [0u8; 32];
-    sha256.input(&compressed_pubkey[..]);
+    sha256.input(&pub_key[..]);
     sha256.result(&mut sha256_arr);
     let mut ripemd160 = Ripemd160::new();
     let mut address_arr = [0u8; ADDRESS_LEN_BYTES];
