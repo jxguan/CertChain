@@ -10,7 +10,6 @@ use std::io::Read;
 use std::sync::{Arc, RwLock, Mutex};
 use std::thread;
 use network;
-use network::{NetworkMessage, Payload, Transaction, TransactionType};
 use blockchain;
 use blockchain::Block;
 use address;
@@ -18,6 +17,7 @@ use address::Address;
 use secp256k1::key::{SecretKey, PublicKey};
 use std::sync::mpsc::{Sender};
 use std::ops::Deref;
+use transaction::TransactionType;
 
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
@@ -72,16 +72,6 @@ pub fn run(config: CertChainConfig) -> () {
         let mut block = blockchain::create_new_block(
             blockchain.read().unwrap().last().unwrap());
         blockchain::mine_block(&mut block);
-        /*for peer_tx in &peer_txs {
-            let _ = peer_tx.send(NetworkMessage {
-                magic: 4096555,
-                cmd: [0x76, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E,
-                        0x0, 0x0, 0x0, 0x0, 0x0],
-                payload_len: 88,
-                payload_checksum: 22,
-            });
-            placeholder_inc += 1;
-        }*/
         blockchain.write().unwrap().push(block);
     }
 }
