@@ -17,8 +17,12 @@ use network;
 
 const MAX_PEER_CONN_ATTEMPTS: u8 = 3;
 const PEER_CONN_ATTEMPT_INTERVAL_IN_MS: u32 = 3000;
-const TRUST_CMD: u8 = 1;
+const INV_CMD: u8 = 1;
 const SIGNATURE_LEN_BYTES: usize = 70;
+const TRUST_TXN_TYPE: u8 = 1;
+const REVOKE_TRUST_TXN_TYPE: u8 = 2;
+const CERTIFY_TXN_TYPE: u8 = 3;
+const REVOKE_CERTIFICATION_TXN_TYPE: u8 = 4;
 
 struct Socket {
     tcp_sock: Arc<Mutex<Option<TcpStream>>>,
@@ -36,22 +40,30 @@ pub struct NetworkMessage {
 
 #[derive(Debug)]
 pub enum Payload {
-    Trust(TrustPayload),
+    Transaction(Transaction),
 }
 
 #[derive(Debug)]
-pub struct TrustPayload {
-    pub trustee_addr: Address,
-    pub truster_addr: Address,
-    pub truster_pubkey: PublicKey,
-    pub signature: Signature,
+pub enum TransactionType {
+    Trust(Address),
+    RevokeTrust(Address),
+    Certify([u8; 32]),
+    RevokeCertification([u8; 32]),
+}
+
+#[derive(Debug)]
+pub struct Transaction {
+    pub txn_type: TransactionType,
+    pub author_addr: Address,
+    pub author_pubkey: PublicKey,
+    pub author_sig: Signature,
 }
 
 impl NetworkMessage {
     pub fn new(payload: Payload) -> NetworkMessage {
         NetworkMessage {
             magic: 101,
-            cmd: TRUST_CMD,
+            cmd: INV_CMD,
             payload_len: 44,
             payload_checksum: 55,
             payload: payload
@@ -59,73 +71,136 @@ impl NetworkMessage {
     }
 }
 
-impl TrustPayload {
-    pub fn new(addr: Address, secret_key: SecretKey,
-               public_key: PublicKey) -> Result<TrustPayload> {
-        let truster_addr = address::from_pubkey(&public_key).unwrap();
-        let checksum = Self::checksum(&addr, &truster_addr, &public_key);
-        let secp256k1_msg = Message::from_slice(&checksum[..]).unwrap();
+/**
+ * TODO: During validity check, ensure that provided pubkey
+ * hashes to the provided address.
+ */
+impl Transaction {
+
+    pub fn new(txn_type: TransactionType,
+               author_seckey: SecretKey,
+               author_pubkey: PublicKey) -> Result<Transaction> {
+
+        // Compute author's address from public key.
+        let author_addr = address::from_pubkey(&author_pubkey).unwrap();
+
+        // Compute and sign checksum.
+        let checksum = Self::checksum(
+                &txn_type, &author_addr, &author_pubkey);
+        let checksum_msg = Message::from_slice(&checksum[..]).unwrap();
         let context = Secp256k1::new();
-        let signature = context.sign(&secp256k1_msg, &secret_key).unwrap();
-        let payload = TrustPayload {
-            trustee_addr: addr,
-            truster_addr: truster_addr,
-            truster_pubkey: public_key,
-            signature: signature,
+        let author_sig= context.sign(&checksum_msg, &author_seckey).unwrap();
+
+        let txn = Transaction {
+            txn_type: txn_type,
+            author_addr: author_addr,
+            author_pubkey: author_pubkey,
+            author_sig: author_sig,
         };
-        assert!(payload.has_valid_signature());
-        Ok(payload)
+
+        assert!(txn.has_valid_signature());
+        Ok(txn)
     }
-    pub fn deserialize<R: Read>(mut reader: R) -> Result<TrustPayload> {
-        let payload = TrustPayload {
-            trustee_addr: address::deserialize(&mut reader).unwrap(),
-            truster_addr: address::deserialize(&mut reader).unwrap(),
-            truster_pubkey: keys::deserialize_pubkey(&mut reader).unwrap(),
-            signature: network::deserialize_signature(&mut reader).unwrap(),
+
+    pub fn deserialize<R: Read>(mut reader: R) -> Result<Transaction> {
+
+        let txn_type = match reader.read_u8().unwrap() {
+            TRUST_TXN_TYPE => {
+                let addr = address::deserialize(&mut reader).unwrap();
+                TransactionType::Trust(addr)
+            },
+            REVOKE_TRUST_TXN_TYPE => {
+                let addr = address::deserialize(&mut reader).unwrap();
+                TransactionType::RevokeTrust(addr)
+            },
+            CERTIFY_TXN_TYPE => {
+                let mut doc_checksum_buf = [0u8; 32];
+                reader.read(&mut doc_checksum_buf).unwrap();
+                TransactionType::Certify(doc_checksum_buf)
+            },
+            REVOKE_CERTIFICATION_TXN_TYPE => {
+                let mut certify_txn_id_buf = [0u8; 32];
+                reader.read(&mut certify_txn_id_buf).unwrap();
+                TransactionType::RevokeCertification(certify_txn_id_buf)
+            },
+            i => panic!("Attempted to deserialize unsupported txn_type\
+                        magic: {}", i)
         };
-        assert!(payload.has_valid_signature());
-        Ok(payload)
+
+        let txn = Transaction {
+            txn_type: txn_type,
+            author_addr: address::deserialize(&mut reader).unwrap(),
+            author_pubkey: keys::deserialize_pubkey(&mut reader).unwrap(),
+            author_sig: network::deserialize_signature(&mut reader).unwrap(),
+        };
+
+        assert!(txn.has_valid_signature());
+        Ok(txn)
     }
+
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
-        info!("Serialzing TrustPayload to writer...");
-        self.trustee_addr.serialize(&mut writer);
-        self.truster_addr.serialize(&mut writer);
-        keys::serialize_pubkey(&self.truster_pubkey, &mut writer);
+        Self::serialize_txn_type(&self.txn_type, &mut writer);
+        self.author_addr.serialize(&mut writer);
+        keys::serialize_pubkey(&self.author_pubkey, &mut writer);
         self.serialize_signature(&mut writer);
         Ok(())
     }
-    fn checksum(trustee_addr: &Address, truster_addr: &Address,
-                truster_pubkey: &PublicKey) -> [u8; 32] {
-        let mut data = Vec::new();
-        trustee_addr.serialize(&mut data);
-        truster_addr.serialize(&mut data);
-        keys::serialize_pubkey(&truster_pubkey, &mut data);
-        let checksum = address::double_sha256(&data[..]);
-        checksum
+
+    fn checksum(txn_type: &TransactionType,
+                author_addr: &Address,
+                author_pubkey: &PublicKey) -> [u8; 32] {
+        let mut buf = Vec::new();
+        Self::serialize_txn_type(&txn_type, &mut buf);
+        author_addr.serialize(&mut buf);
+        keys::serialize_pubkey(&author_pubkey, &mut buf);
+        address::double_sha256(&buf[..])
     }
+
     pub fn has_valid_signature(&self) -> bool {
-        let checksum = Self::checksum(&self.trustee_addr, &self.truster_addr, &self.truster_pubkey);
+        let checksum = Self::checksum(&self.txn_type, &self.author_addr, &self.author_pubkey);
         info!("[SigValidity] checksum: {:?}", &checksum);
-        let secp256k1_msg = Message::from_slice(&checksum[..]).unwrap();
-        info!("[SigValidity] msg: {:?}", &secp256k1_msg);
+        let checksum_msg = Message::from_slice(&checksum[..]).unwrap();
+        info!("[SigValidity] msg: {:?}", &checksum_msg);
         let context = Secp256k1::new();
-        info!("[SigValidity] pubkey: {:?}", &self.truster_pubkey);
-        match context.verify(&secp256k1_msg, &self.signature, &self.truster_pubkey) {
+        info!("[SigValidity] pubkey: {:?}", &self.author_pubkey);
+        match context.verify(&checksum_msg, &self.author_sig, &self.author_pubkey) {
             Ok(_) => {
-                info!("Signature is valid: {:?}", &self.signature);
+                info!("Signature is valid: {:?}", &self.author_sig);
                 true
             }
             Err(e) => {
-                error!("Signature is invalid {:?}; reason: {:?}", &self.signature, e);
+                error!("Signature is invalid {:?}; reason: {:?}", &self.author_sig, e);
                 false
             }
         }
     }
     pub fn serialize_signature<W: Write>(&self, mut writer: W) -> Result<()> {
-        info!("Serializing signature of length: {}", &self.signature.len());
-        info!("Serialized sig_buf: {:?}", &self.signature[..]);
-        assert_eq!(self.signature[..].len(), SIGNATURE_LEN_BYTES);
-        writer.write(&self.signature[..]).unwrap();
+        info!("Serializing signature of length: {}", &self.author_sig.len());
+        info!("Serialized sig_buf: {:?}", &self.author_sig[..]);
+        assert_eq!(self.author_sig[..].len(), SIGNATURE_LEN_BYTES);
+        writer.write(&self.author_sig[..]).unwrap();
+        Ok(())
+    }
+
+    pub fn serialize_txn_type<W: Write>(txn_type: &TransactionType, mut writer: W) -> Result<()> {
+        match *txn_type {
+            TransactionType::Trust(addr) => {
+                writer.write_u8(TRUST_TXN_TYPE).unwrap();
+                addr.serialize(&mut writer);
+            },
+            TransactionType::RevokeTrust(addr) => {
+                writer.write_u8(REVOKE_TRUST_TXN_TYPE).unwrap();
+                addr.serialize(&mut writer);
+            },
+            TransactionType::Certify(doc_checksum) => {
+                writer.write_u8(CERTIFY_TXN_TYPE).unwrap();
+                writer.write(&doc_checksum[..]).unwrap();
+            },
+            TransactionType::RevokeCertification(txn_id) => {
+                writer.write_u8(REVOKE_CERTIFICATION_TXN_TYPE).unwrap();
+                writer.write(&txn_id[..]).unwrap();
+            }
+        };
         Ok(())
     }
 }
@@ -146,10 +221,10 @@ impl NetworkMessage {
         let payload_len = reader.read_u32::<BigEndian>().unwrap();
         let payload_checksum = reader.read_u32::<BigEndian>().unwrap();
         let payload = match cmd {
-            TRUST_CMD => {
-                Payload::Trust(TrustPayload::deserialize(&mut reader).unwrap())
+            INV_CMD => {
+                Payload::Transaction(Transaction::deserialize(&mut reader).unwrap())
             },
-            _ => panic!("Unsupported message type.")
+            n => panic!("Unsupported message type: {}", n)
         };
         Ok(NetworkMessage {
             magic: magic,
@@ -165,15 +240,11 @@ impl NetworkMessage {
         writer.write_u32::<BigEndian>(self.payload_len).unwrap();
         writer.write_u32::<BigEndian>(self.payload_checksum).unwrap();
         match self.payload {
-            Payload::Trust(ref payload) => payload.serialize(&mut writer).unwrap()
+            Payload::Transaction(ref txn) => txn.serialize(&mut writer).unwrap()
         }
         try!(writer.flush());
         Ok(())
     }
-}
-
-pub enum PeerNotice {
-    Trust(Address, SecretKey, PublicKey),
 }
 
 impl Socket {
@@ -197,16 +268,7 @@ impl Socket {
         }
     }
 
-    pub fn send(&self, notice: PeerNotice) -> Result<()> {
-        let net_msg = match notice {
-            PeerNotice::Trust(addr, secret_key, pub_key) => {
-                let trust_payload = TrustPayload::new(
-                    addr, secret_key, pub_key).unwrap();
-                let net_msg = NetworkMessage::new(Payload::Trust(trust_payload));
-                net_msg
-            }
-        };
-
+    pub fn send(&self, net_msg: NetworkMessage) -> Result<()> {
         match self.tcp_sock.lock() {
             Err(err) => {
                 Err(io::Error::new(io::ErrorKind::NotConnected,
@@ -288,7 +350,14 @@ pub fn listen(config: &CertChainConfig) -> () {
     });
 }
 
-pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<PeerNotice>> {
+pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<TransactionType>> {
+
+    let secret_key: SecretKey = keys::secret_key_from_string(
+            &config.secret_key).unwrap();
+    let public_key: PublicKey = keys::compressed_public_key_from_string(
+            &config.compressed_public_key).unwrap();
+    info!("Using public key: {:?}", &public_key);
+
     let mut peer_txs = Vec::new();
     for peer in &config.peers {
         info!("Connecting to {}...", peer.name);
@@ -301,9 +370,17 @@ pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<PeerNotice>> {
                     let (tx, rx) = channel();
                     thread::spawn(move || {
                         loop {
-                            let msg = rx.recv().unwrap();
-                            info!("Received MSPC message; forwarding to socket.");
-                            sock.send(msg);
+                            let txn_type = rx.recv().unwrap();
+                            info!("Received MSPC txn type, forwarding to socket: {:?}", txn_type);
+                            let net_msg = match txn_type {
+                                TransactionType::Trust(addr) => {
+                                    let txn = Transaction::new(
+                                        txn_type, secret_key.clone(), public_key.clone()).unwrap();
+                                    NetworkMessage::new(Payload::Transaction(txn))
+                                },
+                                _ => panic!("Unsupported txn_type: {:?}", txn_type)
+                            };
+                            sock.send(net_msg);
                         }
                     });
                     peer_txs.push(tx);
