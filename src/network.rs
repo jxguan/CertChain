@@ -12,7 +12,7 @@ use secp256k1::key::{SecretKey, PublicKey};
 use secp256k1::{Secp256k1, Signature, Message, RecoveryId};
 use address;
 use address::Address;
-use keys;
+use key;
 use network;
 
 const MAX_PEER_CONN_ATTEMPTS: u8 = 3;
@@ -130,7 +130,7 @@ impl Transaction {
         let txn = Transaction {
             txn_type: txn_type,
             author_addr: address::deserialize(&mut reader).unwrap(),
-            author_pubkey: keys::deserialize_pubkey(&mut reader).unwrap(),
+            author_pubkey: key::deserialize_pubkey(&mut reader).unwrap(),
             author_sig: network::deserialize_signature(&mut reader).unwrap(),
         };
 
@@ -141,7 +141,7 @@ impl Transaction {
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
         Self::serialize_txn_type(&self.txn_type, &mut writer);
         self.author_addr.serialize(&mut writer);
-        keys::serialize_pubkey(&self.author_pubkey, &mut writer);
+        key::serialize_pubkey(&self.author_pubkey, &mut writer);
         self.serialize_signature(&mut writer);
         Ok(())
     }
@@ -152,7 +152,7 @@ impl Transaction {
         let mut buf = Vec::new();
         Self::serialize_txn_type(&txn_type, &mut buf);
         author_addr.serialize(&mut buf);
-        keys::serialize_pubkey(&author_pubkey, &mut buf);
+        key::serialize_pubkey(&author_pubkey, &mut buf);
         address::double_sha256(&buf[..])
     }
 
@@ -352,9 +352,9 @@ pub fn listen(config: &CertChainConfig) -> () {
 
 pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<TransactionType>> {
 
-    let secret_key: SecretKey = keys::secret_key_from_string(
+    let secret_key: SecretKey = key::secret_key_from_string(
             &config.secret_key).unwrap();
-    let public_key: PublicKey = keys::compressed_public_key_from_string(
+    let public_key: PublicKey = key::compressed_public_key_from_string(
             &config.compressed_public_key).unwrap();
     info!("Using public key: {:?}", &public_key);
 

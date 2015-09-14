@@ -16,7 +16,6 @@ use blockchain::Block;
 use address;
 use address::Address;
 use secp256k1::key::{SecretKey, PublicKey};
-use keys;
 use std::sync::mpsc::{Sender};
 use std::ops::Deref;
 

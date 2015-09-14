@@ -17,7 +17,7 @@ pub mod daemon;
 pub mod config;
 pub mod network;
 pub mod blockchain;
-pub mod keys;
+pub mod key;
 
 use std::thread;
 use std::default::Default;
