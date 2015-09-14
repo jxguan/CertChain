@@ -1,12 +1,9 @@
-use std::io::{Error, Result, ErrorKind, Read, Write};
-use std::io;
-use rustc_serialize::hex::{FromHex, ToHex};
+use std::io::{Result, Read, Write};
 use crypto::sha2::Sha256;
 use crypto::ripemd160::Ripemd160;
 use crypto::digest::Digest;
 use rust_base58::base58::{FromBase58, ToBase58};
-use secp256k1::Secp256k1;
-use secp256k1::key::{SecretKey, PublicKey};
+use secp256k1::key::{PublicKey};
 
 const ADDRESS_LEN_BYTES: usize = 25;
 const MAINNET_ADDRESS_VERSION_PREFIX: u8 = 88; // "c" in Base58

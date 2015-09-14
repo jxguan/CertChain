@@ -9,11 +9,7 @@ use std::ops::DerefMut;
 use std::io::{Read, Write, BufReader, BufWriter};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use secp256k1::key::{SecretKey, PublicKey};
-use secp256k1::{Secp256k1, Signature, Message, RecoveryId};
-use address;
-use address::Address;
 use key;
-use network;
 use transaction::{Transaction, TransactionType};
 
 const INV_CMD: u8 = 1;
@@ -106,7 +102,7 @@ impl Socket {
 
     pub fn send(&self, net_msg: NetworkMessage) -> Result<()> {
         match self.tcp_sock.lock() {
-            Err(err) => {
+            Err(_) => {
                 Err(io::Error::new(io::ErrorKind::NotConnected,
                                    "Socket mutex is poisoned."))
             },
@@ -128,7 +124,7 @@ impl Socket {
 
     pub fn receive(&self) -> Result<()> {
         match self.tcp_sock.lock() {
-            Err(err) => {
+            Err(_) => {
                 Err(io::Error::new(io::ErrorKind::NotConnected,
                                    "Socket mutex is poisoned."))
             },
@@ -176,7 +172,7 @@ pub fn listen(config: &CertChainConfig) -> () {
                             tcp_sock: Arc::new(Mutex::new(Some(stream))),
                         };
                         loop {
-                            recv_sock.receive();
+                            recv_sock.receive().unwrap();
                         }
                     });
                 },
@@ -209,14 +205,14 @@ pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<TransactionType>
                             let txn_type = rx.recv().unwrap();
                             info!("Received MSPC txn type, forwarding to socket: {:?}", txn_type);
                             let net_msg = match txn_type {
-                                TransactionType::Trust(addr) => {
+                                TransactionType::Trust(_) => {
                                     let txn = Transaction::new(
                                         txn_type, secret_key.clone(), public_key.clone()).unwrap();
                                     NetworkMessage::new(Payload::Transaction(txn))
                                 },
                                 _ => panic!("Unsupported txn_type: {:?}", txn_type)
                             };
-                            sock.send(net_msg);
+                            sock.send(net_msg).unwrap();
                         }
                     });
                     peer_txs.push(tx);

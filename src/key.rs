@@ -3,9 +3,6 @@ use std::io::{Result, Read, Write};
 use rustc_serialize::hex::{FromHex, ToHex};
 use secp256k1::Secp256k1;
 use rand::os::OsRng;
-use crypto::sha2::Sha256;
-use crypto::ripemd160::Ripemd160;
-use crypto::digest::Digest;
 use rust_base58::base58::ToBase58;
 use address;
 

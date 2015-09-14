@@ -1,7 +1,6 @@
 use config::CertChainConfig;
 use hyper;
 use hyper::server::{Server, Request, Response};
-use hyper::status::StatusCode;
 use hyper::uri::RequestUri::AbsolutePath;
 use hyper::net::Fresh;
 use rustc_serialize::json;
@@ -14,8 +13,6 @@ use blockchain;
 use blockchain::Block;
 use address;
 use address::Address;
-use secp256k1::key::{SecretKey, PublicKey};
-use std::sync::mpsc::{Sender};
 use std::ops::Deref;
 use transaction::TransactionType;
 
@@ -49,14 +46,14 @@ pub fn run(config: CertChainConfig) -> () {
                     },
                     (hyper::Post, AbsolutePath(ref path)) if path == "/trust_institution" => {
                         let mut req_body = String::new();
-                        req.read_to_string(&mut req_body);
+                        let _ = req.read_to_string(&mut req_body).unwrap();
                         let req_json = Json::from_str(&req_body[..]).unwrap();
                         let addr: Address = address::from_string(
                                 req_json.as_object().unwrap()
                                 .get("address").unwrap().as_string().unwrap()).unwrap();
                         info!("Received trust request for address: {}", &addr.to_base58());
                         for tx in peer_txs.lock().unwrap().deref() {
-                            tx.send(TransactionType::Trust(addr));
+                            tx.send(TransactionType::Trust(addr)).unwrap();
                         }
                     },
                     _ => {
@@ -67,7 +64,6 @@ pub fn run(config: CertChainConfig) -> () {
     });
 
     blockchain.write().unwrap().push(blockchain::get_genesis_block());
-    let mut placeholder_inc: u8 = 0;
     loop {
         let mut block = blockchain::create_new_block(
             blockchain.read().unwrap().last().unwrap());

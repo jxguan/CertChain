@@ -1,13 +1,6 @@
-use std::sync::{Arc, Mutex};
-use std::net::{TcpListener, TcpStream};
-use std::io;
 use std::io::Result;
-use config::CertChainConfig;
-use std::thread;
-use std::sync::mpsc::{channel, Sender};
-use std::ops::DerefMut;
-use std::io::{Read, Write, BufReader, BufWriter};
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use std::io::{Read, Write};
+use byteorder::{ReadBytesExt, WriteBytesExt};
 use secp256k1::key::{SecretKey, PublicKey};
 use secp256k1::{Secp256k1, Signature, Message};
 use address;
@@ -105,10 +98,10 @@ impl Transaction {
     }
 
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
-        Self::serialize_txn_type(&self.txn_type, &mut writer);
-        self.author_addr.serialize(&mut writer);
-        key::serialize_pubkey(&self.author_pubkey, &mut writer);
-        self.serialize_signature(&mut writer);
+        Self::serialize_txn_type(&self.txn_type, &mut writer).unwrap();
+        self.author_addr.serialize(&mut writer).unwrap();
+        key::serialize_pubkey(&self.author_pubkey, &mut writer).unwrap();
+        self.serialize_signature(&mut writer).unwrap();
         Ok(())
     }
 
@@ -116,9 +109,9 @@ impl Transaction {
                 author_addr: &Address,
                 author_pubkey: &PublicKey) -> [u8; 32] {
         let mut buf = Vec::new();
-        Self::serialize_txn_type(&txn_type, &mut buf);
-        author_addr.serialize(&mut buf);
-        key::serialize_pubkey(&author_pubkey, &mut buf);
+        Self::serialize_txn_type(&txn_type, &mut buf).unwrap();
+        author_addr.serialize(&mut buf).unwrap();
+        key::serialize_pubkey(&author_pubkey, &mut buf).unwrap();
         address::double_sha256(&buf[..])
     }
 
@@ -152,11 +145,11 @@ impl Transaction {
         match *txn_type {
             TransactionType::Trust(addr) => {
                 writer.write_u8(TRUST_TXN_TYPE).unwrap();
-                addr.serialize(&mut writer);
+                addr.serialize(&mut writer).unwrap();
             },
             TransactionType::RevokeTrust(addr) => {
                 writer.write_u8(REVOKE_TRUST_TXN_TYPE).unwrap();
-                addr.serialize(&mut writer);
+                addr.serialize(&mut writer).unwrap();
             },
             TransactionType::Certify(doc_checksum) => {
                 writer.write_u8(CERTIFY_TXN_TYPE).unwrap();
@@ -175,7 +168,6 @@ pub fn deserialize_signature<R: Read>(mut reader: R) -> Result<Signature> {
     let mut sig_buf = [0u8; SIGNATURE_LEN_BYTES];
     reader.read(&mut sig_buf).unwrap();
     info!("Deserialized sig_buf: {:?}", &sig_buf[..]);
-    let context = Secp256k1::new();
     let sig = Signature::from_slice(&sig_buf).unwrap();
     Ok(sig)
 }
