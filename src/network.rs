@@ -122,7 +122,7 @@ impl Socket {
         }
     }
 
-    pub fn receive(&self) -> Result<()> {
+    pub fn receive(&self, txn_pool_tx: Sender<Transaction>) -> Result<()> {
         match self.tcp_sock.lock() {
             Err(_) => {
                 Err(io::Error::new(io::ErrorKind::NotConnected,
@@ -133,7 +133,13 @@ impl Socket {
                     Some(ref mut tcp_stream) => {
                         match NetworkMessage::deserialize(
                                 BufReader::new(tcp_stream)) {
-                            Ok(msg) => info!("Received message from peer: {:?}", msg),
+                            Ok(msg) => {
+                                info!("Received message from peer: {:?}", msg);
+                                match msg.payload {
+                                    Payload::Transaction(txn) =>
+                                        txn_pool_tx.send(txn).unwrap()
+                                }
+                            }
                             Err(err) => panic!("Received malformed msg: {}", err)
                         }
                         Ok(())
@@ -148,7 +154,7 @@ impl Socket {
     }
 }
 
-pub fn listen(config: &CertChainConfig) -> () {
+pub fn listen(txn_pool_tx: Sender<Transaction>, config: &CertChainConfig) -> () {
 
     // Start listening on the listener port in the provided config.
     let listener_port: &u16 = &config.listener_port;
@@ -163,16 +169,19 @@ pub fn listen(config: &CertChainConfig) -> () {
                          listener_port, e),
     };
 
+    // TODO: Clean this up, no need to clone like this.
+    let txn_pool_tx_c1 = txn_pool_tx.clone();
     thread::spawn(move || {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
+                    let txn_pool_tx_c2 = txn_pool_tx_c1.clone();
                     thread::spawn(move || {
                         let recv_sock = Socket {
                             tcp_sock: Arc::new(Mutex::new(Some(stream))),
                         };
                         loop {
-                            recv_sock.receive().unwrap();
+                            recv_sock.receive(txn_pool_tx_c2.clone()).unwrap();
                         }
                     });
                 },
