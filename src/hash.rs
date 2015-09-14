@@ -16,7 +16,7 @@ impl DoubleSha256Hash {
         DoubleSha256Hash([0u8; 32])
     }
 
-    pub fn from_data(data: &[u8]) -> DoubleSha256Hash {
+    pub fn hash(data: &[u8]) -> DoubleSha256Hash {
         let DoubleSha256Hash(mut buf) = DoubleSha256Hash::blank();
         let mut sha256 = Sha256::new();
         sha256.input(data);
@@ -24,6 +24,15 @@ impl DoubleSha256Hash {
         sha256.reset();
         sha256.input(&buf);
         sha256.result(&mut buf);
+        DoubleSha256Hash(buf)
+    }
+
+    pub fn from_slice(slice: &[u8]) -> DoubleSha256Hash {
+        let DoubleSha256Hash(mut buf) = DoubleSha256Hash::blank();
+        assert_eq!(slice.len(), buf.len());
+        for i in 0..slice.len() {
+            buf[i] = slice[i]
+        }
         DoubleSha256Hash(buf)
     }
 }

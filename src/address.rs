@@ -30,7 +30,7 @@ fn assert_valid_address(addr: &[u8]) {
 
     // Compute checksum on version + hash,
     // ensure it matches last 4 addr bytes.
-    let checksum = DoubleSha256Hash::from_data(&addr[0..21]);
+    let checksum = DoubleSha256Hash::hash(&addr[0..21]);
     assert_eq!(&checksum[0..4], &addr[21..25]);
 }
 
@@ -71,7 +71,7 @@ pub fn from_pubkey(pub_key: &PublicKey) -> Result<Address> {
     // The next 20 bytes are the hash of the public key.
     ripemd160.result(&mut address_arr[1..21]);
     // The last 4 bytes are the checksum of the version + pubkey hash.
-    let checksum = DoubleSha256Hash::from_data(&address_arr[0..21]);
+    let checksum = DoubleSha256Hash::hash(&address_arr[0..21]);
     // We append only the first 4 bytes of the checksum to the end of the address.
     address_arr[21] = checksum[0];
     address_arr[22] = checksum[1];

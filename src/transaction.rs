@@ -15,12 +15,14 @@ const REVOKE_TRUST_TXN_TYPE: u8 = 2;
 const CERTIFY_TXN_TYPE: u8 = 3;
 const REVOKE_CERTIFICATION_TXN_TYPE: u8 = 4;
 
+pub type TxnId = DoubleSha256Hash;
+
 #[derive(Debug)]
 pub enum TransactionType {
     Trust(Address),
     RevokeTrust(Address),
-    Certify([u8; 32]),
-    RevokeCertification([u8; 32]),
+    Certify(DoubleSha256Hash),
+    RevokeCertification(TxnId),
 }
 
 #[derive(Debug)]
@@ -76,12 +78,14 @@ impl Transaction {
             CERTIFY_TXN_TYPE => {
                 let mut doc_checksum_buf = [0u8; 32];
                 reader.read(&mut doc_checksum_buf).unwrap();
-                TransactionType::Certify(doc_checksum_buf)
+                TransactionType::Certify(
+                    DoubleSha256Hash::from_slice(&doc_checksum_buf[..]))
             },
             REVOKE_CERTIFICATION_TXN_TYPE => {
                 let mut certify_txn_id_buf = [0u8; 32];
                 reader.read(&mut certify_txn_id_buf).unwrap();
-                TransactionType::RevokeCertification(certify_txn_id_buf)
+                TransactionType::RevokeCertification(
+                    DoubleSha256Hash::from_slice(&certify_txn_id_buf[..]))
             },
             i => panic!("Attempted to deserialize unsupported txn_type\
                         magic: {}", i)
@@ -113,7 +117,7 @@ impl Transaction {
         Self::serialize_txn_type(&txn_type, &mut buf).unwrap();
         author_addr.serialize(&mut buf).unwrap();
         key::serialize_pubkey(&author_pubkey, &mut buf).unwrap();
-        DoubleSha256Hash::from_data(&buf[..])
+        DoubleSha256Hash::hash(&buf[..])
     }
 
     pub fn has_valid_signature(&self) -> bool {
@@ -152,11 +156,11 @@ impl Transaction {
                 writer.write_u8(REVOKE_TRUST_TXN_TYPE).unwrap();
                 addr.serialize(&mut writer).unwrap();
             },
-            TransactionType::Certify(doc_checksum) => {
+            TransactionType::Certify(ref doc_checksum) => {
                 writer.write_u8(CERTIFY_TXN_TYPE).unwrap();
                 writer.write(&doc_checksum[..]).unwrap();
             },
-            TransactionType::RevokeCertification(txn_id) => {
+            TransactionType::RevokeCertification(ref txn_id) => {
                 writer.write_u8(REVOKE_CERTIFICATION_TXN_TYPE).unwrap();
                 writer.write(&txn_id[..]).unwrap();
             }
