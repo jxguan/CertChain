@@ -3,7 +3,6 @@ use hyper;
 use hyper::server::{Server, Request, Response};
 use hyper::uri::RequestUri::AbsolutePath;
 use hyper::net::Fresh;
-use rustc_serialize::json;
 use rustc_serialize::json::Json;
 use std::io::Read;
 use std::sync::{Arc, RwLock, Mutex};
@@ -55,8 +54,7 @@ pub fn run(config: CertChainConfig) -> () {
                 match (req.method.clone(), req.uri.clone()) {
                     (hyper::Get, AbsolutePath(ref path)) if path == "/blockchain" => {
                         let ref blockchain_ref: Vec<Block> = *blockchain_refclone.read().unwrap();
-                        let blockchain_json = json::as_pretty_json(blockchain_ref);
-                        res.send(format!("{}", blockchain_json).as_bytes()).unwrap();
+                        res.send(format!("{}", blockchain_ref.len()).as_bytes()).unwrap();
                     },
                     (hyper::Get, AbsolutePath(ref path)) if path == "/txn_pool" => {
                         let ref txn_pool_ref: Vec<Transaction> = *txn_pool_refclone.read().unwrap();
@@ -81,9 +79,9 @@ pub fn run(config: CertChainConfig) -> () {
         });
     });
 
-    blockchain.write().unwrap().push(blockchain::get_genesis_block());
+    blockchain.write().unwrap().push(Block::genesis_block());
     loop {
-        let mut block = blockchain::create_new_block(
+        let mut block = Block::new(
             blockchain.read().unwrap().last().unwrap());
         blockchain::mine_block(&mut block);
         blockchain.write().unwrap().push(block);
