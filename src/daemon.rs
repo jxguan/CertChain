@@ -8,7 +8,6 @@ use std::io::Read;
 use std::sync::{Arc, RwLock, Mutex};
 use std::thread;
 use network;
-use blockchain;
 use blockchain::Block;
 use address;
 use address::Address;
@@ -83,7 +82,21 @@ pub fn run(config: CertChainConfig) -> () {
     loop {
         let mut block = Block::new(
             blockchain.read().unwrap().last().unwrap());
-        blockchain::mine_block(&mut block);
-        blockchain.write().unwrap().push(block);
+        let ref mut txn_pool: Vec<Transaction> =
+            *txn_pool.write().unwrap();
+
+        // Move all txns in txn pool into block.
+        while txn_pool.len() > 0 {
+            block.txns.push(txn_pool.pop().unwrap());
+        }
+
+        // Initialize the nonce on the block header.
+        block.header.nonce = 0;
+
+        // Search for a header that meets difficulty requirement.
+        //loop {
+            // TODO: If matches, add to blockchain.
+            // blockchain.write().unwrap().push(block);
+        //}
     }
 }

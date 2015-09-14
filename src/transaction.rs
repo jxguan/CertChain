@@ -7,6 +7,7 @@ use address;
 use address::Address;
 use key;
 use transaction;
+use hash::DoubleSha256Hash;
 
 const SIGNATURE_LEN_BYTES: usize = 70;
 const TRUST_TXN_TYPE: u8 = 1;
@@ -107,12 +108,12 @@ impl Transaction {
 
     fn checksum(txn_type: &TransactionType,
                 author_addr: &Address,
-                author_pubkey: &PublicKey) -> [u8; 32] {
+                author_pubkey: &PublicKey) -> DoubleSha256Hash {
         let mut buf = Vec::new();
         Self::serialize_txn_type(&txn_type, &mut buf).unwrap();
         author_addr.serialize(&mut buf).unwrap();
         key::serialize_pubkey(&author_pubkey, &mut buf).unwrap();
-        address::double_sha256(&buf[..])
+        DoubleSha256Hash::from_data(&buf[..])
     }
 
     pub fn has_valid_signature(&self) -> bool {

@@ -19,6 +19,7 @@ pub mod network;
 pub mod blockchain;
 pub mod key;
 pub mod transaction;
+pub mod hash;
 
 use std::thread;
 use std::default::Default;

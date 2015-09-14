@@ -1,4 +1,5 @@
 use transaction::Transaction;
+use hash::DoubleSha256Hash;
 
 #[derive(Debug)]
 pub struct Block {
@@ -11,8 +12,8 @@ pub struct Block {
 #[derive(Debug)]
 pub struct BlockHeader {
     pub version: u32,
-    pub parent_block_hash: [u8; 32],
-    pub merkle_root_hash: [u8; 32],
+    pub parent_block_hash: DoubleSha256Hash,
+    pub merkle_root_hash: DoubleSha256Hash,
     pub timestamp: u32,
     pub nonce: u64,     // TODO: Using u64 to prevent overflows for now.
 }
@@ -21,8 +22,8 @@ impl BlockHeader {
     pub fn new() -> BlockHeader {
         BlockHeader {
             version: 0,
-            parent_block_hash: [0u8; 32],
-            merkle_root_hash: [0u8; 32],
+            parent_block_hash: DoubleSha256Hash::blank(),
+            merkle_root_hash: DoubleSha256Hash::blank(),
             timestamp: 0,
             nonce: 0,
         }
