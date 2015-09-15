@@ -13,7 +13,6 @@ use key;
 use transaction::{Transaction, TransactionType};
 
 const INV_CMD: u8 = 1;
-const MAX_PEER_CONN_ATTEMPTS: u8 = 3;
 const PEER_CONN_ATTEMPT_INTERVAL_IN_MS: u32 = 3000;
 
 struct Socket {
@@ -48,13 +47,14 @@ impl NetworkMessage {
 
 impl NetworkMessage {
     pub fn deserialize<R: Read>(mut reader: R) -> Result<NetworkMessage> {
-        let magic = reader.read_u32::<BigEndian>().unwrap();
-        let cmd = reader.read_u8().unwrap();
-        let payload_len = reader.read_u32::<BigEndian>().unwrap();
-        let payload_checksum = reader.read_u32::<BigEndian>().unwrap();
+        let magic = try!(reader.read_u32::<BigEndian>());
+        let cmd = try!(reader.read_u8());
+        let payload_len = try!(reader.read_u32::<BigEndian>());
+        let payload_checksum = try!(reader.read_u32::<BigEndian>());
         let payload = match cmd {
             INV_CMD => {
-                Payload::Transaction(Transaction::deserialize(&mut reader).unwrap())
+                let txn = try!(Transaction::deserialize(&mut reader));
+                Payload::Transaction(txn)
             },
             n => panic!("Unsupported message type: {}", n)
         };
@@ -67,12 +67,12 @@ impl NetworkMessage {
         })
     }
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
-        writer.write_u32::<BigEndian>(self.magic).unwrap();
-        writer.write_u8(self.cmd).unwrap();
-        writer.write_u32::<BigEndian>(self.payload_len).unwrap();
-        writer.write_u32::<BigEndian>(self.payload_checksum).unwrap();
+        try!(writer.write_u32::<BigEndian>(self.magic));
+        try!(writer.write_u8(self.cmd));
+        try!(writer.write_u32::<BigEndian>(self.payload_len));
+        try!(writer.write_u32::<BigEndian>(self.payload_checksum));
         match self.payload {
-            Payload::Transaction(ref txn) => txn.serialize(&mut writer).unwrap()
+            Payload::Transaction(ref txn) => try!(txn.serialize(&mut writer)),
         }
         try!(writer.flush());
         Ok(())
@@ -110,7 +110,7 @@ impl Socket {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
                         info!("Writing out message to socket.");
-                        net_msg.serialize(BufWriter::new(tcp_stream)).unwrap();
+                        try!(net_msg.serialize(BufWriter::new(tcp_stream)));
                         Ok(())
                     },
                     None => {
@@ -139,10 +139,12 @@ impl Socket {
                                     Payload::Transaction(txn) =>
                                         txn_pool_tx.send(txn).unwrap()
                                 }
+                                Ok(())
                             }
-                            Err(err) => panic!("Received malformed msg: {}", err)
+                            Err(err) => Err(io::Error::new(
+                                    io::ErrorKind::NotConnected,
+                                    format!("{}", err)))
                         }
-                        Ok(())
                     },
                     None => {
                         Err(io::Error::new(io::ErrorKind::NotConnected,
@@ -181,7 +183,13 @@ pub fn listen(txn_pool_tx: Sender<Transaction>, config: &CertChainConfig) -> () 
                             tcp_sock: Arc::new(Mutex::new(Some(stream))),
                         };
                         loop {
-                            recv_sock.receive(txn_pool_tx_c2.clone()).unwrap();
+                            match recv_sock.receive(txn_pool_tx_c2.clone()) {
+                                Ok(_) => continue,
+                                Err(_) => {
+                                    info!("Client disconnected; exiting listener thread.");
+                                    break;
+                                }
+                            }
                         }
                     });
                 },
@@ -201,15 +209,18 @@ pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<TransactionType>
 
     let mut peer_txs = Vec::new();
     for peer in &config.peers {
-        info!("Connecting to {}...", peer.name);
-        let mut attempts = 1;
-        loop {
-            let mut sock = Socket::new();
-            match sock.connect(&peer.hostname[..], peer.port) {
-                Ok(_) => {
-                    info!("Successfully connected to {}.", peer.name);
-                    let (tx, rx) = channel();
-                    thread::spawn(move || {
+        let peer_name = String::from(&peer.name[..]);
+        let peer_port = peer.port;
+        let peer_hostname = String::from(&peer.hostname[..]);
+        let (tx, rx) = channel();
+        peer_txs.push(tx);
+        info!("Spawning connection thread for peer {}...", peer_name);
+        thread::spawn(move || {
+            loop {
+                let mut sock = Socket::new();
+                match sock.connect(&peer_hostname[..], peer_port) {
+                    Ok(_) => {
+                        info!("Successfully connected to {}; waiting for messages...`", peer_name);
                         loop {
                             let txn_type = rx.recv().unwrap();
                             info!("Received MSPC txn type, forwarding to socket: {:?}", txn_type);
@@ -221,26 +232,25 @@ pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<TransactionType>
                                 },
                                 _ => panic!("Unsupported txn_type: {:?}", txn_type)
                             };
-                            sock.send(net_msg).unwrap();
+                            match sock.send(net_msg) {
+                                Ok(_) => info!("Net msg sent successfully to peer."),
+                                Err(err) => {
+                                    info!("Failed to send message to peer \
+                                        due to {}; will periodically attempt reconnect.", err);
+                                    break;
+                                }
+                            }
                         }
-                    });
-                    peer_txs.push(tx);
-                    break
-                },
-                Err(e) => {
-                    if attempts <= MAX_PEER_CONN_ATTEMPTS {
-                        warn!("Attempt {} to connect to {} failed; retrying...",
-                              attempts, peer.name);
+                    },
+                    Err(_) => {
+                        warn!("Unable to connect to {}; retrying in {} ms.",
+                              peer_name, PEER_CONN_ATTEMPT_INTERVAL_IN_MS);
                         thread::sleep_ms(PEER_CONN_ATTEMPT_INTERVAL_IN_MS);
-                        attempts += 1;
                         continue;
-                    } else {
-                        warn!("Failed to connect to {}: {}", peer.name, e);
-                        break;
                     }
                 }
             }
-        }
+        });
     }
     peer_txs
 }
