@@ -1,5 +1,14 @@
 use transaction::Transaction;
 use hash::DoubleSha256Hash;
+use std::collections::HashMap;
+use std::ptr;
+use time;
+use std::io::{Result, Write};
+use byteorder::{BigEndian, WriteBytesExt};
+use address::Address;
+
+type BlockTree = HashMap<DoubleSha256Hash, Box<BlockchainNode>>;
+type NodePtr = *const BlockchainNode;
 
 #[derive(Debug)]
 pub struct Block {
@@ -10,51 +19,123 @@ pub struct Block {
 }
 
 #[derive(Debug)]
+pub struct Blockchain {
+    table: BlockTree,
+    active_tip: NodePtr,
+}
+
+#[derive(Debug)]
+pub struct BlockchainNode {
+    pub block: Block,
+    pub height: u32,
+    prev: NodePtr,
+    next: NodePtr,
+}
+
+impl Blockchain {
+    pub fn new() -> Blockchain {
+        let genesis_block = Block::genesis_block();
+        let genesis_block_header_hash = genesis_block.header.hash();
+        info!("Genesis block header hash: {:?}", &genesis_block_header_hash);
+        let genesis_block_node = Box::new(BlockchainNode {
+            block: genesis_block,
+            height: 0,
+            prev: ptr::null(),
+            next: ptr::null(),
+        });
+        let genesis_block_node_ptr = &*genesis_block_node as NodePtr;
+        Blockchain {
+            table: {
+                let mut table = HashMap::new();
+                table.insert(genesis_block_header_hash, genesis_block_node);
+                table
+            },
+            active_tip: genesis_block_node_ptr
+        }
+    }
+
+    pub fn active_tip_block_header_hash(&self) -> DoubleSha256Hash {
+        unsafe {
+            let ref active_tip_node = *self.active_tip;
+            active_tip_node.block.header.hash()
+        }
+    }
+
+    pub fn add_block(&mut self, block: Block) {
+        let block_header_hash = block.header.hash();
+        let block_node = Box::new(BlockchainNode {
+            block: block,
+            height: 0,
+            prev: ptr::null(),
+            next: ptr::null(),
+        });
+        let block_node_ptr = &*block_node as NodePtr;
+        self.table.insert(block_header_hash, block_node);
+        self.active_tip = block_node_ptr;
+    }
+}
+
+#[derive(Debug)]
 pub struct BlockHeader {
     pub version: u32,
     pub parent_block_hash: DoubleSha256Hash,
     pub merkle_root_hash: DoubleSha256Hash,
-    pub timestamp: u32,
+    pub timestamp: i64,
     pub nonce: u64,     // TODO: Using u64 to prevent overflows for now.
+    pub author: Address,
 }
 
 impl BlockHeader {
     pub fn new() -> BlockHeader {
         BlockHeader {
-            version: 0,
+            version: 1,
             parent_block_hash: DoubleSha256Hash::blank(),
             merkle_root_hash: DoubleSha256Hash::blank(),
-            timestamp: 0,
+            timestamp: time::get_time().sec,
             nonce: 0,
+            author: Address::blank(),
         }
+    }
+
+    pub fn hash(&self) -> DoubleSha256Hash {
+        let mut bytes = Vec::new();
+        self.serialize(&mut bytes).unwrap();
+        DoubleSha256Hash::hash(&bytes[..])
+    }
+
+    pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
+        try!(writer.write_u32::<BigEndian>(self.version));
+        try!(self.parent_block_hash.serialize(&mut writer));
+        try!(self.merkle_root_hash.serialize(&mut writer));
+        try!(writer.write_i64::<BigEndian>(self.timestamp));
+        try!(writer.write_u64::<BigEndian>(self.nonce));
+        try!(self.author.serialize(&mut writer));
+        Ok(())
     }
 }
 
 impl Block {
-    pub fn new(parent_block: &Block) -> Block {
+    pub fn new() -> Block {
         Block {
-            magic: 0,
+            magic: 0xABCD1234,
             header: BlockHeader::new(),
             txn_count: 0,
             txns: Vec::new(),
         }
     }
 
+    // REMEMBER: The data returned here must be the same
+    // on all clients; TODO: serialize the raw bytes and
+    // hard-code here, then create Block/BlockHeader from
+    // those bytes.
     pub fn genesis_block() -> Block {
+        let mut header = BlockHeader::new();
+        header.timestamp = 1442353876;
         Block {
-            magic: 0xFFFF,
-            header: BlockHeader::new(),
+            magic: 0xABCD1234,
+            header: header,
             txn_count: 0,
             txns: Vec::new(),
         }
-    }
-}
-
-pub fn mine_block(block: &mut Block) -> () {
-    info!("Mining block...");
-    let mut next_nonce : u64 = 0;
-    loop {
-        block.header.nonce = next_nonce;
-        next_nonce += 1;
     }
 }

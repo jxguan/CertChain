@@ -8,6 +8,7 @@ extern crate byteorder;
 extern crate secp256k1;
 extern crate rand;
 extern crate rust_base58;
+extern crate time;
 
 #[macro_use]
 extern crate log;

@@ -15,9 +15,17 @@ pub struct Address {
 }
 
 impl Address {
+
+    pub fn blank() -> Address {
+        Address {
+            data: [0u8; ADDRESS_LEN_BYTES]
+        }
+    }
+
     pub fn to_base58(&self) -> String {
         self.data[..].to_base58()
     }
+
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
         writer.write(&self.data[..]).unwrap();
         Ok(())

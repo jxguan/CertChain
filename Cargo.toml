@@ -14,6 +14,7 @@ toml = "0.1.22"
 byteorder = "0.3.13"
 rand = "0.3.9"
 rust-base58 = "0.0.4"
+time = "0.1.32"
 
 # As of this writing (09/11/2015), the rust-secp256k1
 # version in crates is not up-to-date with the author's

@@ -52,7 +52,7 @@ impl MerkleRoot for Vec<Transaction> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq)]
 pub struct DoubleSha256Hash([u8; 32]);
 
 impl DoubleSha256Hash {
