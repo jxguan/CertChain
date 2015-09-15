@@ -104,6 +104,7 @@ pub fn run(config: CertChainConfig) -> () {
             block.header.parent_block_hash = chain_read.active_tip_block_header_hash();
         }
         block.header.nonce = 0;
+        block.header.author = address::from_pubkey(&public_key).unwrap();
 
         // Move all txns in txn pool into block.
         {
