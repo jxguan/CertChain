@@ -6,7 +6,6 @@ use hyper::net::Fresh;
 use rustc_serialize::json::Json;
 use std::io::Read;
 use std::sync::{Arc, RwLock, Mutex};
-use std::thread;
 use network;
 use blockchain::Block;
 use address;
@@ -14,6 +13,8 @@ use address::Address;
 use std::ops::Deref;
 use transaction::{Transaction, TransactionType};
 use std::sync::mpsc::{channel};
+use hash::MerkleRoot;
+use std::thread;
 
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
@@ -35,8 +36,11 @@ pub fn run(config: CertChainConfig) -> () {
     let txn_pool_clone = txn_pool.clone();
     thread::spawn(move || {
         loop {
+            info!("Waiting for txn to arrive on channel...");
             let txn = txn_pool_rx.recv().unwrap();
+            info!("Txn arrived on channel.");
             txn_pool_clone.write().unwrap().push(txn);
+            info!("Pushed txn to txn pool.");
         }
     });
 
@@ -82,17 +86,33 @@ pub fn run(config: CertChainConfig) -> () {
     loop {
         let mut block = Block::new(
             blockchain.read().unwrap().last().unwrap());
-        let ref mut txn_pool: Vec<Transaction> =
-            *txn_pool.write().unwrap();
 
-        // Move all txns in txn pool into block.
-        while txn_pool.len() > 0 {
-            block.txns.push(txn_pool.pop().unwrap());
+        {
+            let ref mut txn_pool: Vec<Transaction> =
+                *txn_pool.write().unwrap();
+            // Move all txns in txn pool into block.
+            info!("Txn pool size: {}", txn_pool.len());
+            while txn_pool.len() > 0 {
+                block.txns.push(txn_pool.pop().unwrap());
+            }
         }
 
         // Initialize the nonce on the block header.
         block.header.nonce = 0;
+        block.header.merkle_root_hash = block.txns.merkle_root();
+        info!("{} txns in block; merkle root: {:?}", block.txns.len(),
+                &block.header.merkle_root_hash);
+        thread::sleep_ms(1000);
 
+        {
+            let ref mut txn_pool: Vec<Transaction> =
+                *txn_pool.write().unwrap();
+            // Move all txns back to pool.
+            while block.txns.len() > 0 {
+                txn_pool.push(block.txns.pop().unwrap());
+            }
+            info!("Txn pool size: {}", txn_pool.len());
+        }
         // Search for a header that meets difficulty requirement.
         //loop {
             // TODO: If matches, add to blockchain.
