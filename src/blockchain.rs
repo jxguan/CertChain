@@ -91,9 +91,20 @@ impl Blockchain {
                 info!("Active tip now has height of: {}", (*self.active_tip).height);
             }
         }
+        let do_scan = block_node.height % 10 == 0;
 
         // Add the block to the table.
         self.table.insert(block_header_hash, block_node);
+
+        if do_scan {
+            let mut branch_count = 0;
+            for (_, val) in self.table.iter() {
+                if val.next.len() == 0 {
+                    branch_count += 1;
+                }
+            }
+            info!("BLOCK TABLE SCAN: {} branches exist.", branch_count);
+        }
     }
 }
 
