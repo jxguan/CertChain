@@ -142,7 +142,28 @@ pub fn run(config: CertChainConfig) -> () {
         }
 
         match mined_block {
-            Some(b) => blockchain.write().unwrap().add_block(b),
+            Some(b) => {
+                let mut is_parent_still_active;
+                {
+                    let ref chain_read = *blockchain.read().unwrap();
+                    is_parent_still_active = b.header.parent_block_hash
+                        == chain_read.active_tip_block_header_hash();
+                }
+                if is_parent_still_active {
+                    info!("Parent is still active tip; adding to chain.");
+                    blockchain.write().unwrap().add_block(b)
+                } else {
+                    /*
+                     * TODO: Move txns back to the pool for
+                     * inclusion in next block.
+                     */
+                    continue
+                }
+            },
+            /*
+             * TODO: Move txns back to the pool for
+             * inclusion in next block.
+             */
             None => continue
         }
 
