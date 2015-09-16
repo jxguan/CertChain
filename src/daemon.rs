@@ -34,7 +34,7 @@ pub fn run(config: CertChainConfig) -> () {
     network::listen(txn_pool_tx, block_tx, &config);
 
     // TODO: Rework peer tx access to eliminate need for mutex.
-    let peer_txs = Mutex::new(network::connect_to_peers(&config));
+    let peer_txs = Arc::new(Mutex::new(network::connect_to_peers(&config)));
 
     let blockchain: Arc<RwLock<Blockchain>>
         = Arc::new(RwLock::new(Blockchain::new()));
@@ -46,6 +46,7 @@ pub fn run(config: CertChainConfig) -> () {
     let rpc_port = config.rpc_port;
     let blockchain_refclone = blockchain.clone();
     let txn_pool_refclone = txn_pool.clone();
+    let peer_txs_c1 = peer_txs.clone();
     thread::spawn(move || {
         /*
          * TODO: Save the Listening struct returned here
@@ -76,7 +77,7 @@ pub fn run(config: CertChainConfig) -> () {
                             secret_key.clone(), public_key.clone()).unwrap();
 
                         // Broadcast trust request to peers.
-                        for tx in peer_txs.lock().unwrap().deref() {
+                        for tx in peer_txs_c1.lock().unwrap().deref() {
                             let mut bytes = Vec::new();
                             txn.serialize(&mut bytes).unwrap();
                             tx.send(NetworkMessage::new(
@@ -95,6 +96,7 @@ pub fn run(config: CertChainConfig) -> () {
         });
     });
 
+    let peer_txs_c2 = peer_txs.clone();
     loop {
         // Create a block and initialize necessary header fields.
         let mut block = Block::new();
@@ -109,7 +111,6 @@ pub fn run(config: CertChainConfig) -> () {
         {
             let ref mut txn_pool: Vec<Transaction> =
                 *txn_pool.write().unwrap();
-            info!("Txn pool size: {}", txn_pool.len());
             while txn_pool.len() > 0 {
                 block.txns.push(txn_pool.pop().unwrap());
             }
@@ -160,9 +161,20 @@ pub fn run(config: CertChainConfig) -> () {
                         == chain_read.active_tip_block_header_hash();
                 }
                 if is_parent_still_active {
-                    info!("Parent is still active tip; adding to chain.");
+                    info!("Parent is still active tip; broadcasting to peers and adding to chain.");
+
+                    // Broadcast block to peers.
+                    for tx in peer_txs_c2.lock().unwrap().deref() {
+                        let mut bytes = Vec::new();
+                        b.serialize(&mut bytes).unwrap();
+                        tx.send(NetworkMessage::new(
+                                PayloadFlag::Block, bytes)).unwrap();
+                    }
+
+                    // Add block to blockchain.
                     blockchain.write().unwrap().add_block(b)
                 } else {
+                    info!("ACTIVE CHAIN TIP CHANGED; DISCARDING MINED BLOCK.");
                     /*
                      * TODO: Move txns back to the pool for
                      * inclusion in next block.

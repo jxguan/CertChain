@@ -55,10 +55,8 @@ impl NetworkMessage {
         let payload_flag = try!(reader.read_u8());
         let payload_len = try!(reader.read_u32::<BigEndian>());
         let payload_checksum = try!(reader.read_u32::<BigEndian>());
-        info!("ABOUT TO READ PAYLOAD; LEN IS {}", payload_len);
         let mut payload = Vec::new();
         try!(reader.take(payload_len as u64).read_to_end(&mut payload));
-        info!("PAYLOAD READ: {:?}", payload);
         Ok(NetworkMessage {
             magic: magic,
             payload_flag: payload_flag,
@@ -108,7 +106,7 @@ impl Socket {
             Ok(mut guard) => {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
-                        info!("Writing out net msg to socket.");
+                        debug!("Writing out net msg to socket.");
                         try!(net_msg.serialize(BufWriter::new(tcp_stream)));
                         Ok(())
                     },
@@ -182,7 +180,7 @@ pub fn listen(txn_pool_tx: Sender<Transaction>,
                         loop {
                             match recv_sock.receive() {
                                 Ok(msg) => {
-                                    info!("Received message from peer: {:?}", msg);
+                                    debug!("Received message from peer: {:?}", msg);
                                     match msg.payload_flag {
                                         PAYLOAD_FLAG_TXN => {
                                             let txn = Transaction::deserialize(&msg.payload[..]).unwrap();
@@ -227,11 +225,11 @@ pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<NetworkMessage>>
                         info!("Successfully connected to {}; waiting for messages...`", peer_name);
                         loop {
                             let net_msg = rx.recv().unwrap();
-                            info!("Forwarding net msg to socket: {:?}", net_msg);
+                            debug!("Forwarding net msg to socket: {:?}", net_msg);
                             match sock.send(net_msg) {
-                                Ok(_) => info!("Net msg sent successfully to peer."),
+                                Ok(_) => debug!("Net msg sent successfully to peer."),
                                 Err(err) => {
-                                    info!("Failed to send net msg to peer \
+                                    warn!("Failed to send net msg to peer \
                                         due to {}; will periodically attempt reconnect.", err);
                                     break;
                                 }
