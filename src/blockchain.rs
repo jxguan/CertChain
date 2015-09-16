@@ -3,20 +3,13 @@ use hash::DoubleSha256Hash;
 use std::collections::HashMap;
 use std::ptr;
 use time;
-use std::io::{Result, Write};
-use byteorder::{BigEndian, WriteBytesExt};
+use std::io::{Result, Write, Read};
+use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
+use address;
 use address::Address;
 
 type BlockTree = HashMap<DoubleSha256Hash, Box<BlockchainNode>>;
 type NodePtr = *const BlockchainNode;
-
-#[derive(Debug)]
-pub struct Block {
-    pub magic: u32,
-    pub header: BlockHeader,
-    pub txn_count: u32,
-    pub txns: Vec<Transaction>
-}
 
 #[derive(Debug)]
 pub struct Blockchain {
@@ -103,6 +96,17 @@ impl BlockHeader {
         DoubleSha256Hash::hash(&bytes[..])
     }
 
+    pub fn deserialize<R: Read>(mut reader: R) -> Result<BlockHeader> {
+        Ok(BlockHeader {
+            version: try!(reader.read_u32::<BigEndian>()),
+            parent_block_hash: try!(DoubleSha256Hash::deserialize(&mut reader)),
+            merkle_root_hash: try!(DoubleSha256Hash::deserialize(&mut reader)),
+            timestamp: try!(reader.read_i64::<BigEndian>()),
+            nonce: try!(reader.read_u64::<BigEndian>()),
+            author: try!(address::deserialize(&mut reader))
+        })
+    }
+
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
         try!(writer.write_u32::<BigEndian>(self.version));
         try!(self.parent_block_hash.serialize(&mut writer));
@@ -112,6 +116,14 @@ impl BlockHeader {
         try!(self.author.serialize(&mut writer));
         Ok(())
     }
+}
+
+#[derive(Debug)]
+pub struct Block {
+    pub magic: u32,
+    pub header: BlockHeader,
+    pub txn_count: u32,
+    pub txns: Vec<Transaction>
 }
 
 impl Block {
@@ -137,5 +149,33 @@ impl Block {
             txn_count: 0,
             txns: Vec::new(),
         }
+    }
+
+    pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
+        try!(writer.write_u32::<BigEndian>(self.magic));
+        try!(self.header.serialize(&mut writer));
+        try!(writer.write_u32::<BigEndian>(self.txn_count));
+        for txn in &self.txns {
+            try!(txn.serialize(&mut writer));
+        }
+        Ok(())
+    }
+
+    pub fn deserialize<R: Read>(mut reader: R) -> Result<Block> {
+        let magic = try!(reader.read_u32::<BigEndian>());
+        let header = try!(BlockHeader::deserialize(&mut reader));
+        let txn_count = try!(reader.read_u32::<BigEndian>());
+        Ok(Block {
+            magic: magic,
+            header: header,
+            txn_count: txn_count,
+            txns: {
+                let mut txns = Vec::new();
+                for _ in 0..txn_count {
+                    txns.push(try!(Transaction::deserialize(&mut reader)));
+                }
+                txns
+            }
+        })
     }
 }

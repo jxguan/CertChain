@@ -7,6 +7,7 @@ use rustc_serialize::json::Json;
 use std::io::Read;
 use std::sync::{Arc, RwLock, Mutex};
 use network;
+use network::{NetworkMessage, PayloadFlag};
 use blockchain::{Block, Blockchain};
 use address;
 use address::Address;
@@ -22,6 +23,7 @@ pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
 
     let (txn_pool_tx, txn_pool_rx) = channel();
+    let (block_tx, block_rx) = channel();
     let secret_key: SecretKey = key::secret_key_from_string(
         &config.secret_key).unwrap();
     let public_key: PublicKey = key::compressed_public_key_from_string(
@@ -29,7 +31,7 @@ pub fn run(config: CertChainConfig) -> () {
 
     // Listen on the network, and connect to all
     // trusted peers on the network.
-    network::listen(txn_pool_tx, &config);
+    network::listen(txn_pool_tx, block_tx, &config);
 
     // TODO: Rework peer tx access to eliminate need for mutex.
     let peer_txs = Mutex::new(network::connect_to_peers(&config));
@@ -69,16 +71,22 @@ pub fn run(config: CertChainConfig) -> () {
                                 .get("address").unwrap().as_string().unwrap()).unwrap();
                         info!("Received trust request for address: {}", &addr.to_base58());
 
-                        // Add trust request to this node's txn pool.
-                        let ref mut txn_pool: Vec<Transaction> = *txn_pool_refclone.write().unwrap();
-                        txn_pool.push(Transaction::new(
+                        let txn = Transaction::new(
                             TransactionType::Trust(addr),
-                            secret_key.clone(), public_key.clone()).unwrap());
+                            secret_key.clone(), public_key.clone()).unwrap();
 
                         // Broadcast trust request to peers.
                         for tx in peer_txs.lock().unwrap().deref() {
-                            tx.send(TransactionType::Trust(addr)).unwrap();
+                            let mut bytes = Vec::new();
+                            txn.serialize(&mut bytes).unwrap();
+                            tx.send(NetworkMessage::new(
+                                    PayloadFlag::Transaction, bytes)).unwrap();
                         }
+
+                        // Add trust request to this node's txn pool.
+                        let ref mut txn_pool: Vec<Transaction>
+                                = *txn_pool_refclone.write().unwrap();
+                        txn_pool.push(txn);
                     },
                     _ => {
                         *res.status_mut() = hyper::NotFound
@@ -132,6 +140,17 @@ pub fn run(config: CertChainConfig) -> () {
             block.header.nonce += 1;
         }
 
+        // Add any blocks that have been sent to us while mining;
+        // do not block if none have been sent.
+        while let Ok(b) = block_rx.try_recv() {
+            info!("Received block on block_rx channel from \
+                    network; adding to blockchain.");
+            blockchain.write().unwrap().add_block(b)
+        }
+
+        // Determine if the block we just mined still has the active
+        // chain block as its parent; if so, add it to the blockchain,
+        // otherwise do nothing with it and start mining again.
         match mined_block {
             Some(b) => {
                 let mut is_parent_still_active;

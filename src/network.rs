@@ -8,11 +8,11 @@ use std::sync::mpsc::{channel, Sender};
 use std::ops::DerefMut;
 use std::io::{Read, Write, BufReader, BufWriter};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use secp256k1::key::{SecretKey, PublicKey};
-use key;
-use transaction::{Transaction, TransactionType};
+use transaction::{Transaction};
+use blockchain::Block;
 
-const INV_CMD: u8 = 1;
+const PAYLOAD_FLAG_TXN: u8 = 1;
+const PAYLOAD_FLAG_BLOCK: u8 = 2;
 const PEER_CONN_ATTEMPT_INTERVAL_IN_MS: u32 = 3000;
 
 struct Socket {
@@ -20,25 +20,29 @@ struct Socket {
 }
 
 #[derive(Debug)]
-struct NetworkMessage {
+pub struct NetworkMessage {
     pub magic: u32,
-    pub cmd: u8,
+    pub payload_flag: u8,
     pub payload_len: u32,
     pub payload_checksum: u32,
-    pub payload: Payload,
+    pub payload: Vec<u8>,
 }
 
 #[derive(Debug)]
-enum Payload {
-    Transaction(Transaction),
+pub enum PayloadFlag {
+    Transaction,
+    Block
 }
 
 impl NetworkMessage {
-    pub fn new(payload: Payload) -> NetworkMessage {
+    pub fn new(payload_type: PayloadFlag, payload: Vec<u8>) -> NetworkMessage {
         NetworkMessage {
             magic: 101,
-            cmd: INV_CMD,
-            payload_len: 44,
+            payload_flag: match payload_type {
+                PayloadFlag::Transaction => PAYLOAD_FLAG_TXN,
+                PayloadFlag::Block => PAYLOAD_FLAG_BLOCK,
+            },
+            payload_len: payload.len() as u32,
             payload_checksum: 55,
             payload: payload
         }
@@ -48,19 +52,16 @@ impl NetworkMessage {
 impl NetworkMessage {
     pub fn deserialize<R: Read>(mut reader: R) -> Result<NetworkMessage> {
         let magic = try!(reader.read_u32::<BigEndian>());
-        let cmd = try!(reader.read_u8());
+        let payload_flag = try!(reader.read_u8());
         let payload_len = try!(reader.read_u32::<BigEndian>());
         let payload_checksum = try!(reader.read_u32::<BigEndian>());
-        let payload = match cmd {
-            INV_CMD => {
-                let txn = try!(Transaction::deserialize(&mut reader));
-                Payload::Transaction(txn)
-            },
-            n => panic!("Unsupported message type: {}", n)
-        };
+        info!("ABOUT TO READ PAYLOAD; LEN IS {}", payload_len);
+        let mut payload = Vec::new();
+        try!(reader.take(payload_len as u64).read_to_end(&mut payload));
+        info!("PAYLOAD READ: {:?}", payload);
         Ok(NetworkMessage {
             magic: magic,
-            cmd: cmd,
+            payload_flag: payload_flag,
             payload_len: payload_len,
             payload_checksum: payload_checksum,
             payload: payload,
@@ -68,12 +69,10 @@ impl NetworkMessage {
     }
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
         try!(writer.write_u32::<BigEndian>(self.magic));
-        try!(writer.write_u8(self.cmd));
+        try!(writer.write_u8(self.payload_flag));
         try!(writer.write_u32::<BigEndian>(self.payload_len));
         try!(writer.write_u32::<BigEndian>(self.payload_checksum));
-        match self.payload {
-            Payload::Transaction(ref txn) => try!(txn.serialize(&mut writer)),
-        }
+        try!(writer.write(&self.payload[..]));
         try!(writer.flush());
         Ok(())
     }
@@ -109,7 +108,7 @@ impl Socket {
             Ok(mut guard) => {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
-                        info!("Writing out message to socket.");
+                        info!("Writing out net msg to socket.");
                         try!(net_msg.serialize(BufWriter::new(tcp_stream)));
                         Ok(())
                     },
@@ -122,7 +121,7 @@ impl Socket {
         }
     }
 
-    pub fn receive(&self, txn_pool_tx: Sender<Transaction>) -> Result<()> {
+    pub fn receive(&self) -> Result<NetworkMessage> {
         match self.tcp_sock.lock() {
             Err(_) => {
                 Err(io::Error::new(io::ErrorKind::NotConnected,
@@ -133,14 +132,7 @@ impl Socket {
                     Some(ref mut tcp_stream) => {
                         match NetworkMessage::deserialize(
                                 BufReader::new(tcp_stream)) {
-                            Ok(msg) => {
-                                info!("Received message from peer: {:?}", msg);
-                                match msg.payload {
-                                    Payload::Transaction(txn) =>
-                                        txn_pool_tx.send(txn).unwrap()
-                                }
-                                Ok(())
-                            }
+                            Ok(msg) => Ok(msg),
                             Err(err) => Err(io::Error::new(
                                     io::ErrorKind::NotConnected,
                                     format!("{}", err)))
@@ -156,7 +148,9 @@ impl Socket {
     }
 }
 
-pub fn listen(txn_pool_tx: Sender<Transaction>, config: &CertChainConfig) -> () {
+pub fn listen(txn_pool_tx: Sender<Transaction>,
+              block_tx: Sender<Block>,
+              config: &CertChainConfig) {
 
     // Start listening on the listener port in the provided config.
     let listener_port: &u16 = &config.listener_port;
@@ -173,18 +167,34 @@ pub fn listen(txn_pool_tx: Sender<Transaction>, config: &CertChainConfig) -> () 
 
     // TODO: Clean this up, no need to clone like this.
     let txn_pool_tx_c1 = txn_pool_tx.clone();
+    let block_tx_c1 = block_tx.clone();
     thread::spawn(move || {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
+                    // TODO: Clean this up, no need to clone like this.
                     let txn_pool_tx_c2 = txn_pool_tx_c1.clone();
+                    let block_tx_c2 = block_tx_c1.clone();
                     thread::spawn(move || {
                         let recv_sock = Socket {
                             tcp_sock: Arc::new(Mutex::new(Some(stream))),
                         };
                         loop {
-                            match recv_sock.receive(txn_pool_tx_c2.clone()) {
-                                Ok(_) => continue,
+                            match recv_sock.receive() {
+                                Ok(msg) => {
+                                    info!("Received message from peer: {:?}", msg);
+                                    match msg.payload_flag {
+                                        PAYLOAD_FLAG_TXN => {
+                                            let txn = Transaction::deserialize(&msg.payload[..]).unwrap();
+                                            txn_pool_tx_c2.send(txn).unwrap();
+                                        },
+                                        PAYLOAD_FLAG_BLOCK => {
+                                            let block = Block::deserialize(&msg.payload[..]).unwrap();
+                                            block_tx_c2.send(block).unwrap();
+                                        },
+                                        n => panic!("Unsupported payload flag: {}.", n)
+                                    };
+                                },
                                 Err(_) => {
                                     info!("Client disconnected; exiting listener thread.");
                                     break;
@@ -199,13 +209,7 @@ pub fn listen(txn_pool_tx: Sender<Transaction>, config: &CertChainConfig) -> () 
     });
 }
 
-pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<TransactionType>> {
-
-    let secret_key: SecretKey = key::secret_key_from_string(
-            &config.secret_key).unwrap();
-    let public_key: PublicKey = key::compressed_public_key_from_string(
-            &config.compressed_public_key).unwrap();
-    info!("Using public key: {:?}", &public_key);
+pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<NetworkMessage>> {
 
     let mut peer_txs = Vec::new();
     for peer in &config.peers {
@@ -222,20 +226,12 @@ pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<TransactionType>
                     Ok(_) => {
                         info!("Successfully connected to {}; waiting for messages...`", peer_name);
                         loop {
-                            let txn_type = rx.recv().unwrap();
-                            info!("Received MSPC txn type, forwarding to socket: {:?}", txn_type);
-                            let net_msg = match txn_type {
-                                TransactionType::Trust(_) => {
-                                    let txn = Transaction::new(
-                                        txn_type, secret_key.clone(), public_key.clone()).unwrap();
-                                    NetworkMessage::new(Payload::Transaction(txn))
-                                },
-                                _ => panic!("Unsupported txn_type: {:?}", txn_type)
-                            };
+                            let net_msg = rx.recv().unwrap();
+                            info!("Forwarding net msg to socket: {:?}", net_msg);
                             match sock.send(net_msg) {
                                 Ok(_) => info!("Net msg sent successfully to peer."),
                                 Err(err) => {
-                                    info!("Failed to send message to peer \
+                                    info!("Failed to send net msg to peer \
                                         due to {}; will periodically attempt reconnect.", err);
                                     break;
                                 }

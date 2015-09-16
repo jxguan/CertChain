@@ -3,7 +3,7 @@ use crypto::digest::Digest;
 use std::ops::{Index, Range, RangeFull};
 use std::fmt::{Debug, Formatter};
 use transaction::Transaction;
-use std::io::{Write, Result};
+use std::io::{Write, Result, Read};
 use std::cmp;
 
 /*
@@ -83,6 +83,13 @@ impl DoubleSha256Hash {
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
         writer.write(&self.0).unwrap();
         Ok(())
+    }
+
+    pub fn deserialize<R: Read>(mut reader: R)
+            -> Result<DoubleSha256Hash> {
+        let DoubleSha256Hash(mut buf) = DoubleSha256Hash::blank();
+        try!(reader.read(&mut buf));
+        Ok(DoubleSha256Hash(buf))
     }
 }
 

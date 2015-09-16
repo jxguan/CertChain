@@ -27,7 +27,7 @@ impl Address {
     }
 
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
-        writer.write(&self.data[..]).unwrap();
+        try!(writer.write(&self.data[..]));
         Ok(())
     }
 }
@@ -44,7 +44,7 @@ fn assert_valid_address(addr: &[u8]) {
 
 pub fn deserialize<R: Read>(mut reader: R) -> Result<Address> {
     let mut addr_buf = [0u8; ADDRESS_LEN_BYTES];
-    reader.read(&mut addr_buf).unwrap();
+    try!(reader.read(&mut addr_buf));
     assert_valid_address(&addr_buf[..]);
     Ok(Address {
         data: addr_buf
