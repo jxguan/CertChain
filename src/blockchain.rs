@@ -55,16 +55,48 @@ impl Blockchain {
     }
 
     pub fn add_block(&mut self, block: Block) {
+
+        // If the block is already in the table, no need to add it.
         let block_header_hash = block.header.hash();
-        let block_node = Box::new(BlockchainNode {
+        if self.table.contains_key(&block_header_hash) {
+            info!("Block is already in table, skipping.");
+            return
+        }
+
+        let parent_block_hash = block.header.parent_block_hash;
+        let mut block_node = Box::new(BlockchainNode {
             block: block,
             height: 0,
             prev: ptr::null(),
             next: ptr::null(),
         });
-        let block_node_ptr = &*block_node as NodePtr;
+
+        // Lookup the parent; if we don't have it, we need
+        // to get it from peers.
+        match self.table.get_mut(&parent_block_hash) {
+            Some(parent) => {
+                if !parent.next.is_null() {
+                    panic!("Parent block's next ptr is non-null; think about this.");
+                }
+                parent.next = &*block_node as NodePtr;
+                block_node.prev = &**parent as NodePtr;
+                block_node.height = parent.height + 1;
+            },
+            None => panic!("PARENT OF BLOCK DOESNT EXIST IN BLOCKCHAIN; TODO: get from peers.")
+        };
+
+        // If the block's height is greater than that of the height
+        // of the current active chain tip, point to the block.
+        unsafe {
+            if block_node.height > (*self.active_tip).height {
+                let block_node_ptr = &*block_node as NodePtr;
+                self.active_tip = block_node_ptr;
+                info!("Active tip now has height of: {}", (*self.active_tip).height);
+            }
+        }
+
+        // Add the block to the table.
         self.table.insert(block_header_hash, block_node);
-        self.active_tip = block_node_ptr;
     }
 }
 
