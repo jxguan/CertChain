@@ -22,7 +22,7 @@ pub struct BlockchainNode {
     pub block: Block,
     pub height: u32,
     prev: NodePtr,
-    next: NodePtr,
+    next: Vec<NodePtr>,
 }
 
 impl Blockchain {
@@ -34,7 +34,7 @@ impl Blockchain {
             block: genesis_block,
             height: 0,
             prev: ptr::null(),
-            next: ptr::null(),
+            next: Vec::new(),
         });
         let genesis_block_node_ptr = &*genesis_block_node as NodePtr;
         Blockchain {
@@ -68,17 +68,14 @@ impl Blockchain {
             block: block,
             height: 0,
             prev: ptr::null(),
-            next: ptr::null(),
+            next: Vec::new(),
         });
 
         // Lookup the parent; if we don't have it, we need
         // to get it from peers.
         match self.table.get_mut(&parent_block_hash) {
             Some(parent) => {
-                if !parent.next.is_null() {
-                    panic!("Parent block's next ptr is non-null; think about this.");
-                }
-                parent.next = &*block_node as NodePtr;
+                parent.next.push(&*block_node as NodePtr);
                 block_node.prev = &**parent as NodePtr;
                 block_node.height = parent.height + 1;
             },

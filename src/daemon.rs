@@ -128,7 +128,7 @@ pub fn run(config: CertChainConfig) -> () {
             let header_hash = block.header.hash();
             if header_hash[0] == 0
                     && header_hash[1] == 0
-                    && header_hash[2] <= 0xAF {
+                    && header_hash[2] <= 0x87 {
                 info!("Mined block; hash is: {:?}", header_hash);
                 mined_block = Some(block);
                 break;
