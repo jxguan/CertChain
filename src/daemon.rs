@@ -12,7 +12,7 @@ use address;
 use address::Address;
 use std::ops::Deref;
 use transaction::{Transaction, TransactionType};
-use std::sync::mpsc::{channel};
+use std::sync::mpsc::{channel, Receiver};
 use hash::MerkleRoot;
 use std::thread;
 use key;
@@ -39,16 +39,7 @@ pub fn run(config: CertChainConfig) -> () {
     let txn_pool: Arc<RwLock<Vec<Transaction>>>
         = Arc::new(RwLock::new(Vec::new()));
 
-    let txn_pool_clone = txn_pool.clone();
-    thread::spawn(move || {
-        loop {
-            info!("Waiting for txn to arrive on channel...");
-            let txn = txn_pool_rx.recv().unwrap();
-            info!("Txn arrived on channel.");
-            txn_pool_clone.write().unwrap().push(txn);
-            info!("Pushed txn to txn pool.");
-        }
-    });
+    start_txn_pool_listener(txn_pool.clone(), txn_pool_rx);
 
     let rpc_port = config.rpc_port;
     let blockchain_refclone = blockchain.clone();
@@ -177,4 +168,17 @@ pub fn run(config: CertChainConfig) -> () {
             info!("Txn pool size: {}", txn_pool.len());
         }*/
     }
+}
+
+pub fn start_txn_pool_listener(txn_pool: Arc<RwLock<Vec<Transaction>>>,
+                         rx: Receiver<Transaction>) {
+    thread::spawn(move || {
+        loop {
+            info!("Waiting for txn to arrive on channel...");
+            let txn = rx.recv().unwrap();
+            info!("Txn arrived on channel.");
+            txn_pool.write().unwrap().push(txn);
+            info!("Pushed txn to txn pool.");
+        }
+    });
 }
