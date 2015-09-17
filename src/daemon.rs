@@ -103,6 +103,35 @@ pub fn run(config: CertChainConfig) -> () {
                                 = *txn_pool_refclone.write().unwrap();
                         txn_pool.push(txn);
                     },
+                    (hyper::Post, AbsolutePath(ref path))
+                            if path == "/untrust_institution" => {
+                        let mut req_body = String::new();
+                        let _ = req.read_to_string(&mut req_body).unwrap();
+                        let req_json = Json::from_str(&req_body[..]).unwrap();
+                        let addr: Address = address::from_string(
+                                req_json.as_object().unwrap()
+                                .get("address").unwrap().as_string()
+                                    .unwrap()).unwrap();
+                        info!("Received trust revocation request for \
+                              address: {}", &addr.to_base58());
+
+                        let txn = Transaction::new(
+                            TransactionType::RevokeTrust(addr),
+                            secret_key.clone(), public_key.clone()).unwrap();
+
+                        // Broadcast trust request to peers.
+                        for tx in peer_txs_c1.lock().unwrap().deref() {
+                            let mut bytes = Vec::new();
+                            txn.serialize(&mut bytes).unwrap();
+                            tx.send(NetworkMessage::new(
+                                    PayloadFlag::Transaction, bytes)).unwrap();
+                        }
+
+                        // Add trust request to this node's txn pool.
+                        let ref mut txn_pool: Vec<Transaction>
+                                = *txn_pool_refclone.write().unwrap();
+                        txn_pool.push(txn);
+                    },
                     _ => {
                         *res.status_mut() = hyper::NotFound
                     }

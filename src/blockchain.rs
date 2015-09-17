@@ -89,10 +89,15 @@ impl Blockchain {
                                 txn.author_addr.to_base58());
                         }
                     };
-                    info!("Trust table is now: {:?}", trust_table);
                 },
-                TransactionType::RevokeTrust(_) => {
-                    panic!("TODO: Index revoke trust txn in lookup table.");
+                TransactionType::RevokeTrust(address) => {
+                    let base58addr = address.to_base58();
+                    match trust_table.entry(base58addr) {
+                        Entry::Occupied(mut o) => {
+                            o.get_mut().remove(&txn.author_addr.to_base58());
+                        },
+                        Entry::Vacant(_) => ()
+                    };
                 },
                 TransactionType::Certify(_) => {
                     panic!("TODO: Index certify txn in lookup table.");
