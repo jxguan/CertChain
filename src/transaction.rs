@@ -9,7 +9,7 @@ use key;
 use transaction;
 use hash::DoubleSha256Hash;
 
-const SIGNATURE_LEN_BYTES: usize = 70;
+const MAX_SIGNATURE_LEN_BYTES: usize = 72;
 const TRUST_TXN_TYPE: u8 = 1;
 const REVOKE_TRUST_TXN_TYPE: u8 = 2;
 const CERTIFY_TXN_TYPE: u8 = 3;
@@ -30,6 +30,7 @@ pub struct Transaction {
     pub txn_type: TransactionType,
     pub author_addr: Address,
     pub author_pubkey: PublicKey,
+    pub sig_len_bytes: u8,
     pub author_sig: Signature,
 }
 
@@ -57,6 +58,7 @@ impl Transaction {
             txn_type: txn_type,
             author_addr: author_addr,
             author_pubkey: author_pubkey,
+            sig_len_bytes: author_sig.len() as u8,
             author_sig: author_sig,
         };
 
@@ -91,11 +93,16 @@ impl Transaction {
                         magic: {}", i)
         };
 
+        let author_addr = address::deserialize(&mut reader).unwrap();
+        let author_pubkey = key::deserialize_pubkey(&mut reader).unwrap();
+        let sig_len_bytes = reader.read_u8().unwrap();
         let txn = Transaction {
             txn_type: txn_type,
-            author_addr: address::deserialize(&mut reader).unwrap(),
-            author_pubkey: key::deserialize_pubkey(&mut reader).unwrap(),
-            author_sig: transaction::deserialize_signature(&mut reader).unwrap(),
+            author_addr: author_addr,
+            author_pubkey: author_pubkey,
+            sig_len_bytes: sig_len_bytes,
+            author_sig: transaction::deserialize_signature(
+                &mut reader, sig_len_bytes).unwrap(),
         };
 
         assert!(txn.has_valid_signature());
@@ -139,9 +146,10 @@ impl Transaction {
         }
     }
     pub fn serialize_signature<W: Write>(&self, mut writer: W) -> Result<()> {
-        info!("Serializing signature of length: {}", &self.author_sig.len());
+        info!("Serializing signature of length: {}", &self.sig_len_bytes);
         info!("Serialized sig_buf: {:?}", &self.author_sig[..]);
-        assert_eq!(self.author_sig[..].len(), SIGNATURE_LEN_BYTES);
+        assert_eq!(self.author_sig[..].len(), self.sig_len_bytes as usize);
+        assert!((self.sig_len_bytes as usize) <= MAX_SIGNATURE_LEN_BYTES);
         writer.write(&self.author_sig[..]).unwrap();
         Ok(())
     }
@@ -169,11 +177,12 @@ impl Transaction {
     }
 }
 
-pub fn deserialize_signature<R: Read>(mut reader: R) -> Result<Signature> {
-    let mut sig_buf = [0u8; SIGNATURE_LEN_BYTES];
-    reader.read(&mut sig_buf).unwrap();
+pub fn deserialize_signature<R: Read>(reader: R,
+            sig_len_bytes: u8) -> Result<Signature> {
+    let mut sig_buf = Vec::new();
+    try!(reader.take(sig_len_bytes as u64).read_to_end(&mut sig_buf));
     info!("Deserialized sig_buf: {:?}", &sig_buf[..]);
-    let sig = Signature::from_slice(&sig_buf).unwrap();
+    let sig = Signature::from_slice(&sig_buf[..]).unwrap();
     Ok(sig)
 }
 
