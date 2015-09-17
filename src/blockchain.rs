@@ -96,14 +96,23 @@ impl Blockchain {
         // Add the block to the table.
         self.table.insert(block_header_hash, block_node);
 
+        let mut author_table = HashMap::new();
         if do_scan {
-            let mut branch_count = 0;
             for (_, val) in self.table.iter() {
+                let count = match author_table.get(&val.block.header.author) {
+                    Some(total) => total + 1,
+                    None => 1,
+                };
+                author_table.insert(val.block.header.author, count);
                 if val.next.len() == 0 {
-                    branch_count += 1;
+                    info!("BLOCK TABLE SCAN: Found branch with height: {}",
+                        val.height);
                 }
             }
-            info!("BLOCK TABLE SCAN: {} branches exist.", branch_count);
+            for (author, count) in author_table.iter() {
+                info!("BLOCK TABLE SCAN: Author: {}, blocks: {}",
+                    author, count);
+            }
         }
     }
 }

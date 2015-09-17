@@ -5,11 +5,12 @@ use rust_base58::base58::{FromBase58, ToBase58};
 use secp256k1::key::{PublicKey};
 use crypto::sha2::Sha256;
 use hash::DoubleSha256Hash;
+use std::fmt::{Display, Formatter};
 
 const ADDRESS_LEN_BYTES: usize = 25;
 const MAINNET_ADDRESS_VERSION_PREFIX: u8 = 88; // "c" in Base58
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Address {
     data: [u8; ADDRESS_LEN_BYTES],
 }
@@ -28,6 +29,13 @@ impl Address {
 
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
         try!(writer.write(&self.data[..]));
+        Ok(())
+    }
+}
+
+impl Display for Address {
+    fn fmt(&self, f: &mut Formatter) -> ::std::fmt::Result {
+        try!(write!(f, "{}", self.to_base58()));
         Ok(())
     }
 }

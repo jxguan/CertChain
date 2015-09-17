@@ -123,14 +123,22 @@ pub fn run(config: CertChainConfig) -> () {
             block.header.merkle_root_hash);
 
         // Search for a header that meets difficulty requirement.
-        let mut mined_block = None;
+        let mut is_block_mined = false;
         loop {
+            // Add any blocks that have been sent to us while mining;
+            // do not block if none have been sent.
+            while let Ok(b) = block_rx.try_recv() {
+                info!("Received block on block_rx channel from \
+                        network; adding to blockchain.");
+                blockchain.write().unwrap().add_block(b)
+            }
+
             let header_hash = block.header.hash();
             if header_hash[0] == 0
                     && header_hash[1] == 0
                     && header_hash[2] <= 0x87 {
-                info!("Mined block; hash is: {:?}", header_hash);
-                mined_block = Some(block);
+                info!("Mined block; hash prefix: {:?}", header_hash);
+                is_block_mined = true;
                 break;
             }
 
@@ -138,66 +146,56 @@ pub fn run(config: CertChainConfig) -> () {
                 info!("Reached max nonce value; will rebuild block.");
                 break;
             }
-            block.header.nonce += 1;
-        }
 
-        // Add any blocks that have been sent to us while mining;
-        // do not block if none have been sent.
-        while let Ok(b) = block_rx.try_recv() {
-            info!("Received block on block_rx channel from \
-                    network; adding to blockchain.");
-            blockchain.write().unwrap().add_block(b)
+            let ref chain_read = *blockchain.read().unwrap();
+            if block.header.parent_block_hash !=
+                    chain_read.active_tip_block_header_hash() {
+                info!("Aborting mining; block's parent is longer active tip.");
+                break;
+            }
+            block.header.nonce += 1;
         }
 
         // Determine if the block we just mined still has the active
         // chain block as its parent; if so, add it to the blockchain,
         // otherwise do nothing with it and start mining again.
-        match mined_block {
-            Some(b) => {
-                let mut is_parent_still_active;
-                {
-                    let ref chain_read = *blockchain.read().unwrap();
-                    is_parent_still_active = b.header.parent_block_hash
-                        == chain_read.active_tip_block_header_hash();
-                }
-                if is_parent_still_active {
-                    info!("Parent is still active tip; broadcasting to peers and adding to chain.");
+        let mut is_parent_still_active;
+        {
+            let ref chain_read = *blockchain.read().unwrap();
+            is_parent_still_active = block.header.parent_block_hash
+                == chain_read.active_tip_block_header_hash();
+        }
+        if is_block_mined && is_parent_still_active {
 
-                    // Broadcast block to peers.
-                    for tx in peer_txs_c2.lock().unwrap().deref() {
-                        let mut bytes = Vec::new();
-                        b.serialize(&mut bytes).unwrap();
-                        tx.send(NetworkMessage::new(
-                                PayloadFlag::Block, bytes)).unwrap();
-                    }
+            info!("Mined block {:?} on top of main chain; \
+                    broadcasting to peers and adding to chain.",
+                    block.header.hash());
 
-                    // Add block to blockchain.
-                    blockchain.write().unwrap().add_block(b)
-                } else {
-                    info!("ACTIVE CHAIN TIP CHANGED; DISCARDING MINED BLOCK.");
-                    /*
-                     * TODO: Move txns back to the pool for
-                     * inclusion in next block.
-                     */
-                    continue
-                }
-            },
-            /*
-             * TODO: Move txns back to the pool for
-             * inclusion in next block.
-             */
-            None => continue
+            // Broadcast block to peers.
+            for tx in peer_txs_c2.lock().unwrap().deref() {
+                let mut bytes = Vec::new();
+                block.serialize(&mut bytes).unwrap();
+                tx.send(NetworkMessage::new(
+                        PayloadFlag::Block, bytes)).unwrap();
+            }
+
+            // Add block to blockchain.
+            blockchain.write().unwrap().add_block(block);
+
+            // Don't execute the cleanup operations below,
+            // simply skip back to top of loop to build another block.
+            continue
         }
 
-        // Move all txns back to pool.
-        /*{
+        // For all unsuccessfully mined blocks, move their txns back
+        // to the txn pool for inclusion in the next block.
+        {
             let ref mut txn_pool: Vec<Transaction> =
                 *txn_pool.write().unwrap();
             while block.txns.len() > 0 {
                 txn_pool.push(block.txns.pop().unwrap());
             }
-            info!("Txn pool size: {}", txn_pool.len());
-        }*/
+        }
     }
 }
 
