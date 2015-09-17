@@ -1,12 +1,13 @@
-use transaction::Transaction;
+use transaction::{Transaction, TransactionType};
 use hash::DoubleSha256Hash;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ptr;
 use time;
 use std::io::{Result, Write, Read};
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use address;
 use address::Address;
+use std::collections::hash_map::Entry;
 
 type BlockTree = HashMap<DoubleSha256Hash, Box<BlockchainNode>>;
 type NodePtr = *const BlockchainNode;
@@ -43,7 +44,7 @@ impl Blockchain {
                 table.insert(genesis_block_header_hash, genesis_block_node);
                 table
             },
-            active_tip: genesis_block_node_ptr
+            active_tip: genesis_block_node_ptr,
         }
     }
 
@@ -54,7 +55,8 @@ impl Blockchain {
         }
     }
 
-    pub fn add_block(&mut self, block: Block) {
+    pub fn add_block(&mut self, block: Block,
+                     trust_table: &mut HashMap<String, HashSet<String>>) {
 
         // If the block is already in the table, no need to add it.
         let block_header_hash = block.header.hash();
@@ -71,6 +73,36 @@ impl Blockchain {
             next: Vec::new(),
         });
 
+        // If there are transactions in the block, iterate
+        // through them and index them in the appropriate
+        // lookup tables.
+        for txn in &(*block_node).block.txns {
+            match txn.txn_type {
+                TransactionType::Trust(address) => {
+                    let base58addr = address.to_base58();
+                    match trust_table.entry(base58addr) {
+                        Entry::Occupied(mut o) => {
+                            o.get_mut().insert(txn.author_addr.to_base58());
+                        },
+                        Entry::Vacant(v) => {
+                            v.insert(HashSet::new()).insert(
+                                txn.author_addr.to_base58());
+                        }
+                    };
+                    info!("Trust table is now: {:?}", trust_table);
+                },
+                TransactionType::RevokeTrust(_) => {
+                    panic!("TODO: Index revoke trust txn in lookup table.");
+                },
+                TransactionType::Certify(_) => {
+                    panic!("TODO: Index certify txn in lookup table.");
+                },
+                TransactionType::RevokeCertification(_) => {
+                    panic!("TODO: Index revoke cert txn in lookup table.");
+                }
+            }
+        }
+
         // Lookup the parent; if we don't have it, we need
         // to get it from peers.
         match self.table.get_mut(&parent_block_hash) {
@@ -79,7 +111,8 @@ impl Blockchain {
                 block_node.prev = &**parent as NodePtr;
                 block_node.height = parent.height + 1;
             },
-            None => panic!("PARENT OF BLOCK DOESNT EXIST IN BLOCKCHAIN; TODO: get from peers.")
+            None => panic!("PARENT OF BLOCK DOESNT EXIST IN \
+                           BLOCKCHAIN; TODO: get from peers.")
         };
 
         // If the block's height is greater than that of the height
@@ -88,7 +121,8 @@ impl Blockchain {
             if block_node.height > (*self.active_tip).height {
                 let block_node_ptr = &*block_node as NodePtr;
                 self.active_tip = block_node_ptr;
-                info!("Active tip now has height of: {}", (*self.active_tip).height);
+                info!("Active tip now has height of: {}",
+                        (*self.active_tip).height);
             }
         }
         let do_scan = block_node.height % 10 == 0;
@@ -96,6 +130,8 @@ impl Blockchain {
         // Add the block to the table.
         self.table.insert(block_header_hash, block_node);
 
+        // This displays helpful debug information; it is not
+        // required for operation.
         let mut author_table = HashMap::new();
         if do_scan {
             for (_, val) in self.table.iter() {
@@ -109,6 +145,8 @@ impl Blockchain {
                         val.height);
                 }
             }
+
+            // Displays debug info about block authorship.
             for (author, count) in author_table.iter() {
                 info!("BLOCK TABLE SCAN: Author: {}, blocks: {}",
                     author, count);

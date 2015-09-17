@@ -18,6 +18,8 @@ use hash::MerkleRoot;
 use std::thread;
 use key;
 use secp256k1::key::{SecretKey, PublicKey};
+use rustc_serialize::json;
+use std::collections::{HashMap, HashSet};
 
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
@@ -40,13 +42,16 @@ pub fn run(config: CertChainConfig) -> () {
         = Arc::new(RwLock::new(Blockchain::new()));
     let txn_pool: Arc<RwLock<Vec<Transaction>>>
         = Arc::new(RwLock::new(Vec::new()));
+    let trust_table: Arc<RwLock<HashMap<String, HashSet<String>>>>
+        = Arc::new(RwLock::new(HashMap::new()));
 
     start_txn_pool_listener(txn_pool.clone(), txn_pool_rx);
 
     let rpc_port = config.rpc_port;
-    let blockchain_refclone = blockchain.clone();
+    let blockchain_clone = blockchain.clone();
     let txn_pool_refclone = txn_pool.clone();
     let peer_txs_c1 = peer_txs.clone();
+    let trust_table_clone = trust_table.clone();
     thread::spawn(move || {
         /*
          * TODO: Save the Listening struct returned here
@@ -55,22 +60,31 @@ pub fn run(config: CertChainConfig) -> () {
         let _ = Server::http((&"127.0.0.1"[..], rpc_port)).unwrap().handle(
             move |mut req: Request, mut res: Response<Fresh>| {
                 match (req.method.clone(), req.uri.clone()) {
-                    /*(hyper::Get, AbsolutePath(ref path)) if path == "/blockchain" => {
-                        let ref blockchain_ref: Vec<Block> = *blockchain_refclone.read().unwrap();
-                        res.send(format!("{}", blockchain_ref.len()).as_bytes()).unwrap();
-                    },*/
-                    (hyper::Get, AbsolutePath(ref path)) if path == "/txn_pool" => {
-                        let ref txn_pool_ref: Vec<Transaction> = *txn_pool_refclone.read().unwrap();
-                        res.send(format!("{}", txn_pool_ref.len()).as_bytes()).unwrap();
+                    (hyper::Get, AbsolutePath(ref path))
+                            if path == "/trust_table" => {
+                        let ref trust_table
+                            = *trust_table_clone.read().unwrap();
+                        let trust_json = json::as_pretty_json(trust_table);
+                        res.send(format!("{}", trust_json).as_bytes()).unwrap();
                     },
-                    (hyper::Post, AbsolutePath(ref path)) if path == "/trust_institution" => {
+                    (hyper::Get, AbsolutePath(ref path))
+                            if path == "/txn_pool" => {
+                        let ref txn_pool_ref: Vec<Transaction>
+                            = *txn_pool_refclone.read().unwrap();
+                        res.send(format!("{}", txn_pool_ref.len())
+                                 .as_bytes()).unwrap();
+                    },
+                    (hyper::Post, AbsolutePath(ref path))
+                            if path == "/trust_institution" => {
                         let mut req_body = String::new();
                         let _ = req.read_to_string(&mut req_body).unwrap();
                         let req_json = Json::from_str(&req_body[..]).unwrap();
                         let addr: Address = address::from_string(
                                 req_json.as_object().unwrap()
-                                .get("address").unwrap().as_string().unwrap()).unwrap();
-                        info!("Received trust request for address: {}", &addr.to_base58());
+                                .get("address").unwrap().as_string()
+                                    .unwrap()).unwrap();
+                        info!("Received trust request for \
+                              address: {}", &addr.to_base58());
 
                         let txn = Transaction::new(
                             TransactionType::Trust(addr),
@@ -130,7 +144,8 @@ pub fn run(config: CertChainConfig) -> () {
             while let Ok(b) = block_rx.try_recv() {
                 info!("Received block on block_rx channel from \
                         network; adding to blockchain.");
-                blockchain.write().unwrap().add_block(b)
+                blockchain.write().unwrap().add_block(b,
+                    &mut trust_table.write().unwrap());
             }
 
             let header_hash = block.header.hash();
@@ -180,7 +195,8 @@ pub fn run(config: CertChainConfig) -> () {
             }
 
             // Add block to blockchain.
-            blockchain.write().unwrap().add_block(block);
+            blockchain.write().unwrap().add_block(block,
+                    &mut trust_table.write().unwrap());
 
             // Don't execute the cleanup operations below,
             // simply skip back to top of loop to build another block.
