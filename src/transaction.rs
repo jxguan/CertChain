@@ -113,6 +113,7 @@ impl Transaction {
         Self::serialize_txn_type(&self.txn_type, &mut writer).unwrap();
         self.author_addr.serialize(&mut writer).unwrap();
         key::serialize_pubkey(&self.author_pubkey, &mut writer).unwrap();
+        writer.write_u8(self.sig_len_bytes).unwrap();
         self.serialize_signature(&mut writer).unwrap();
         Ok(())
     }
