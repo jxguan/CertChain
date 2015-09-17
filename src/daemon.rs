@@ -12,9 +12,9 @@ use blockchain::{Block, Blockchain};
 use address;
 use address::Address;
 use std::ops::Deref;
-use transaction::{Transaction, TransactionType};
-use std::sync::mpsc::{channel, Receiver};
-use hash::MerkleRoot;
+use transaction::{Transaction, TransactionType, TxnId};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use hash::{MerkleRoot, DoubleSha256Hash};
 use std::thread;
 use key;
 use secp256k1::key::{SecretKey, PublicKey};
@@ -44,6 +44,10 @@ pub fn run(config: CertChainConfig) -> () {
         = Arc::new(RwLock::new(Vec::new()));
     let trust_table: Arc<RwLock<HashMap<String, HashSet<String>>>>
         = Arc::new(RwLock::new(HashMap::new()));
+    let certified_table: Arc<RwLock<HashMap<TxnId, (u32, Vec<u8>)>>>
+        = Arc::new(RwLock::new(HashMap::new()));
+    let revoked_table: Arc<RwLock<HashMap<TxnId, (u32, Vec<u8>)>>>
+        = Arc::new(RwLock::new(HashMap::new()));
 
     start_txn_pool_listener(txn_pool.clone(), txn_pool_rx);
 
@@ -52,6 +56,8 @@ pub fn run(config: CertChainConfig) -> () {
     let txn_pool_refclone = txn_pool.clone();
     let peer_txs_c1 = peer_txs.clone();
     let trust_table_clone = trust_table.clone();
+    let certified_table_clone = certified_table.clone();
+    let revoked_table_clone = revoked_table.clone();
     thread::spawn(move || {
         /*
          * TODO: Save the Listening struct returned here
@@ -85,23 +91,11 @@ pub fn run(config: CertChainConfig) -> () {
                                     .unwrap()).unwrap();
                         info!("Received trust request for \
                               address: {}", &addr.to_base58());
-
-                        let txn = Transaction::new(
-                            TransactionType::Trust(addr),
-                            secret_key.clone(), public_key.clone()).unwrap();
-
-                        // Broadcast trust request to peers.
-                        for tx in peer_txs_c1.lock().unwrap().deref() {
-                            let mut bytes = Vec::new();
-                            txn.serialize(&mut bytes).unwrap();
-                            tx.send(NetworkMessage::new(
-                                    PayloadFlag::Transaction, bytes)).unwrap();
-                        }
-
-                        // Add trust request to this node's txn pool.
-                        let ref mut txn_pool: Vec<Transaction>
-                                = *txn_pool_refclone.write().unwrap();
-                        txn_pool.push(txn);
+                        broadcast_and_pool_txn(Transaction::new(
+                                TransactionType::Trust(addr),
+                                secret_key.clone(), public_key.clone()).unwrap(),
+                            peer_txs_c1.lock().unwrap().deref(),
+                            &mut *txn_pool_refclone.write().unwrap());
                     },
                     (hyper::Post, AbsolutePath(ref path))
                             if path == "/untrust_institution" => {
@@ -114,23 +108,23 @@ pub fn run(config: CertChainConfig) -> () {
                                     .unwrap()).unwrap();
                         info!("Received trust revocation request for \
                               address: {}", &addr.to_base58());
-
-                        let txn = Transaction::new(
-                            TransactionType::RevokeTrust(addr),
-                            secret_key.clone(), public_key.clone()).unwrap();
-
-                        // Broadcast trust request to peers.
-                        for tx in peer_txs_c1.lock().unwrap().deref() {
-                            let mut bytes = Vec::new();
-                            txn.serialize(&mut bytes).unwrap();
-                            tx.send(NetworkMessage::new(
-                                    PayloadFlag::Transaction, bytes)).unwrap();
-                        }
-
-                        // Add trust request to this node's txn pool.
-                        let ref mut txn_pool: Vec<Transaction>
-                                = *txn_pool_refclone.write().unwrap();
-                        txn_pool.push(txn);
+                        broadcast_and_pool_txn(Transaction::new(
+                                TransactionType::RevokeTrust(addr),
+                                secret_key.clone(), public_key.clone()).unwrap(),
+                            peer_txs_c1.lock().unwrap().deref(),
+                            &mut *txn_pool_refclone.write().unwrap());
+                    },
+                    (hyper::Post, AbsolutePath(ref path))
+                            if path == "/certify_document" => {
+                        let mut req_body = String::new();
+                        let _ = req.read_to_string(&mut req_body).unwrap();
+                        info!("Received document certification request.");
+                        let doc_hash = DoubleSha256Hash::hash(&req_body.as_bytes());
+                        broadcast_and_pool_txn(Transaction::new(
+                                TransactionType::Certify(doc_hash),
+                                secret_key.clone(), public_key.clone()).unwrap(),
+                            peer_txs_c1.lock().unwrap().deref(),
+                            &mut *txn_pool_refclone.write().unwrap());
                     },
                     _ => {
                         *res.status_mut() = hyper::NotFound
@@ -174,7 +168,9 @@ pub fn run(config: CertChainConfig) -> () {
                 info!("Received block on block_rx channel from \
                         network; adding to blockchain.");
                 blockchain.write().unwrap().add_block(b,
-                    &mut trust_table.write().unwrap());
+                    &mut trust_table.write().unwrap(),
+                    &mut certified_table.write().unwrap(),
+                    &mut revoked_table.write().unwrap());
             }
 
             let header_hash = block.header.hash();
@@ -225,7 +221,9 @@ pub fn run(config: CertChainConfig) -> () {
 
             // Add block to blockchain.
             blockchain.write().unwrap().add_block(block,
-                    &mut trust_table.write().unwrap());
+                    &mut trust_table.write().unwrap(),
+                    &mut certified_table.write().unwrap(),
+                    &mut revoked_table.write().unwrap());
 
             // Don't execute the cleanup operations below,
             // simply skip back to top of loop to build another block.
@@ -242,6 +240,22 @@ pub fn run(config: CertChainConfig) -> () {
             }
         }
     }
+}
+
+fn broadcast_and_pool_txn(txn: Transaction,
+        peer_txs: &Vec<Sender<NetworkMessage>>,
+        txn_pool: &mut Vec<Transaction>) {
+
+    // Broadcast trust request to peers.
+    for tx in peer_txs {
+        let mut bytes = Vec::new();
+        txn.serialize(&mut bytes).unwrap();
+        tx.send(NetworkMessage::new(
+                PayloadFlag::Transaction, bytes)).unwrap();
+    }
+
+    // Add trust request to the provided txn pool.
+    txn_pool.push(txn);
 }
 
 pub fn start_txn_pool_listener(txn_pool: Arc<RwLock<Vec<Transaction>>>,

@@ -176,6 +176,12 @@ impl Transaction {
         };
         Ok(())
     }
+
+    pub fn id(&self) -> TxnId {
+        let mut bytes = Vec::new();
+        self.serialize(&mut bytes).unwrap();
+        DoubleSha256Hash::hash(&bytes[..])
+    }
 }
 
 pub fn deserialize_signature<R: Read>(reader: R,

@@ -1,4 +1,4 @@
-use transaction::{Transaction, TransactionType};
+use transaction::{Transaction, TransactionType, TxnId};
 use hash::DoubleSha256Hash;
 use std::collections::{HashMap, HashSet};
 use std::ptr;
@@ -56,7 +56,9 @@ impl Blockchain {
     }
 
     pub fn add_block(&mut self, block: Block,
-                     trust_table: &mut HashMap<String, HashSet<String>>) {
+                     trust_table: &mut HashMap<String, HashSet<String>>,
+                     certified_table: &mut HashMap<TxnId, (u32, Vec<u8>)>,
+                     revoked_table: &mut HashMap<TxnId, (u32, Vec<u8>)>) {
 
         // If the block is already in the table, no need to add it.
         let block_header_hash = block.header.hash();
@@ -100,7 +102,17 @@ impl Blockchain {
                     };
                 },
                 TransactionType::Certify(_) => {
-                    panic!("TODO: Index certify txn in lookup table.");
+                    match certified_table.entry(txn.id()) {
+                        Entry::Occupied(_) => {
+                            error!("Duplicate certification found; TODO:
+                                    prevent this from occurring.");
+                        },
+                        Entry::Vacant(v) => {
+                            let mut bytes = Vec::new();
+                            (*block_node).block.serialize(&mut bytes).unwrap();
+                            v.insert(((*block_node).height, bytes));
+                        }
+                    };
                 },
                 TransactionType::RevokeCertification(_) => {
                     panic!("TODO: Index revoke cert txn in lookup table.");
