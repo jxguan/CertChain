@@ -114,8 +114,18 @@ impl Blockchain {
                         }
                     };
                 },
-                TransactionType::RevokeCertification(_) => {
-                    panic!("TODO: Index revoke cert txn in lookup table.");
+                TransactionType::RevokeCertification(revoked_txn_id) => {
+                    match revoked_table.entry(revoked_txn_id) {
+                        Entry::Occupied(_) => {
+                            error!("Duplicate revocation found; TODO:
+                                    prevent this from occurring.");
+                        },
+                        Entry::Vacant(v) => {
+                            let mut bytes = Vec::new();
+                            (*block_node).block.serialize(&mut bytes).unwrap();
+                            v.insert(((*block_node).height, bytes));
+                        }
+                    };
                 }
             }
         }

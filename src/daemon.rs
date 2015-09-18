@@ -82,15 +82,23 @@ pub fn run(config: CertChainConfig) -> () {
                         let txn_id_str = req_json.as_object().unwrap()
                                 .get("txn_id").unwrap().as_string().unwrap();
                         let txn_id = transaction::txn_id_from_str(&txn_id_str);
-                        // Step 1: Check certification table.
                         match certified_table_clone.read().unwrap().get(&txn_id) {
-                            Some(ref tuple) => {
-                                // Step 2: Check revocation table.
-                                res.send(format!("TODO: Lookup id {:?}", txn_id)
-                                         .as_bytes()).unwrap();
+                            Some(ref cert_tuple) => {
+                                match revoked_table_clone.read()
+                                        .unwrap().get(&txn_id) {
+                                    Some(ref revoked_tuple) => {
+                                        res.send(format!("REVOKED")
+                                                 .as_bytes()).unwrap();
+                                    },
+                                    None => {
+                                        res.send(format!("CERTIFIED")
+                                                 .as_bytes()).unwrap();
+                                    }
+                                }
                             },
                             None => {
-                                res.send(format!("NOT_CERTIFIED").as_bytes()).unwrap();
+                                res.send(format!("NOT_CERTIFIED")
+                                         .as_bytes()).unwrap();
                             }
                         }
                     },
@@ -136,6 +144,23 @@ pub fn run(config: CertChainConfig) -> () {
                         let doc_hash = DoubleSha256Hash::hash(&req_body.as_bytes());
                         let txn = Transaction::new(
                                 TransactionType::Certify(doc_hash),
+                                secret_key.clone(), public_key.clone()).unwrap();
+                        res.send(format!("{:?}", txn.id()).as_bytes()).unwrap();
+                        broadcast_and_pool_txn(txn,
+                            peer_txs_c1.lock().unwrap().deref(),
+                            &mut *txn_pool_refclone.write().unwrap());
+                    },
+                    (hyper::Post, AbsolutePath(ref path))
+                            if path == "/revoke_document" => {
+                        let mut req_body = String::new();
+                        let _ = req.read_to_string(&mut req_body).unwrap();
+                        let req_json = Json::from_str(&req_body[..]).unwrap();
+                        let txn_id_str = req_json.as_object().unwrap()
+                                .get("txn_id").unwrap().as_string().unwrap();
+                        let txn_id = transaction::txn_id_from_str(&txn_id_str);
+                        info!("Received document revocation request.");
+                        let txn = Transaction::new(
+                                TransactionType::RevokeCertification(txn_id),
                                 secret_key.clone(), public_key.clone()).unwrap();
                         res.send(format!("{:?}", txn.id()).as_bytes()).unwrap();
                         broadcast_and_pool_txn(txn,
