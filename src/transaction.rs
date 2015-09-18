@@ -8,6 +8,7 @@ use address::Address;
 use key;
 use transaction;
 use hash::DoubleSha256Hash;
+use rustc_serialize::hex::{FromHex};
 
 const MAX_SIGNATURE_LEN_BYTES: usize = 72;
 const TRUST_TXN_TYPE: u8 = 1;
@@ -193,3 +194,8 @@ pub fn deserialize_signature<R: Read>(reader: R,
     Ok(sig)
 }
 
+pub fn txn_id_from_str(str: &str) -> TxnId {
+    let vec = str.from_hex().unwrap();
+    assert_eq!(vec.len(), 32);
+    DoubleSha256Hash::from_slice(&vec[..])
+}
