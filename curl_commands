@@ -1,0 +1,5 @@
+curl http://localhost:5001/certify_document -X POST -vs -d '{"degree": "Phd in Chemistry"}'
+curl http://localhost:4001/revoke_document -X POST -vs -d '{"txn_id":"3cc747e5748a3d0cc15c736dde5f02c91fe0876e70854425ccb0be0d12a94489"}'
+
+curl http://localhost:4001/certification_status -X POST -vs -d '{"txn_id":"3cc747e5748a3d0cc15c736dde5f02c91fe0876e70854425ccb0be0d12a94489"}'
+curl http://localhost:5001/certification_status -X POST -vs -d '{"txn_id":"3cc747e5748a3d0cc15c736dde5f02c91fe0876e70854425ccb0be0d12a94489"}'
