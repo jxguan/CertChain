@@ -24,7 +24,7 @@
     </div>
   </div>
 
-  {% for inst_addr, inst_trusting_addrs in trust_table.items %}
+  {% for inst_addr, inst_trusting_addrs in trust_list %}
   <div class="row cc-inst-trust-row">
     <div class="span8">
       <h3>{{ inst_addr | cc_addr_to_name }}</h3>
@@ -33,12 +33,25 @@
         {% for trusting_addr in inst_trusting_addrs %}
           <li>{{ trusting_addr | cc_addr_to_name }} ({{ trusting_addr }})</li>
         {% empty %}
-          <li>No trusting institutions at the moment.</li>
+          <li>No trusting institutions.</li>
         {% endfor %}
       </ul>
     </div>
     <div class="span4">
-      <a class="cc-btn" href="">TRUST</a>
+      {% if inst_addr in can_trust_insts %}
+        <form method="post" action="{% url 'certchain:trust_institution' %}">
+          {% csrf_token %}
+          <input name="addr_to_trust" type="hidden" value="{{ inst_addr }}"/>
+          <input type="submit" class="cc-btn" value="TRUST"/>
+        </form>
+      {% endif %}
+      {% if inst_addr in can_revoke_insts %}
+        <form method="post" action="{% url 'certchain:untrust_institution' %}">
+          {% csrf_token %}
+          <input name="addr_to_untrust" type="hidden" value="{{ inst_addr }}"/>
+          <input type="submit" class="cc-btn" value="REVOKE TRUST"/>
+        </form>
+      {% endif %}
     </div>
   </div>
   {% empty %}
