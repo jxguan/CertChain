@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+
+{% block authbar %}
+<span class="cc-bar-entry">
+  {{ user.first_name }} {{ user.last_name }}
+  </span>
+<a class="cc-btn" href="/logout">LOGOUT</a>
+{% endblock authbar %}

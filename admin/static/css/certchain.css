@@ -38,11 +38,11 @@ html, body, #su-wrap {
 	margin-top: -130px;
 }
 
-#ml-auth-bar {
+#cc-auth-bar {
 	float: right;
 }
 
-#ml-auth-bar .ml-bar-entry {
+#cc-auth-bar .cc-bar-entry {
 	font-size: 1.4em;
 	padding: 10px 0;
 	padding-right: 10px;
@@ -159,13 +159,15 @@ ul#cc-messages > li.success {
 	background-color: #ADF270;
 }
 
-#cc-login {
+#cc-login,
+#cc-logout {
 	margin: 0 auto;
 	width: 600px;
 	text-align: center;
 }
 
-#cc-login > p {
+#cc-login > p,
+#cc-logout > p {
 	font-size: 1.5em !important;
 }
 
