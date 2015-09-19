@@ -72,15 +72,9 @@
         <div class="container">
           <div class="row">
             {% if messages %}
-            <ul id="ml-messages">
+            <ul id="cc-messages">
                 {% for message in messages %}
                 <li {% if message.tags %} class="{{ message.tags }}"{% endif %}>
-                 {% if message.tags == 'success' %}
-                       <span>&#10004;</span>
-                   {% else %}
-                       <span>&#10006;</span>
-                   {% endif %}
-                  <a href="#" class="pull-right" onclick="$(this).closest('li').fadeOut(); return false;">×</a>
                   {{ message }}
                 </li>
                 {% endfor %}

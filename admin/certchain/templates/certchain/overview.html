@@ -4,7 +4,80 @@
 <div class="container cc-container">
   <div class="row">
     <div class="span12">
-      This is the overview page.
+      <h2>Network Trust States</h2>
+      <p>The institutions below have been registered on the network, and are accompanied by a list of the institutions that trust them. An institution must maintain the trust of at least 75% of its peer institutions in order to perform certifications and revocations on the network.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span8">
+      <p>To trust an institution that has not yet been trusted by anyone else, enter their address here:</p>
+    </div>
+    <div id="cc-trust-arbitrary" class="span4">
+      <form method="post" action="{% url 'certchain:trust_institution' %}">
+        {% csrf_token %}
+        <input name="addr_to_trust" type="text"/>
+        <input type="submit" class="cc-btn" value="TRUST"/>
+      </form>
+    </div>
+  </div>
+
+  <div class="row cc-inst-trust-row">
+    <div class="span8">
+      <h3>Stanford University</h3>
+      <h4>TRUSTED</h4>
+      <ul>
+        <li>Virginia Tech (cnj....)</li>
+        <li>University of Ireland (cnj....)</li>
+        <li>Tokyo University (cnj....)</li>
+      </ul>
+    </div>
+    <div class="span4">
+    </div>
+  </div>
+
+  <div class="row cc-inst-trust-row">
+    <div class="span8">
+      <h3>University of Ireland</h3>
+      <h4>TRUSTED</h4>
+      <ul>
+        <li>Virginia Tech (cnj....)</li>
+        <li>University of Ireland (cnj....)</li>
+        <li>Tokyo University (cnj....)</li>
+      </ul>
+    </div>
+    <div class="span4">
+      <a class="cc-btn" href="">TRUST</a>
+    </div>
+  </div>
+
+  <div class="row cc-inst-trust-row">
+    <div class="span8">
+      <h3>Tokyo University</h3>
+      <h4>TRUSTED</h4>
+      <ul>
+        <li>Virginia Tech (cnj....)</li>
+        <li>University of Ireland (cnj....)</li>
+        <li>Tokyo University (cnj....)</li>
+      </ul>
+    </div>
+    <div class="span4">
+      <a class="cc-btn" href="">TRUST</a>
+    </div>
+  </div>
+
+  <div class="row cc-inst-trust-row">
+    <div class="span8">
+      <h3>University of Virginia</h3>
+      <h4>TRUSTED</h4>
+      <ul>
+        <li>Virginia Tech (cnj....)</li>
+        <li>University of Ireland (cnj....)</li>
+        <li>Tokyo University (cnj....)</li>
+      </ul>
+    </div>
+    <div class="span4">
+      <a class="cc-btn" href="">TRUST</a>
     </div>
   </div>
 </div>
