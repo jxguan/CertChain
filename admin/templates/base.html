@@ -1,0 +1,130 @@
+{% load staticfiles %}
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>{% block title %}CertChain | Stanford{% endblock title %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" type="image/x-icon" href="https://www.stanford.edu/favicon.ico">
+
+    <link href='//fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600,700,400italic' rel='stylesheet' type='text/css'>
+    {% block stylesheets %}
+      <link href="{% static 'css/su-identity/su-identity.css' %}" rel="stylesheet">
+      <link href="{% static 'css/lib/bootstrap.css' %}" rel="stylesheet">
+      <link href="{% static 'css/lib/bootstrap-responsive.css' %}" rel="stylesheet">
+      <link href="{% static 'css/su-identity/wilbur.css' %}" rel="stylesheet">
+      <link href="{% static 'css/su-identity/custom.css' %}" rel="stylesheet">
+      <link href="{% static 'css/certchain.css' %}" rel="stylesheet">
+    {% endblock stylesheets %}
+
+    <!-- Le HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="https://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <!--[if IE 8]>
+      <link rel="stylesheet" type="text/css" href="https://www.stanford.edu/su-identity/css/ie/ie8.css" />
+    <![endif]-->
+    <!--[if IE 7]>
+      <link rel="stylesheet" type="text/css" href="https://www.stanford.edu/su-identity/css/ie/ie7.css" />
+    <![endif]-->
+  </head>
+  <body class="home">
+    <div id="su-wrap">
+      <div id="su-content"> 
+    
+        <!-- Brandbar snippet start -->
+        <div id="brandbar">
+          <div class="container"> <a href="https://www.stanford.edu"> <img id="stf-brand" src="https://www.stanford.edu/su-identity/images/brandbar-stanford-logo@2x.png" width="153" height="22" alt="Stanford University"> </a> </div>
+          <!-- .container end --> 
+        </div>
+        <!-- #brandbar end --> 
+
+        <!-- Brandbar snippet end -->
+        <div class="navbar"> 
+          <!-- Department -->
+          <div id="header">
+            <div class="container">
+              <div class="row">
+                <div class="span6">
+                  <div id="wordmark">
+                      <img src="https://www.stanford.edu/su-identity/images/wordmark-red@2x.png" alt="Stanford wordmark" width="180" height="40" />
+                  </div>
+                  <div id="site"><!-- class="two-lines" or class="show-parent" -->
+                    <div id="name">
+                      CertChain
+                    </div>
+                  </div>
+                </div>
+                <div class="span6">
+                  <div id="ml-auth-bar">
+                    {% block authbar %}{% endblock authbar %}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- /.container --> 
+          </div>
+          <!-- /#header -->
+        </div>
+        <!-- /.navbar -->
+
+        <div class="container">
+          <div class="row">
+            {% if messages %}
+            <ul id="ml-messages">
+                {% for message in messages %}
+                <li {% if message.tags %} class="{{ message.tags }}"{% endif %}>
+                 {% if message.tags == 'success' %}
+                       <span>&#10004;</span>
+                   {% else %}
+                       <span>&#10006;</span>
+                   {% endif %}
+                  <a href="#" class="pull-right" onclick="$(this).closest('li').fadeOut(); return false;">×</a>
+                  {{ message }}
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+          </div>
+        </div>
+
+        <div id="content">
+        {% block content %}{% endblock content %}
+        </div>
+    
+        <div id="push"><!--/ for sticky footer/--></div>
+      </div>
+      <!-- / #content -->
+    </div>
+    <!-- /#wrap -->
+
+    <!-- Global footer snippet start -->
+    <div id="global-footer">
+      <div class="container">
+        <div class="row">
+          <div id="bottom-logo" class="span2">
+            <a href="https://www.stanford.edu">
+              <img src="https://www.stanford.edu/su-identity/images/footer-stanford-logo@2x.png" alt="Stanford University" width="105" height="49"/>
+            </a>
+          </div>
+          <!-- #bottom-logo end -->
+          <div id="bottom-text" class="span10">
+            <ul>
+              <li class="home"><a href="https://www.stanford.edu">SU Home</a></li>
+              <li class="maps alt"><a href="https://visit.stanford.edu/plan/maps.html">Maps &amp; Directions</a></li>
+              <li class="search-stanford"><a href="https://www.stanford.edu/search/">Search Stanford</a></li>
+              <li class="terms alt"><a href="https://www.stanford.edu/site/terms.html">Terms of Use</a></li>
+              <li class="emergency-info"><a href="https://emergency.stanford.edu">Emergency Info</a></li>
+            </ul>
+          </div> <!-- .bottom-text end -->
+          <div class="clear"></div>
+          <p class="copyright vcard">&copy; <span class="fn org">Stanford University</span>, <span class="adr"> <span class="locality">Stanford</span>, <span class="region">California</span> <span class="postal-code">94305</span></span>.&nbsp;&nbsp;
+          <span id="copyright-complaint"><a href="https://www.stanford.edu/group/security/dmca.html" class="copyright-complaint" >Copyright Complaints</a></span>
+          </p>
+        </div> <!-- .row end --> 
+      </div> <!-- .container end --> 
+    </div> <!-- global-footer end -->
+    <!-- Global footer snippet end -->
+  </body>
+</html>

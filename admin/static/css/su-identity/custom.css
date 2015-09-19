@@ -1,0 +1,669 @@
+
+/*
+========================================================
+Stuff Anna added Oct. 2013
+*/
+
+  /* red hamburger */
+  
+
+.navbar .btn-navbar { 
+	background-color:#821515 !important;
+  right: 0;
+  top: -4em;
+}
+  
+  
+  
+  /* font weights of subnav */  
+#sidebar-first ul.nav li a {color: #565347; border-bottom: none; text-transform: uppercase; font-weight: 400;}
+#sidebar-first ul.nav li.current a, .sidebar a.current {color: #820000; font-weight: 600;}
+
+
+
+  /* bgrd hover style of sub nav */  
+.nav > li > a:hover {
+    background:#f5f4ef;
+    text-decoration: none;
+	border-radius: 10px;
+	-moz-border-radius: 10px;
+}
+
+
+
+/*
+========================================================
+end of Stuff Anna added Oct. 2013
+*/
+
+/*
+========================================================
+Stuff JB added May 2014
+*/
+
+.section-head { /* similar to color-box but with border-top instead of border-bottom */
+  border-top: 3px solid #C5BEAE;
+  background-color: #F2F1EB;
+  padding: 10px;
+  margin-bottom: 15px;
+  margin-top: 30px;
+}
+
+.download-item {
+  max-width: 170px;
+}
+.download-item ul {
+  list-style-type: none;
+}
+.download-item ul li:before {
+  content: "";
+  background-image: url("/bootstrap/img/glyphicons-halflings.png");
+  background-position: -312px -96px;
+  height: 14px;
+  width:  14px;
+  line-height: 14px;
+  vertical-align: text-top;
+  display: inline-block;
+  margin: 0 0.25em 0 -2em;
+}
+
+.download-item div {
+ padding: 10px 5px; 
+ margin-top: 10px;
+}
+
+.instructions {
+  margin-top: 30px;
+}
+/*
+========================================================
+End of stuff JB added May 2014
+*/
+
+
+
+/* All resolutions */
+
+/* Background color */
+#wrap, .navbar-inner, #header {
+	background:#fbfbf9 !important;
+}
+/* Space the container and footer */
+#content .container {
+	padding-bottom:25px;
+}
+/* Nav style overrides */
+.navbar {
+	background:#820000;
+	position:relative;
+}
+/* Prevent flush left */
+#banner {
+	height: 30px;
+	background:transparent url(../images/header-bg.png) no-repeat center bottom;
+}
+#banner img {
+	padding: 4px 0;
+	height: auto;
+	max-width: 100%;
+}
+
+
+#header {
+  margin-top: 24px;
+  padding-bottom: 18px;
+}
+#header #wordmark,
+#header #site {
+  display: table-cell;
+  vertical-align: bottom;
+}
+#header #wordmark img { /*** override Wilbur styles ***/
+  border: none;
+  padding: 0;
+}
+#header #site {
+  padding-left: 10px;
+  border-left: 1px solid #2E2D29;
+  color: #3F3C30;
+  line-height: 1;
+  min-height: 40px; /* height of wordmark */
+}
+#header #site a {
+  color: #3F3C30;
+}
+#header #site a:hover {
+  text-decoration: none;
+}
+/*** one line signatures ***/
+#header #site #name {
+  font-weight: 400;
+  font-size: 2.5em;
+  margin-bottom: -.08em;
+}
+#header #site #parent {
+  font-size: 1.5em;
+  display: none;
+}
+/*** two line signatures ***/
+#header #site.two-lines #name {
+  font-size: 2.2em;
+}
+
+/*** signatures with parent ***/
+#header #site.show-parent #name {
+  margin-bottom: .1em;
+}
+#header #site.show-parent #parent {
+  display: block;
+  font-style: italic;
+}
+
+/* Search */
+
+#header #search {
+	float: right;
+	margin: -30px 0 0;
+}
+#header #search .form-text {
+	height: 1em;
+	margin: 0;
+	padding: 5px;
+}
+#header #search .form-item, #header #search .form-submit {
+	display: inline-block;
+	margin: 0px;
+}
+#header #search .form-text {
+	width: 180px;
+}
+
+#header #search {
+	background-color: #f2f1eb;
+	border-radius: 5px;
+	height: 26px;
+	line-height: 0;
+	moz-border-radius: 5px;
+	overflow: hidden;
+	padding: 4px 5px 5px 5px;
+	webkit-border-radius: 5px;
+}
+#header #search .search-item {
+	float: left;
+}
+#header #search .form-text {
+	border: none;
+	color: #827252;
+	height: 26px;
+	margin: 0;
+	padding: 0 0 0 5px;
+}
+#header #search .form-submit {
+	background: url(https://sites.stanford.edu/demo/sites/default/themes/stanford_wilbur/images/searchbutton.png) center center no-repeat;
+	border: none;
+	box-shadow: none;
+	cursor: pointer;
+	height: 25px;
+	margin: 1px 0 0 -20px;
+	padding: 0px;
+	text-indent: -9999px;
+	text-shadow: none;
+	width: 25px;
+}
+
+#feature-banner {
+	margin-bottom: 20px;
+}
+#feature-banner a {
+  position:relative;
+  display:block;
+}
+
+#feature-banner h1 {
+  position:absolute;
+  right:10px;
+  bottom:10px;
+  font-size:2.5em;
+  color: #820000;
+  padding: 7px 14px;
+  background:#fbfbf9;
+  border-radius:5px;
+  -moz-border-radius:5px;
+  -moz-box-shadow:0px 3px 3px 2px #666;
+  box-shadow:0px 3px 3px 2px #666;
+}
+
+#feature-banner img {
+
+}
+
+body.home li#nav-home > a,
+body.overview li#nav-overview > a,
+body.examples li#nav-examples > a, 
+body.print li#nav-print > a,
+body.web li#nav-web > a,
+body.desktop li#nav-desktop > a,
+body.policies li#nav-policies > a,
+body.help li#nav-help > a {
+	color:#585754;
+	font-weight:bold;
+	box-shadow:none;
+}
+body.home li#nav-home > a:hover,
+body.overview li#nav-overview > a:hover,
+body.examples li#nav-examples > a:hover, 
+body.print li#nav-print > a:hover,
+body.web li#nav-web > a:hover,
+body.desktop li#nav-desktop > a:hover,
+body.policies li#nav-policies > a:hover,
+body.help li#nav-help > a:hover {
+	color:#820000;
+}
+
+.navbar-inner .container {
+	border-bottom:none !important;
+}
+.navbar .nav > li > a {
+	color:#8c1515;
+	font-family: "Source Sans Pro", "Helvetica Neue", Helvetica, Arial, sans-serif;
+	font-size:1em;
+	text-shadow:none;
+	text-transform:uppercase;
+	border-bottom: none;	
+}
+.navbar .nav > li > a:hover {
+	color:#820000;
+	background:#f5f4ef;
+	border-radius: 10px;
+	-moz-border-radius: 10px;
+}
+
+.navbar .nav > li span {
+	display: block;
+}
+
+/* Override styles */
+.navbar-inner {
+	background:#fff;
+	border:none;
+}
+/* Keep logo and nav centered with content */
+.navbar .container {
+	width:940px;
+}
+.navbar-inner .container {
+	border-bottom:1px solid #e5e5e5;
+}
+/* h2-h4 */
+h2, h3, h4 {
+	font-family: "Source Sans Pro", "Helvetica Neue", Helvetica, Arial, sans-serif;
+	
+}
+
+h2.pagetitle {
+	font-size: 2.9em;
+	font-weight: 400;
+	margin: 0 0 .3em 0;	
+	color:#3f3c30;
+}
+
+
+#main-content .banner {
+	margin-bottom: 10px;
+}
+#main-content .banner img {
+	border: 2px solid #827252;
+	box-shadow: 2px;
+}
+/* List links color */
+#sidebar-first li a, #sidebar-second li a {
+	color:#827252;
+}
+/* For full width */
+#footer {
+	background:#f2f1eb;
+}
+/* For sticky footer */
+#footer > .container {
+	padding-top:32px;
+	padding-bottom:25px;
+	background:#f2f1eb;
+}
+/* List headers */
+#navigation-secondary ul li a {
+	color:#820000;
+	font-weight:normal;
+}
+/* List links */
+#navigation-secondary ul li ul li a {
+	color:#827252;
+}
+/* iPhone layout fix */
+#global-footer {
+	margin:0;
+}
+#bottom-logo {
+	padding: 0;
+}
+#global-footer .container {
+	padding: 0;
+	height: 120px;
+}
+
+#global-footer .container .row {margin-top: 30px;}
+
+.sidebar ul.nav {margin: 0px 0px 2em 0px; padding: 0px;}
+.sidebar ul.nav li {list-style: none; list-style-image: none; background-image: none; padding: 10px 0px; margin: 0px; border-bottom: 1px solid #eae9e6;}
+.sidebar ul.nav li a {color: #565347; border-bottom: none;}
+.sidebar ul.nav li a:hover {border-bottom: 1px dotted #565347;}
+.sidebar ul.nav li li{padding: 5px 0px 0px 10px; border-bottom: none;}
+.sidebar ul.nav ul ul {margin: 0;}
+.sidebar ul.nav li.current a, .sidebar a.current {color: #820000; font-weight: bold;}
+
+
+
+
+/* Overrides */
+
+@media (max-width:1200px) {
+  body.searchbox #header #site {
+  	float: left;
+  	max-width: 60%;
+  }
+  #header #search .form-text {
+  	width: 150px;
+  }
+  /* Prevent footer logo from wrapping */
+    #global-footer .span3 {
+  	width:170px;
+  }
+}
+
+@media (max-width:980px) {
+  body.searchbox #header #site {
+  	float: left;
+  	max-width: 53%;
+  }
+  #header #search .form-text {
+  	width: 120px;
+  }
+  /* 2x2 grid */
+    .nav-collapse ul {
+  	width:100%;
+  	float:left;
+  }
+  .nav-collapse ul li {
+  	width:50%;
+  	margin:0;
+  	float:left;
+  	clear:left;
+  }
+  .nav-collapse ul li.alt {
+  	clear:right;
+  }
+  #feature-banner h1 {
+    font-size:1.65em;
+   padding:0 12px;
+  }
+
+.navbar .nav > li span {
+	display: inline;
+}
+}
+
+@media screen and (max-width:768px) {
+  body.searchbox #header #site {
+  	float: left;
+  	max-width: 50%;
+  }
+  #header #search {
+    margin-top: 12px !important;
+    float: none;
+  }
+  #header #search .form-text {
+  	width: 130px;
+  }
+  #navigation-secondary.across-7 ul li, #navigation-secondary.across-8 ul li {
+  	clear: both;
+  	margin: 0px;
+  	padding-bottom: 0.25em;
+  	width: 100%;
+  }
+
+}
+
+/* Media queries */
+
+/* Landscape phones and down */
+@media only screen and (max-width: 480px) {
+  /* Hide dept header image */
+  #header img {
+  	display:none;
+  }
+  #header #site {
+    padding-left: 0;
+    border-left: none;
+    min-height: 1em;
+  }
+  /* Expand logo bar */
+  #banner {
+    padding:7px 0 5px 9px;
+  }
+  #banner img {
+  	padding:7px 0;
+  }
+  /* Place logo and expanded nav on same line */
+  .navbar .container {
+  	width:auto !important;
+  }
+ .navbar img {
+  	padding-bottom:12px;
+  }
+  .navbar-inner {
+  	min-height:8px;
+  }
+  /* Stack h1 above image */
+  #feature-banner h1 {
+    position:relative;
+    line-height:normal;
+    color: #820000;
+    padding: 10px;
+    background:none;
+    border-radius:0;
+    -moz-border-radius:0;
+    -moz-box-shadow:none;
+    box-shadow:none;
+  }
+  /* Stack the global footer */
+  #bottom-menu ul li {
+  	display:block;
+  }
+}
+
+/* Landscape phone to portrait tablet */
+@media only screen and (max-width: 767px) {
+  /* Full width backgrounds */
+  body {
+  	padding:0;
+  }
+  /* Prevent flush left logo */
+  #banner {
+    padding:7px 0 5px 9px;
+  }
+  /* Pad the content */
+  #content {
+	  padding:0 10px;
+  }
+  /* Prevent the search from floating */
+  #header #search {
+    float:left;
+  	clear:left;
+  }
+  /* Prevent flush left */
+  #navigation-secondary {
+  	padding-left:10px;
+  }
+  #navigation-secondary.across-6 ul li {
+  	width:14.75%;
+  }
+}
+
+/* Portrait tablet to desktop*/
+@media only screen and (max-width: 979px) {
+  /* Keep logo and nav centered with content */
+    .navbar .container {
+  	width:724px;
+  }
+  /* Left align header */
+    #header h1 {
+  	width:45%;
+  }
+  /* Keep footer links on one line */
+    #bottom-menu ul li {
+  	margin:0 .2em 0 0;
+  }
+}
+
+/* Large desktop */
+@media only screen and (min-width: 1200px) {
+  /* Keep logo and nav centered with content */
+    .navbar .container {
+  	width:1170px;
+  }
+}
+
+
+/* Custom break points */
+
+/* Keep regular menu unless mobile */
+@media (min-width: 481px) {
+  .nav-collapse.collapse {
+  	height: auto !important;
+  	overflow: visible !important;
+  }
+  .navbar .btn-navbar {
+  	display: none !important;
+  }
+  .nav-collapse, .nav-collapse.collapse {
+  	height: auto;
+  	overflow: visible;
+  }
+  .nav-collapse {
+  	clear: none;
+  }
+  .nav-collapse .nav {
+  	float: left;
+  	margin: 0 10px 0 0;
+  }
+  .nav-collapse .nav > li {
+  	float:left;
+  }
+  .navbar .nav > li > a {
+  	text-decoration: none;
+  	padding: 0 20px;
+  	line-height: 1em;
+  }
+  .nav-collapse .nav > li > a, .nav-collapse .dropdown-menu a {
+  	border-radius:0;
+  	font-weight:normal;
+  	padding:9px 15px 11px;
+  }
+}
+
+/* Landscape phone to portrait tablet */
+@media only screen and (max-width: 767px) {
+  /* Keep logo and nav centered with content */
+    .navbar .container {
+  	width:auto;
+  }
+  /* Full width header */
+    #header h1 {
+  	width:auto;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 979px) {
+}
+
+@media (min-width: 480px) and (max-width: 767px) {
+	
+	
+}
+
+@media (max-width: 630px) {
+  /* Footer 2x2 grid */
+    #navigation-secondary.across-6 ul {
+  	width:100%;
+  	float:left;
+  }
+  #navigation-secondary.across-6 ul li {
+  	width:45%;
+  	margin:0 5% 3% 0;
+  	float:left;
+  	clear:left;
+  }
+  #navigation-secondary.across-6 ul li.alt {
+  	clear:right;
+  }
+  /* Stack the global footer */
+    #global-footer .container {
+  	padding-left:20px;
+  }
+  li.home,  li.search-stanford,  li.copyright {
+  	float:left;
+  	clear:left;
+  	width:48%;
+  }
+  p.vcard {
+  	margin:30px 0 0 0;
+  	clear:both;
+  }
+  #bottom-menu ul li {
+  	display:block !important;
+  }
+}
+/*
+Sticky Footer Solution
+by Steve Hatcher 
+http://stever.ca
+http://www.cssstickyfooter.com
+*/
+
+html, body {
+	height: 100%;
+}
+#wrap {
+	min-height: 100%;
+}
+#su-content {
+	overflow:auto;
+	padding-bottom: 307px; /* must be same height as the footer */
+}
+#footer {
+	position: relative;
+	margin-top: -307px; /* negative value of footer height */
+	height: 307px;
+	clear:both;
+}
+/*Opera Fix*/
+	body:before { /* thanks to Maleika (Kohoutec)*/
+	content:"";
+	height:100%;
+	float:left;
+	width:0;
+	margin-top:-32767px;/* thank you Erik J - negate effect of float*/
+}
+
+#loading_img {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 9999990;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(192, 192, 192, 0.5);
+    background-image: url("/static/images/ajax-loader.gif");
+    background-repeat: no-repeat;
+    background-position: center;
+}

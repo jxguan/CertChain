@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container cc-container">
+  <div class="row">
+    <div class="span12">
+        <div id="cc-login">
+            <p>Access to the administrative interface for
+            Stanford University's CertChain node is restricted
+            to authorized users. Please enter your credentials below.</p>
+
+            {% if form.errors %}
+            <p id="cc-login-error">Your username and password didn't match. Please try again.</p>
+            {% endif %}
+
+            {% if next %}
+                {% if user.is_authenticated %}
+                <p>Your account doesn't have access to this page. To proceed,
+                please login with an account that has access.</p>
+                {% else %}
+                <p>Please login to see this page.</p>
+                {% endif %}
+            {% endif %}
+
+            <form method="post" action="{% url 'django.contrib.auth.views.login' %}">
+            {% csrf_token %}
+            <table>
+            <tr>
+                <td>{{ form.username.label_tag }}</td>
+                <td>{{ form.username }}</td>
+            </tr>
+            <tr>
+                <td>{{ form.password.label_tag }}</td>
+                <td>{{ form.password }}</td>
+            </tr>
+            </table>
+
+            <input class="cc-btn" type="submit" value="LOGIN" />
+            <input type="hidden" name="next" value="{% url 'certchain:overview' %}" />
+            </form>
+        </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

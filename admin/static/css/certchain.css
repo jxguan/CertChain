@@ -1,0 +1,186 @@
+/**
+ * MQUINN 09-19-2015: Overriding identity.stanford.edu styles
+ * for CertChain purposes.
+ * NOTE: Footer is sticky; see
+ *   http://www.lwis.net/journal/2008/02/08/pure-css-sticky-footer/
+ * for inspiration and source.
+ */
+html, body, #su-wrap {
+	height: 100%;
+}
+
+* {
+	font-family: 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+}
+
+#su-wrap {
+	height: auto;
+	min-height: 100%;
+	position: relative
+}
+
+#su-content {
+	/* Important: if you change this value,
+	   do not forget to change the values marked
+	   in #global-footer as well. */
+	padding-bottom: 130px;
+}
+
+#global-footer {
+	clear: both;
+ 	position: relative;
+ 	z-index: 10;
+
+ 	/* Important: if you change this value,
+	   do not forget to change the values marked
+	   in #su-content as well. */
+	height: 130px;
+	margin-top: -130px;
+}
+
+#ml-auth-bar {
+	float: right;
+}
+
+#ml-auth-bar .ml-bar-entry {
+	font-size: 1.4em;
+	padding: 10px 0;
+	padding-right: 10px;
+	border-right: 1px solid black;
+	margin-right: 10px;
+	color: #3E3E3E;
+}
+
+.navbar {
+	margin-bottom: 5px;
+}
+
+h2 {
+	font-size: 2em;
+	margin-bottom: 3px;
+}
+
+h3 {
+	font-size: 1.3em;
+}
+
+p {
+	font-size: 1.2em;
+}
+
+hr {
+	width: 80%;
+	margin: 8px auto;
+	border-top: 1px solid #ADADAD;
+}
+
+.text-center {
+	text-align: center;
+}
+
+img#stf-brand {
+	margin-top: 2px;
+}
+
+.cc-btn {
+	font-size: 1.3em;
+	line-height: 1em;
+	border-radius: 2px;
+	background-color: #f5f5f5;
+	background-image: -webkit-linear-gradient(top, #f5f5f5, #f1f1f1);
+	background-image: -moz-linear-gradient(top, #f5f5f5, #f1f1f1);
+	background-image: -ms-linear-gradient(top, #f5f5f5, #f1f1f1);
+	background-image: -o-linear-gradient(top, #f5f5f5, #f1f1f1);
+	background-image: linear-gradient(top, #f5f5f5, #f1f1f1);
+	border: 1px solid #dcdcdc;
+	color: #444;
+	list-style: none;
+	margin: 0 2px;
+	outline: none;
+  padding: 5px 10px;
+	text-align: center;
+	text-decoration: none;
+	cursor: pointer;
+	
+	/*
+	 * Disable accidental text selection of button text
+	 */
+	-webkit-user-select: none;
+	-khtml-user-select: none;
+	-moz-user-select: none;
+	-o-user-select: none;
+	user-select: none;
+}
+
+.cc-btn:hover {
+	color: #444;
+  text-decoration: none;
+	box-shadow: rgba(0, 0, 0, 0.1) 0px 1px 1px 0px;
+	border: 1px solid #C6C6C6;
+	background-color: #f8f8f8;
+	background-image: -webkit-linear-gradient(top, #f8f8f8, #f1f1f1);
+	background-image: -moz-linear-gradient(top, #f8f8f8, #f1f1f1);
+	background-image: -ms-linear-gradient(top, #f8f8f8, #f1f1f1);
+	background-image: -o-linear-gradient(top, #f8f8f8, #f1f1f1);
+	background-image: linear-gradient(top, #f8f8f8, #f1f1f1);
+}
+
+.cc-btn:active {
+  text-decoration: none;
+	color: #333;
+	border: 1px solid #CCC;
+	box-shadow: rgba(0, 0, 0, 0.1) 0px 1px 2px 0px inset;
+	background-color: #EEE;
+	background-image: -webkit-linear-gradient(top, #eee, #e0e0e0);
+	background-image: -moz-linear-gradient(top, #eee, #e0e0e0);
+	background-image: -ms-linear-gradient(top, #eee, #e0e0e0);
+	background-image: -o-linear-gradient(top, #eee, #e0e0e0);
+	background-image: linear-gradient(top, #eee, #e0e0e0);
+}
+
+ul#cc-messages {
+	list-style-type: none;
+	font-size: 1.4em;
+}
+
+ul#cc-messages > li {
+	padding: 7px 10px;
+	font-weight: bold;
+}
+
+ul#cc-messages > li.error {
+	color: white;
+	border: 1px solid red;
+	background-color: #ED2D2D;
+}
+
+ul#cc-messages > li.success {
+	border: 1px solid #127B20;
+	background-color: #ADF270;
+}
+
+#cc-login {
+	margin: 0 auto;
+	width: 600px;
+	text-align: center;
+}
+
+#cc-login > p {
+	font-size: 1.5em !important;
+}
+
+#cc-login table {
+	margin: 0 auto;
+}
+
+#cc-login table td {
+	padding: 10px;
+}
+
+#cc-login label {
+	font-size: 20px !important;
+}
+
+#cc-login-error {
+	color: red;
+}
