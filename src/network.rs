@@ -216,10 +216,11 @@ pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<NetworkMessage>>
         let peer_hostname = String::from(&peer.hostname[..]);
         let (tx, rx) = channel();
         peer_txs.push(tx);
-        info!("Spawning connection thread for peer {}...", peer_name);
         thread::spawn(move || {
             loop {
                 let mut sock = Socket::new();
+                info!("Attempting to connect to peer {} at {}:{}...",
+                      peer_name, peer_hostname, peer_port);
                 match sock.connect(&peer_hostname[..], peer_port) {
                     Ok(_) => {
                         info!("Successfully connected to {}; waiting for messages...`", peer_name);
