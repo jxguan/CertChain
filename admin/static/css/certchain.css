@@ -231,3 +231,7 @@ ul#cc-messages > li.success {
 #cc-trust-arbitrary .cc-btn {
 	margin-top: -10px;
 }
+
+#cc-no-institutions {
+	text-align: center;
+}

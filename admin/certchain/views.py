@@ -1,12 +1,16 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.contrib import messages
 import requests, json
+from django.core.urlresolvers import reverse
 
 @login_required
 def overview(request):
-    return render(request, 'certchain/overview.html', {})
+  resp = requests.get('http://localhost:5001/trust_table')
+  trust_table = resp.json()
+  return render(request, 'certchain/overview.html',\
+    {'trust_table' : trust_table})
 
 @login_required
 def trust_institution(request):
@@ -24,5 +28,5 @@ def trust_institution(request):
       messages.error(request,\
         'An error occurred while processing your trust request \
         for ' + addr + ': ' + str(resp.status_code))
-    return render(request, 'certchain/overview.html', {})
+    return redirect(reverse('certchain:overview'))
   raise Http404

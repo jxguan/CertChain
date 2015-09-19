@@ -1,5 +1,7 @@
 {% extends "auth_base.html" %}
 
+{% load certchain_extras %}
+
 {% block content %}
 <div class="container cc-container">
   <div class="row">
@@ -22,63 +24,29 @@
     </div>
   </div>
 
+  {% for inst_addr, inst_trusting_addrs in trust_table.items %}
   <div class="row cc-inst-trust-row">
     <div class="span8">
-      <h3>Stanford University</h3>
+      <h3>{{ inst_addr | cc_addr_to_name }}</h3>
       <h4>TRUSTED</h4>
       <ul>
-        <li>Virginia Tech (cnj....)</li>
-        <li>University of Ireland (cnj....)</li>
-        <li>Tokyo University (cnj....)</li>
-      </ul>
-    </div>
-    <div class="span4">
-    </div>
-  </div>
-
-  <div class="row cc-inst-trust-row">
-    <div class="span8">
-      <h3>University of Ireland</h3>
-      <h4>TRUSTED</h4>
-      <ul>
-        <li>Virginia Tech (cnj....)</li>
-        <li>University of Ireland (cnj....)</li>
-        <li>Tokyo University (cnj....)</li>
+        {% for trusting_addr in inst_trusting_addrs %}
+          <li>{{ trusting_addr | cc_addr_to_name }} ({{ trusting_addr }})</li>
+        {% empty %}
+          <li>No trusting institutions at the moment.</li>
+        {% endfor %}
       </ul>
     </div>
     <div class="span4">
       <a class="cc-btn" href="">TRUST</a>
     </div>
   </div>
-
+  {% empty %}
   <div class="row cc-inst-trust-row">
-    <div class="span8">
-      <h3>Tokyo University</h3>
-      <h4>TRUSTED</h4>
-      <ul>
-        <li>Virginia Tech (cnj....)</li>
-        <li>University of Ireland (cnj....)</li>
-        <li>Tokyo University (cnj....)</li>
-      </ul>
-    </div>
-    <div class="span4">
-      <a class="cc-btn" href="">TRUST</a>
+    <div class="span12">
+      <p id="cc-no-institutions">There are no registered institutions on the network at this time.</p>
     </div>
   </div>
-
-  <div class="row cc-inst-trust-row">
-    <div class="span8">
-      <h3>University of Virginia</h3>
-      <h4>TRUSTED</h4>
-      <ul>
-        <li>Virginia Tech (cnj....)</li>
-        <li>University of Ireland (cnj....)</li>
-        <li>Tokyo University (cnj....)</li>
-      </ul>
-    </div>
-    <div class="span4">
-      <a class="cc-btn" href="">TRUST</a>
-    </div>
-  </div>
+  {% endfor %}
 </div>
 {% endblock %}
