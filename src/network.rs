@@ -153,7 +153,7 @@ pub fn listen(txn_pool_tx: Sender<Transaction>,
     // Start listening on the listener port in the provided config.
     let listener_port: &u16 = &config.listener_port;
     let listener = match TcpListener::bind(
-            (&"127.0.0.1"[..], *listener_port)) {
+            (&"0.0.0.0"[..], *listener_port)) {
         Ok(listener) => {
             info!("Successfully established listener on port {}.",
                   listener_port);
