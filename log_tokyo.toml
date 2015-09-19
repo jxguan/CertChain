@@ -1,5 +1,6 @@
 [appender.stdout]
 kind = "console"
+pattern = "[TOKYO] %l %d{%m/%d/%YT%H:%M:%S} - %m"
 
 [root]
 level = "info"

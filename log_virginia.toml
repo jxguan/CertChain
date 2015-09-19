@@ -1,0 +1,7 @@
+[appender.stdout]
+kind = "console"
+pattern = "[VIRGINIA] %l %d{%m/%d/%YT%H:%M:%S} - %m"
+
+[root]
+level = "info"
+appenders = ["stdout"]

@@ -10,6 +10,7 @@ use toml;
 
 #[derive(Debug, RustcDecodable)]
 pub struct CertChainConfig {
+    pub log_config_filename: String,
     pub listener_port: u16,
     pub rpc_port: u16,
     pub peers: Vec<CertChainConfigPeer>,

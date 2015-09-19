@@ -27,14 +27,15 @@ use std::default::Default;
 
 fn main() {
 
-    // Using log4rs as the concrete logging implementation.
-    log4rs::init_file("log.toml", Default::default()).unwrap();
-
     // Load configuration settings from file.
     let config = match config::load() {
         Ok(c) => c,
         Err(err) => panic!("Unable to load config file: {:?}", err)
     };
+
+    // Using log4rs as the concrete logging implementation.
+    log4rs::init_file(&config.log_config_filename,
+                      Default::default()).unwrap();
 
     // Kick off the main daemon thread.
     info!("Config loaded; spawning daemon thread.");
