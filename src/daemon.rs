@@ -193,10 +193,14 @@ pub fn run(config: CertChainConfig) -> () {
             let ref mut txn_pool: Vec<Transaction> =
                 *txn_pool.write().unwrap();
             let ref all_txns = all_txns_set.read().unwrap();
+            info!("START all_txns: {:?}", all_txns.deref());
             while txn_pool.len() > 0 {
                 let txn = txn_pool.pop().unwrap();
                 if !all_txns.contains(&txn.id()) {
                     block.txns.push(txn);
+                } else {
+                    info!("START Ignoring already included txn: {:?}",
+                          txn.id());
                 }
             }
         }
@@ -289,12 +293,16 @@ pub fn run(config: CertChainConfig) -> () {
             let ref mut txn_pool: Vec<Transaction> =
                 *txn_pool.write().unwrap();
             let ref all_txns = all_txns_set.read().unwrap();
+            info!("CLEAN UP all_txns: {:?}", all_txns.deref());
             while block.txns.len() > 0 {
                 let txn = block.txns.pop().unwrap();
                 // Only move the txn back to the pool if it
                 // hasn't already been seen in a block.
                 if !all_txns.contains(&txn.id()) {
                     txn_pool.push(txn);
+                } else {
+                    info!("CLEAN UP Ignoring already included txn: {:?}",
+                          txn.id());
                 }
             }
         }

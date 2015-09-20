@@ -161,8 +161,8 @@ impl Transaction {
         }
     }
     pub fn serialize_signature<W: Write>(&self, mut writer: W) -> Result<()> {
-        info!("Serializing signature of length: {}", &self.sig_len_bytes);
-        info!("Serialized sig_buf: {:?}", &self.author_sig[..]);
+        debug!("Serializing signature of length: {}", &self.sig_len_bytes);
+        debug!("Serialized sig_buf: {:?}", &self.author_sig[..]);
         assert_eq!(self.author_sig[..].len(), self.sig_len_bytes as usize);
         assert!((self.sig_len_bytes as usize) <= MAX_SIGNATURE_LEN_BYTES);
         writer.write(&self.author_sig[..]).unwrap();
@@ -202,7 +202,7 @@ pub fn deserialize_signature<R: Read>(reader: R,
             sig_len_bytes: u8) -> Result<Signature> {
     let mut sig_buf = Vec::new();
     try!(reader.take(sig_len_bytes as u64).read_to_end(&mut sig_buf));
-    info!("Deserialized sig_buf: {:?}", &sig_buf[..]);
+    debug!("Deserialized sig_buf: {:?}", &sig_buf[..]);
     let sig = Signature::from_slice(&sig_buf[..]).unwrap();
     Ok(sig)
 }
