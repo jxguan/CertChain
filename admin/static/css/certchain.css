@@ -228,6 +228,10 @@ ul#cc-messages > li.success {
 	text-align: right;
 }
 
+#cc-trust-arbitrary form {
+	margin: 0;
+}
+
 #cc-trust-arbitrary .cc-btn {
 	margin-top: -10px;
 }

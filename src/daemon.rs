@@ -193,14 +193,12 @@ pub fn run(config: CertChainConfig) -> () {
             let ref mut txn_pool: Vec<Transaction> =
                 *txn_pool.write().unwrap();
             let ref all_txns = all_txns_set.read().unwrap();
-            info!("START all_txns: {:?}", all_txns.deref());
             while txn_pool.len() > 0 {
                 let txn = txn_pool.pop().unwrap();
+                // Discard any txns that have already been included
+                // in prior blocks.
                 if !all_txns.contains(&txn.id()) {
                     block.add_txn(txn);
-                } else {
-                    info!("START Ignoring already included txn: {:?}",
-                          txn.id());
                 }
             }
         }
@@ -228,7 +226,7 @@ pub fn run(config: CertChainConfig) -> () {
             if header_hash[0] == 0
                     && header_hash[1] == 0 {
                     // && header_hash[2] <= 0x87 {
-                info!("Mined block; hash: {:?}", header_hash);
+                info!("BLOCK MINED | hash: {:?}", header_hash);
                 // Broadcast block to peers.
                 for tx in peer_txs_c2.lock().unwrap().deref() {
                     let mut bytes = Vec::new();
@@ -241,7 +239,7 @@ pub fn run(config: CertChainConfig) -> () {
             }
 
             if block.header.nonce == u64::max_value() {
-                info!("Reached max nonce value; will rebuild block.");
+                info!("Discarding block; reached max nonce value.");
                 block_to_cleanup = Some(block);
                 break;
             }
@@ -249,7 +247,7 @@ pub fn run(config: CertChainConfig) -> () {
             let ref chain_read = *blockchain.read().unwrap();
             if block.header.parent_block_hash !=
                     chain_read.active_tip_block_header_hash() {
-                info!("Aborting mining; block's parent is longer active tip.");
+                info!("Discarding block; block's parent is longer active tip.");
                 block_to_cleanup = Some(block);
                 break;
             }
@@ -273,16 +271,12 @@ pub fn run(config: CertChainConfig) -> () {
                     let ref mut txn_pool: Vec<Transaction> =
                         *txn_pool.write().unwrap();
                     let ref all_txns = all_txns_set.read().unwrap();
-                    info!("CLEAN UP all_txns: {:?}", all_txns.deref());
                     while cleanup_block.txns().len() > 0 {
                         let txn = cleanup_block.pop_txn();
                         // Only move the txn back to the pool if it
                         // hasn't already been seen in a block.
                         if !all_txns.contains(&txn.id()) {
                             txn_pool.push(txn);
-                        } else {
-                            info!("CLEAN UP Ignoring already included txn: {:?}",
-                                  txn.id());
                         }
                     }
                 }
