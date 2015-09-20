@@ -239,7 +239,7 @@ pub struct Block {
     pub magic: u32,
     pub header: BlockHeader,
     pub txn_count: u32,
-    pub txns: Vec<Transaction>
+    txns: Vec<Transaction>
 }
 
 impl Block {
@@ -267,6 +267,20 @@ impl Block {
         }
     }
 
+    pub fn add_txn(&mut self, txn: Transaction) {
+        self.txns.push(txn);
+        self.txn_count += 1;
+    }
+
+    pub fn pop_txn(&mut self) -> Transaction {
+        self.txn_count -= 1;
+        self.txns.pop().unwrap()
+    }
+
+    pub fn txns(&self) -> &Vec<Transaction> {
+        &self.txns
+    }
+
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
         try!(writer.write_u32::<BigEndian>(self.magic));
         try!(self.header.serialize(&mut writer));
@@ -288,7 +302,7 @@ impl Block {
             txns: {
                 let mut txns = Vec::new();
                 for _ in 0..txn_count {
-                    txns.push(try!(Transaction::deserialize(&mut reader)));
+                    txns.push(Transaction::deserialize(&mut reader).unwrap());
                 }
                 txns
             }
