@@ -1,6 +1,7 @@
 use std::io::Result;
 use std::io::{Read, Write};
-use byteorder::{ReadBytesExt, WriteBytesExt};
+use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
+use time;
 use secp256k1::key::{SecretKey, PublicKey};
 use secp256k1::{Secp256k1, Signature, Message};
 use address;
@@ -29,6 +30,7 @@ pub enum TransactionType {
 #[derive(Debug)]
 pub struct Transaction {
     pub txn_type: TransactionType,
+    pub timestamp: i64,
     pub author_addr: Address,
     pub author_pubkey: PublicKey,
     pub sig_len_bytes: u8,
@@ -48,15 +50,18 @@ impl Transaction {
         // Compute author's address from public key.
         let author_addr = address::from_pubkey(&author_pubkey).unwrap();
 
+        let timestamp = time::get_time().sec;
+
         // Compute and sign checksum.
         let checksum = Self::checksum(
-                &txn_type, &author_addr, &author_pubkey);
+                &txn_type, timestamp, &author_addr, &author_pubkey);
         let checksum_msg = Message::from_slice(&checksum[..]).unwrap();
         let context = Secp256k1::new();
         let author_sig= context.sign(&checksum_msg, &author_seckey).unwrap();
 
         let txn = Transaction {
             txn_type: txn_type,
+            timestamp: timestamp,
             author_addr: author_addr,
             author_pubkey: author_pubkey,
             sig_len_bytes: author_sig.len() as u8,
@@ -94,11 +99,13 @@ impl Transaction {
                         magic: {}", i)
         };
 
+        let timestamp = reader.read_i64::<BigEndian>().unwrap();
         let author_addr = address::deserialize(&mut reader).unwrap();
         let author_pubkey = key::deserialize_pubkey(&mut reader).unwrap();
         let sig_len_bytes = reader.read_u8().unwrap();
         let txn = Transaction {
             txn_type: txn_type,
+            timestamp: timestamp,
             author_addr: author_addr,
             author_pubkey: author_pubkey,
             sig_len_bytes: sig_len_bytes,
@@ -112,6 +119,7 @@ impl Transaction {
 
     pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
         Self::serialize_txn_type(&self.txn_type, &mut writer).unwrap();
+        writer.write_i64::<BigEndian>(self.timestamp).unwrap();
         self.author_addr.serialize(&mut writer).unwrap();
         key::serialize_pubkey(&self.author_pubkey, &mut writer).unwrap();
         writer.write_u8(self.sig_len_bytes).unwrap();
@@ -120,17 +128,22 @@ impl Transaction {
     }
 
     fn checksum(txn_type: &TransactionType,
+                timestamp: i64,
                 author_addr: &Address,
                 author_pubkey: &PublicKey) -> DoubleSha256Hash {
         let mut buf = Vec::new();
         Self::serialize_txn_type(&txn_type, &mut buf).unwrap();
+        buf.write_i64::<BigEndian>(timestamp).unwrap();
         author_addr.serialize(&mut buf).unwrap();
         key::serialize_pubkey(&author_pubkey, &mut buf).unwrap();
         DoubleSha256Hash::hash(&buf[..])
     }
 
     pub fn has_valid_signature(&self) -> bool {
-        let checksum = Self::checksum(&self.txn_type, &self.author_addr, &self.author_pubkey);
+        let checksum = Self::checksum(&self.txn_type,
+                                      self.timestamp,
+                                      &self.author_addr,
+                                      &self.author_pubkey);
         info!("[SigValidity] checksum: {:?}", &checksum);
         let checksum_msg = Message::from_slice(&checksum[..]).unwrap();
         info!("[SigValidity] msg: {:?}", &checksum_msg);

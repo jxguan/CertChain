@@ -237,38 +237,41 @@ pub fn run(config: CertChainConfig) -> () {
             block.header.nonce += 1;
         }
 
-        // Determine if the block we just mined still has the active
-        // chain block as its parent; if so, add it to the blockchain,
-        // otherwise do nothing with it and start mining again.
-        let mut is_parent_still_active;
-        {
-            let ref chain_read = *blockchain.read().unwrap();
-            is_parent_still_active = block.header.parent_block_hash
-                == chain_read.active_tip_block_header_hash();
-        }
-        if is_block_mined && is_parent_still_active {
+        if is_block_mined {
 
-            info!("Mined block {:?} on top of main chain; \
-                    broadcasting to peers and adding to chain.",
-                    block.header.hash());
-
-            // Broadcast block to peers.
-            for tx in peer_txs_c2.lock().unwrap().deref() {
-                let mut bytes = Vec::new();
-                block.serialize(&mut bytes).unwrap();
-                tx.send(NetworkMessage::new(
-                        PayloadFlag::Block, bytes)).unwrap();
+            // Determine if the block we just mined still has the active
+            // chain block as its parent; if so, add it to the blockchain,
+            // otherwise do nothing with it and start mining again.
+            let mut is_parent_still_active;
+            {
+                let ref chain_read = *blockchain.read().unwrap();
+                is_parent_still_active = block.header.parent_block_hash
+                    == chain_read.active_tip_block_header_hash();
             }
+            if is_parent_still_active {
 
-            // Add block to blockchain.
-            blockchain.write().unwrap().add_block(block,
-                    &mut trust_table.write().unwrap(),
-                    &mut certified_table.write().unwrap(),
-                    &mut revoked_table.write().unwrap());
+                info!("Mined block {:?} on top of main chain; \
+                        broadcasting to peers and adding to chain.",
+                        block.header.hash());
 
-            // Don't execute the cleanup operations below,
-            // simply skip back to top of loop to build another block.
-            continue
+                // Broadcast block to peers.
+                for tx in peer_txs_c2.lock().unwrap().deref() {
+                    let mut bytes = Vec::new();
+                    block.serialize(&mut bytes).unwrap();
+                    tx.send(NetworkMessage::new(
+                            PayloadFlag::Block, bytes)).unwrap();
+                }
+
+                // Add block to blockchain.
+                blockchain.write().unwrap().add_block(block,
+                        &mut trust_table.write().unwrap(),
+                        &mut certified_table.write().unwrap(),
+                        &mut revoked_table.write().unwrap());
+
+                // Don't execute the cleanup operations below,
+                // simply skip back to top of loop to build another block.
+                continue
+            }
         }
 
         // For all unsuccessfully mined blocks, move their txns back
