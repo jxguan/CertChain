@@ -197,17 +197,17 @@ pub fn run(config: CertChainConfig) -> () {
             while txn_pool.len() > 0 {
                 let txn = txn_pool.pop().unwrap();
                 if !all_txns.contains(&txn.id()) {
-                    block.txns.push(txn);
+                    block.add_txn(txn);
                 } else {
                     info!("START Ignoring already included txn: {:?}",
                           txn.id());
                 }
             }
         }
-        block.header.merkle_root_hash = block.txns.merkle_root();
+        block.header.merkle_root_hash = block.txns().merkle_root();
 
         info!("Mining block with {} txns; block parent: {:?}; merkle root: {:?}",
-            block.txns.len(),
+            block.txns().len(),
             block.header.parent_block_hash,
             block.header.merkle_root_hash);
 
@@ -219,7 +219,7 @@ pub fn run(config: CertChainConfig) -> () {
             // do not block if none have been sent.
             if let Ok(b) = block_rx.try_recv() {
                 info!("Received block on block_rx channel from \
-                        network.");
+                        network: {:?}", b.header.hash());
                 block_to_add = Some(b);
                 break;
             }
@@ -274,8 +274,8 @@ pub fn run(config: CertChainConfig) -> () {
                         *txn_pool.write().unwrap();
                     let ref all_txns = all_txns_set.read().unwrap();
                     info!("CLEAN UP all_txns: {:?}", all_txns.deref());
-                    while cleanup_block.txns.len() > 0 {
-                        let txn = cleanup_block.txns.pop().unwrap();
+                    while cleanup_block.txns().len() > 0 {
+                        let txn = cleanup_block.pop_txn();
                         // Only move the txn back to the pool if it
                         // hasn't already been seen in a block.
                         if !all_txns.contains(&txn.id()) {
