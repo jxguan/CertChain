@@ -235,3 +235,22 @@ ul#cc-messages > li.success {
 #cc-no-institutions {
 	text-align: center;
 }
+
+.cc-trusted-ratio,
+.cc-not-trusted-ratio {
+	border: 1px solid gray;
+	border-radius: 5px;
+	font-size: 1.3em;
+	margin-bottom: 5px;
+	display: inline-block;
+	margin-top: -3px;
+	padding: 5px 10px;
+}
+
+.cc-trusted-ratio {
+	background-color: #93FF46;
+}
+
+.cc-not-trusted-ratio {
+	background-color: #F86470;
+}

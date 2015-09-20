@@ -10,8 +10,7 @@ https://docs.djangoproject.com/en/1.7/ref/settings/
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/1.7/howto/deployment/checklist/
@@ -90,10 +89,3 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 # MQUINN 09-19-2015 : Overriding the login url.
 LOGIN_URL = '/'
-
-# MQUINN 09-19-2015 : Adding the institution-specific settings.
-# TODO: Split this out into separate institution-specific
-# settings files.
-INSTITUTION_CERTCHAIN_ADDRESS = 'ch5rFRFu5VCL1cadRLpSdA3K2xJeK4bUyw'
-INSTITUTION_CERTCHAIN_NODE_HOSTNAME = 'localhost'
-INSTITUTION_CERTCHAIN_NODE_RPC_PORT = '5001'

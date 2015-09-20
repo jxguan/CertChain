@@ -1,3 +1,4 @@
+from __future__ import division
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
@@ -31,24 +32,38 @@ def overview(request):
   trust_list = []
   can_trust_insts = []
   can_revoke_insts = []
-  # For each institution on the network other than ourselves,
-  # determine if we trust them or not, and note that so we
-  # can determine which button to show. Also note that
-  # if we appear in the list, we insert ourself at the front
-  # of the list so we appear at the top of the trust list page.
+
+  # Determine for each institution their trusted status.
   for inst_addr, trusting_addrs in trust_table.iteritems():
+    # First, calculate the trust ratio for the institution.
+    trust_ratio = 0
+    if len(trusting_addrs) > 0:
+      active_trusting_addrs = 0
+      for trusting_addr in trusting_addrs:
+        if trusting_addr in trust_table and\
+            len(trust_table[trusting_addr]) > 0:
+          active_trusting_addrs += 1
+      try:
+        trust_ratio = active_trusting_addrs / (len(trust_table) - 1)
+      except ZeroDivisionError:
+        trust_ratio = 0
+    # Then, if this institution is, prepend our info to the list.
     if inst_addr == settings.INSTITUTION_CERTCHAIN_ADDRESS:
-      trust_list.insert(0, (inst_addr, trusting_addrs))
+      trust_list.insert(0, (inst_addr, trusting_addrs, trust_ratio))
+    # Otherwise, if not us, append info and determine what actions
+    # we can take for this institution.
     else:
-      trust_list.append((inst_addr, trusting_addrs))
+      trust_list.append((inst_addr, trusting_addrs, trust_ratio))
       if settings.INSTITUTION_CERTCHAIN_ADDRESS in trusting_addrs:
         can_revoke_insts.append(inst_addr)
       else:
         can_trust_insts.append(inst_addr)
+
   return render(request, 'certchain/overview.html',\
     {'trust_list' : trust_list,\
     'can_trust_insts' : can_trust_insts,\
     'can_revoke_insts' : can_revoke_insts})
+
 
 @login_required
 def trust_institution(request):

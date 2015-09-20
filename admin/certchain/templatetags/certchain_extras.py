@@ -14,3 +14,18 @@ def cc_addr_to_name(addr):
     return 'University of Virginia'
   else:
     return '(Unrecognized Institution)'
+
+@register.filter
+def cc_trust_ratio(trust_ratio):
+  percent = "{0:.0f}%".format(trust_ratio * 100)
+  if trust_ratio >= 0.75:
+    return "TRUSTED (" + percent + ")"
+  else:
+    return "NOT TRUSTED (" + percent + ")"
+
+@register.filter
+def cc_trust_ratio_class(trust_ratio):
+  if trust_ratio >= 0.75:
+    return "cc-trusted-ratio"
+  else:
+    return "cc-not-trusted-ratio"
