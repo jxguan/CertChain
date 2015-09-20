@@ -220,7 +220,6 @@ pub fn run(config: CertChainConfig) -> () {
             if let Ok(b) = block_rx.try_recv() {
                 info!("Received block on block_rx channel from \
                         network: {:?}", b.header.hash());
-                      b.txns().len());
                 block_to_add = Some(b);
                 break;
             }
