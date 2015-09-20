@@ -64,7 +64,7 @@ pub fn run(config: CertChainConfig) -> () {
          * TODO: Save the Listening struct returned here
          * and call close() on it once graceful shutdown is supported.
          */
-        let _ = Server::http((&"127.0.0.1"[..], rpc_port)).unwrap().handle(
+        let _ = Server::http((&"0.0.0.0"[..], rpc_port)).unwrap().handle(
             move |mut req: Request, mut res: Response<Fresh>| {
                 match (req.method.clone(), req.uri.clone()) {
                     (hyper::Get, AbsolutePath(ref path))
