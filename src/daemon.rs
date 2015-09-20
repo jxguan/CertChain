@@ -212,60 +212,23 @@ pub fn run(config: CertChainConfig) -> () {
             block.header.merkle_root_hash);
 
         // Search for a header that meets difficulty requirement.
-        let mut is_block_mined = false;
+        let mut block_to_add = None;
+        let mut block_to_cleanup = None;
         loop {
             // Add any blocks that have been sent to us while mining;
             // do not block if none have been sent.
-            while let Ok(b) = block_rx.try_recv() {
+            if let Ok(b) = block_rx.try_recv() {
                 info!("Received block on block_rx channel from \
-                        network; adding to blockchain.");
-                blockchain.write().unwrap().add_block(b,
-                    &mut all_txns_set.write().unwrap(),
-                    &mut trust_table.write().unwrap(),
-                    &mut certified_table.write().unwrap(),
-                    &mut revoked_table.write().unwrap());
+                        network.");
+                block_to_add = Some(b);
+                break;
             }
 
             let header_hash = block.header.hash();
             if header_hash[0] == 0
                     && header_hash[1] == 0 {
                     // && header_hash[2] <= 0x87 {
-                info!("Mined block; hash prefix: {:?}", header_hash);
-                is_block_mined = true;
-                break;
-            }
-
-            if block.header.nonce == u64::max_value() {
-                info!("Reached max nonce value; will rebuild block.");
-                break;
-            }
-
-            let ref chain_read = *blockchain.read().unwrap();
-            if block.header.parent_block_hash !=
-                    chain_read.active_tip_block_header_hash() {
-                info!("Aborting mining; block's parent is longer active tip.");
-                break;
-            }
-            block.header.nonce += 1;
-        }
-
-        if is_block_mined {
-
-            // Determine if the block we just mined still has the active
-            // chain block as its parent; if so, add it to the blockchain,
-            // otherwise do nothing with it and start mining again.
-            let mut is_parent_still_active;
-            {
-                let ref chain_read = *blockchain.read().unwrap();
-                is_parent_still_active = block.header.parent_block_hash
-                    == chain_read.active_tip_block_header_hash();
-            }
-            if is_parent_still_active {
-
-                info!("Mined block {:?} on top of main chain; \
-                        broadcasting to peers and adding to chain.",
-                        block.header.hash());
-
+                info!("Mined block; hash: {:?}", header_hash);
                 // Broadcast block to peers.
                 for tx in peer_txs_c2.lock().unwrap().deref() {
                     let mut bytes = Vec::new();
@@ -273,36 +236,55 @@ pub fn run(config: CertChainConfig) -> () {
                     tx.send(NetworkMessage::new(
                             PayloadFlag::Block, bytes)).unwrap();
                 }
-
-                // Add block to blockchain.
-                blockchain.write().unwrap().add_block(block,
-                        &mut all_txns_set.write().unwrap(),
-                        &mut trust_table.write().unwrap(),
-                        &mut certified_table.write().unwrap(),
-                        &mut revoked_table.write().unwrap());
-
-                // Don't execute the cleanup operations below,
-                // simply skip back to top of loop to build another block.
-                continue
+                block_to_add = Some(block);
+                break;
             }
+
+            if block.header.nonce == u64::max_value() {
+                info!("Reached max nonce value; will rebuild block.");
+                block_to_cleanup = Some(block);
+                break;
+            }
+
+            let ref chain_read = *blockchain.read().unwrap();
+            if block.header.parent_block_hash !=
+                    chain_read.active_tip_block_header_hash() {
+                info!("Aborting mining; block's parent is longer active tip.");
+                block_to_cleanup = Some(block);
+                break;
+            }
+            block.header.nonce += 1;
         }
 
-        // For all unsuccessfully mined blocks, move their txns back
-        // to the txn pool for inclusion in the next block.
-        {
-            let ref mut txn_pool: Vec<Transaction> =
-                *txn_pool.write().unwrap();
-            let ref all_txns = all_txns_set.read().unwrap();
-            info!("CLEAN UP all_txns: {:?}", all_txns.deref());
-            while block.txns.len() > 0 {
-                let txn = block.txns.pop().unwrap();
-                // Only move the txn back to the pool if it
-                // hasn't already been seen in a block.
-                if !all_txns.contains(&txn.id()) {
-                    txn_pool.push(txn);
-                } else {
-                    info!("CLEAN UP Ignoring already included txn: {:?}",
-                          txn.id());
+        match block_to_add {
+            Some(block) => {
+
+            // Add block to blockchain.
+            blockchain.write().unwrap().add_block(block,
+                    &mut all_txns_set.write().unwrap(),
+                    &mut trust_table.write().unwrap(),
+                    &mut certified_table.write().unwrap(),
+                    &mut revoked_table.write().unwrap());
+            },
+            None => {
+                if let Some(ref mut cleanup_block) = block_to_cleanup {
+                    // For all unsuccessfully mined blocks, move their txns back
+                    // to the txn pool for inclusion in the next block.
+                    let ref mut txn_pool: Vec<Transaction> =
+                        *txn_pool.write().unwrap();
+                    let ref all_txns = all_txns_set.read().unwrap();
+                    info!("CLEAN UP all_txns: {:?}", all_txns.deref());
+                    while cleanup_block.txns.len() > 0 {
+                        let txn = cleanup_block.txns.pop().unwrap();
+                        // Only move the txn back to the pool if it
+                        // hasn't already been seen in a block.
+                        if !all_txns.contains(&txn.id()) {
+                            txn_pool.push(txn);
+                        } else {
+                            info!("CLEAN UP Ignoring already included txn: {:?}",
+                                  txn.id());
+                        }
+                    }
                 }
             }
         }
