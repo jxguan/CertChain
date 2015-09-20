@@ -49,6 +49,8 @@ pub fn run(config: CertChainConfig) -> () {
         = Arc::new(RwLock::new(HashMap::new()));
     let revoked_table: Arc<RwLock<HashMap<TxnId, (u32, Vec<u8>)>>>
         = Arc::new(RwLock::new(HashMap::new()));
+    let all_txns_set: Arc<RwLock<HashSet<TxnId>>>
+        = Arc::new(RwLock::new(HashSet::new()));
 
     start_txn_pool_listener(txn_pool.clone(), txn_pool_rx);
 
@@ -59,6 +61,7 @@ pub fn run(config: CertChainConfig) -> () {
     let trust_table_clone = trust_table.clone();
     let certified_table_clone = certified_table.clone();
     let revoked_table_clone = revoked_table.clone();
+    let all_txns_set_clone = all_txns_set.clone();
     thread::spawn(move || {
         /*
          * TODO: Save the Listening struct returned here
@@ -189,8 +192,12 @@ pub fn run(config: CertChainConfig) -> () {
         {
             let ref mut txn_pool: Vec<Transaction> =
                 *txn_pool.write().unwrap();
+            let ref all_txns = all_txns_set.read().unwrap();
             while txn_pool.len() > 0 {
-                block.txns.push(txn_pool.pop().unwrap());
+                let txn = txn_pool.pop().unwrap();
+                if !all_txns.contains(&txn.id()) {
+                    block.txns.push(txn);
+                }
             }
         }
         block.header.merkle_root_hash = block.txns.merkle_root();
@@ -209,6 +216,7 @@ pub fn run(config: CertChainConfig) -> () {
                 info!("Received block on block_rx channel from \
                         network; adding to blockchain.");
                 blockchain.write().unwrap().add_block(b,
+                    &mut all_txns_set.write().unwrap(),
                     &mut trust_table.write().unwrap(),
                     &mut certified_table.write().unwrap(),
                     &mut revoked_table.write().unwrap());
@@ -264,6 +272,7 @@ pub fn run(config: CertChainConfig) -> () {
 
                 // Add block to blockchain.
                 blockchain.write().unwrap().add_block(block,
+                        &mut all_txns_set.write().unwrap(),
                         &mut trust_table.write().unwrap(),
                         &mut certified_table.write().unwrap(),
                         &mut revoked_table.write().unwrap());
@@ -279,8 +288,14 @@ pub fn run(config: CertChainConfig) -> () {
         {
             let ref mut txn_pool: Vec<Transaction> =
                 *txn_pool.write().unwrap();
+            let ref all_txns = all_txns_set.read().unwrap();
             while block.txns.len() > 0 {
-                txn_pool.push(block.txns.pop().unwrap());
+                let txn = block.txns.pop().unwrap();
+                // Only move the txn back to the pool if it
+                // hasn't already been seen in a block.
+                if !all_txns.contains(&txn.id()) {
+                    txn_pool.push(txn);
+                }
             }
         }
     }

@@ -56,6 +56,7 @@ impl Blockchain {
     }
 
     pub fn add_block(&mut self, block: Block,
+                     all_txns_set: &mut HashSet<TxnId>,
                      trust_table: &mut HashMap<String, HashSet<String>>,
                      certified_table: &mut HashMap<TxnId, (u32, Vec<u8>)>,
                      revoked_table: &mut HashMap<TxnId, (u32, Vec<u8>)>) {
@@ -79,6 +80,7 @@ impl Blockchain {
         // through them and index them in the appropriate
         // lookup tables.
         for txn in &(*block_node).block.txns {
+            all_txns_set.insert(txn.id());
             match txn.txn_type {
                 TransactionType::Trust(address) => {
                     let base58addr = address.to_base58();
