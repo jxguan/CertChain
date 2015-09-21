@@ -258,3 +258,18 @@ ul#cc-messages > li.success {
 .cc-not-trusted-ratio {
 	background-color: #F86470;
 }
+
+#cc-secure-links {
+	margin-bottom: 20px;
+	font-size: 1.4em;
+}
+
+#cc-secure-links span {
+	padding-right: 7px;
+}
+
+#cc-secure-links a.selected {
+	font-weight: bold;
+	color: black;
+	text-decoration: none;
+}

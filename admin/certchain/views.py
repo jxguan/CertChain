@@ -102,3 +102,7 @@ def untrust_institution(request):
         for ' + cc_addr_to_name(addr) + ': ' + str(resp.status_code))
     return redirect(reverse('certchain:overview'))
   raise Http404
+
+@login_required
+def certifications(request):
+  return render(request, 'certchain/certifications.html', {})

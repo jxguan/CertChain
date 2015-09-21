@@ -5,6 +5,14 @@
 {% block content %}
 <div class="container cc-container">
   <div class="row">
+    <div id="cc-secure-links" class="span12">
+      <span><a class="selected" href="{% url 'certchain:overview' %}">Network Overview</a></span>
+      <span>-</span>
+      <span><a href="{% url 'certchain:certifications' %}">Manage Certifications</a></span>
+    </div>
+  </div>
+
+  <div class="row">
     <div class="span12">
       <h2>Network Trust States</h2>
       <p>The institutions below have been registered on the network, and are accompanied by a list of those that trust them. In order to perform certifications and revocations on the network, an institution must maintain the trust of at least 75% of those peer institutions that are themselves trusted by at least one other institution.</p>
