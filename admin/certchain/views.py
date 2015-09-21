@@ -106,3 +106,7 @@ def untrust_institution(request):
 @login_required
 def diplomas(request):
   return render(request, 'certchain/diplomas.html', {})
+
+# No login required for document viewer.
+def viewer(request):
+  return render(request, 'certchain/viewer.html', {})

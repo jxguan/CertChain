@@ -1,0 +1,76 @@
+body {
+  background-color: #484848;
+}
+
+* {
+  font-family: 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+}
+
+.hidden {
+  display: none;
+}
+
+#document {
+  margin: 0 auto;
+  width: 75%;
+  height: 100%;
+  background-image: url('/static/certchain/images/diploma_bg.jpg');
+  background-position: center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  padding: 10px;
+}
+
+#cert-area {
+  display: block;
+  width: 90%;
+  padding: 10px;
+  margin-left: 45px;
+  margin-top: 20px;
+  font-size: 1.2em;
+  line-height: 130%;
+}
+
+#cert-status {
+  font-weight: bold;
+}
+
+#cert-details {
+  font-size: 0.9em !important;
+}
+
+#cert-area.valid {
+  background-color: #BBFF4B;
+  border: 1px solid #81CA0C;
+}
+
+#cert-area.invalid {
+  background-color: #FF9292;
+  border: 1px solid #C60000;
+}
+
+#cert-area.pending {
+  background-color: #F6FF84;
+  border: 1px solid #D6DE6C;
+}
+
+#cert-area.in-progress {
+  background-color: #F6FF84;
+  border: 1px solid #D6DE6C;
+}
+
+#document-body {
+  padding-top: 240px;
+}
+
+#document-body > * {
+  display: block;
+  margin: 0 auto;
+  text-align: center;
+  padding: 10px 0;
+  font-size: 1.7em;
+}
+
+#label-line1 {
+  font-weight: bold;
+}

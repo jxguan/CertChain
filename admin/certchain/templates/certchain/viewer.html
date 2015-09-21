@@ -1,0 +1,61 @@
+{% load staticfiles %}
+
+<html>
+  <head>
+    <title>Certchain Document Viewer</title>
+    <link href='//fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600,700,400italic' rel='stylesheet' type='text/css'>
+    <link href="{% static 'certchain/css/viewer.css'%}" rel="stylesheet"/>
+  </head>
+  <body>
+    <div id="document">
+      <div id="cert-area" class="in-progress">
+        <span id="cert-status">Verification in progress...</span>
+        <br/>
+        <span id="cert-details" class="hidden">The public record of this certification is available for viewing at <a href="https://www.blocktrail.com/tBTC/tx/{{ txn_id }}">{{ txn_id }}.</a></span>
+      </div>
+      <div id="document-body">
+        <span id="label-line1">{{ label_line1 }}</span>
+        <span id="label-line2">{{ label_line2 }}</span>
+        <span id="label-line3">{{ label_line3 }}</span>
+      </div>
+    </div>
+
+    <script src="{% static 'certchain/js/jquery-1.10.2.min.js' %}"></script>
+    <script type="text/javascript">
+      $(document).ready(function(){
+
+        window.verifyCertification = function(txn_id, document_hash) {
+          $.ajax({
+            method: 'GET',
+            dataType: 'json',
+            url: '/auth/locker/verify_certification',
+            data: {
+              'txnId' : txn_id,
+              'documentHash' : document_hash
+            },
+            success: function(response) {
+              $('#cert-area').removeClass('in-progress');
+              $('#cert-status').text(response.statusMsg);
+              
+              if (response.statusCode == 'VALID') {
+                $('#cert-details').removeClass('hidden');
+                $('#cert-area').addClass('valid');
+              } else if (response.statusCode == 'PENDING') {
+                $('#cert-details').addClass('hidden');
+                $('#cert-area').addClass('pending');
+              } else {
+                $('#cert-details').addClass('hidden');
+                $('#cert-area').addClass('invalid');
+              }
+            },
+            error: function(xhr, error) {
+              alert(error);
+            }
+          });
+        };
+
+        window.verifyCertification('{{ txn_id }}', '{{ document_hash }}')
+      });
+    </script>
+  </body>
+</html>
