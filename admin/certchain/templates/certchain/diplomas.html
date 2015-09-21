@@ -63,15 +63,21 @@
           <th>Status</th>
           <th></th>
         </tr>
+        {% for txn in txns %}
         <tr>
-          <td><a href="{% url 'viewer' %}">a45fcdef</a></td>
-          <td>Aaron Yates</td>
-          <td>PhD, Chemistry</td>
-          <td>April 10, 2015</td>
-          <td>Sep 19, 2015 5:23 PM</td>
-          <td>CERTIFIED</td>
+          <td><a href="{% url 'viewer' %}">{{ txn.txn_id | slice:"0:9" }}</a></td>
+          <td>{{ txn.document | cc_extract_recipient }}</td>
+          <td>{{ txn.document | cc_extract_degree }}</td>
+          <td>{{ txn.document | cc_extract_conferral_date }}</td>
+          <td></td>
+          <td></td>
           <td><a class="cc-btn" href="">REVOKE</a></td>
         </tr>
+        {% empty %}
+        <tr>
+          <td colspan="7">Your institution has not certified any diplomas yet.</td>
+        </tr>
+        {% endfor %}
       </table>
     </div>
   </div>

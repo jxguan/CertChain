@@ -1,3 +1,5 @@
 from django.db import models
 
-# Create your models here.
+class Transaction(models.Model):
+  txn_id = models.TextField(null=False, unique=True)
+  document = models.TextField(null=False)

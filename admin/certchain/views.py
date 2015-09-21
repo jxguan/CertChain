@@ -7,8 +7,9 @@ import requests, json
 from django.core.urlresolvers import reverse
 from django.conf import settings
 from templatetags.certchain_extras import cc_addr_to_name
+from models import Transaction
 
-# NOTE: relpath should have leading '/'
+# NOTE: relpath must have leading '/'
 def create_rpc_url(relpath):
   return 'http://' + settings.INSTITUTION_CERTCHAIN_NODE_HOSTNAME\
     + ':' + settings.INSTITUTION_CERTCHAIN_NODE_RPC_PORT + relpath
@@ -105,7 +106,10 @@ def untrust_institution(request):
 
 @login_required
 def diplomas(request):
-  return render(request, 'certchain/diplomas.html', {})
+  txns = Transaction.objects.all()
+  return render(request, 'certchain/diplomas.html', {
+    'txns' : txns
+    })
 
 @login_required
 def certify_diploma(request):
@@ -122,6 +126,10 @@ def certify_diploma(request):
       data=document)
     if resp.status_code == 200:
       txn_id = resp.text
+      Transaction.objects.create(
+        txn_id=txn_id,
+        document=document
+      )
       messages.success(request,\
         'The diploma has been submitted to the network as transaction ' + txn_id)
     else:

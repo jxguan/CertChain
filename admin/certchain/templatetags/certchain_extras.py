@@ -1,4 +1,5 @@
 from django import template
+import json
 
 register = template.Library()
 
@@ -29,3 +30,15 @@ def cc_trust_ratio_class(trust_ratio):
     return "cc-trusted-ratio"
   else:
     return "cc-not-trusted-ratio"
+
+@register.filter
+def cc_extract_recipient(document_json):
+  return json.loads(document_json)['recipient']
+
+@register.filter
+def cc_extract_degree(document_json):
+  return json.loads(document_json)['degree']
+
+@register.filter
+def cc_extract_conferral_date(document_json):
+  return json.loads(document_json)['conferral_date']
