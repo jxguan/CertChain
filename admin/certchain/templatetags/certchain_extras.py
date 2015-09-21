@@ -1,5 +1,5 @@
 from django import template
-import json
+import json, datetime
 
 register = template.Library()
 
@@ -33,12 +33,26 @@ def cc_trust_ratio_class(trust_ratio):
 
 @register.filter
 def cc_extract_recipient(document_json):
-  return json.loads(document_json)['recipient']
+  try:
+    return json.loads(document_json)['recipient']
+  except Exception:
+    return ''
 
 @register.filter
 def cc_extract_degree(document_json):
-  return json.loads(document_json)['degree']
+  try:
+    return json.loads(document_json)['degree']
+  except Exception:
+    return ''
 
 @register.filter
 def cc_extract_conferral_date(document_json):
-  return json.loads(document_json)['conferral_date']
+  try:
+    return json.loads(document_json)['conferral_date']
+  except Exception:
+    return ''
+
+@register.filter
+def cc_format_sig_ts(seconds):
+  return datetime.datetime.fromtimestamp(
+        int(seconds))

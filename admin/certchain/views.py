@@ -106,9 +106,29 @@ def untrust_institution(request):
 
 @login_required
 def diplomas(request):
-  txns = Transaction.objects.all()
+  try:
+    resp = requests.get(create_rpc_url('/my_txns'))
+  except Exception as ex:
+    messages.error(request, 'Your institution\'s CertChain node \
+      is not available at this time.')
+    return render(request, 'certchain/diplomas.html', {})
+
+  txn_doc_map = {}
+  for txn in Transaction.objects.all():
+    txn_doc_map[txn.txn_id] = txn.document
+
+  txns = resp.json()
+  for txn in txns:
+    txn_id = txn['txn_id']
+    # There should always be a record in the database
+    # with a txn id returned by the peer node, but
+    # being cautious just in case (this way, record will appear,
+    # but with blank document fields).
+    if txn_id in txn_doc_map:
+      txn['document'] = txn_doc_map[txn_id]
+
   return render(request, 'certchain/diplomas.html', {
-    'txns' : txns
+      'txns' : txns,
     })
 
 @login_required

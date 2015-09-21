@@ -22,6 +22,15 @@ use secp256k1::key::{SecretKey, PublicKey};
 use rustc_serialize::json;
 use std::collections::{HashMap, HashSet};
 
+// Used in RCP response; designed to be serializable.
+#[derive(RustcEncodable)]
+struct TxnSummary {
+    pub txn_id: String,
+    pub signature_ts: String,
+    pub status: String,
+    pub revocation_txn_id: String,
+}
+
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
 
@@ -31,6 +40,7 @@ pub fn run(config: CertChainConfig) -> () {
         &config.secret_key).unwrap();
     let public_key: PublicKey = key::compressed_public_key_from_string(
         &config.compressed_public_key).unwrap();
+    let institution_addr: Address = address::from_pubkey(&public_key).unwrap();
 
     // Listen on the network, and connect to all
     // trusted peers on the network.
@@ -105,6 +115,23 @@ pub fn run(config: CertChainConfig) -> () {
                             }
                         }
                     },
+                    (hyper::Get, AbsolutePath(ref path))
+                            if path == "/my_txns" => {
+                        let mut txns = Vec::new();
+                        let txn_pool = txn_pool_refclone.read().unwrap();
+                        for txn in txn_pool.iter() {
+                            if txn.author_addr == institution_addr {
+                                txns.push(TxnSummary {
+                                    txn_id: format!("{:?}", txn.id()),
+                                    signature_ts: format!("{}", txn.timestamp),
+                                    status: String::from("QUEUED"),
+                                    revocation_txn_id: String::new()
+                                });
+                            }
+                        }
+                        let json = json::as_pretty_json(&txns);
+                        res.send(format!("{}", json).as_bytes()).unwrap();
+                    }
                     (hyper::Post, AbsolutePath(ref path))
                             if path == "/trust_institution" => {
                         let mut req_body = String::new();

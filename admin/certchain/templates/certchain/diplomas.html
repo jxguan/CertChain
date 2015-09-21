@@ -69,8 +69,8 @@
           <td>{{ txn.document | cc_extract_recipient }}</td>
           <td>{{ txn.document | cc_extract_degree }}</td>
           <td>{{ txn.document | cc_extract_conferral_date }}</td>
-          <td></td>
-          <td></td>
+          <td>{{ txn.signature_ts | cc_format_sig_ts }}</td>
+          <td>{{ txn.status }}</td>
           <td><a class="cc-btn" href="">REVOKE</a></td>
         </tr>
         {% empty %}
