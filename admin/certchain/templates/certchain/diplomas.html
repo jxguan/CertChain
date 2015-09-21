@@ -1,0 +1,80 @@
+{% extends "auth_base.html" %}
+
+{% load certchain_extras %}
+
+{% block content %}
+<div class="container cc-container">
+  <div class="row">
+    <div id="cc-secure-links" class="span12">
+      <span><a href="{% url 'certchain:overview' %}">Network Overview</a></span>
+      <span>-</span>
+      <span><a class="selected" href="{% url 'certchain:diplomas' %}">Certify and Revoke Diplomas</a></span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <h2>Certify a New Diploma</h2>
+      <p>Fill out the diploma fields below; once submitted, a certification transaction will be sent out on the network for processing.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <div id="cc-new-diploma">
+        <form>
+          <div>
+            <label>Recipient</label>
+            <input type="text"/>
+          </div>
+          <div>
+            <label>Degree</label>
+            <input type="text"/>
+          </div>
+          <div>
+            <label>Conferral Date</label>
+            <input type="text"/>
+          </div>
+          <input class="cc-btn" type="submit" value="CERTIFY"/>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <br/><br/>
+
+  <div class="row">
+    <div class="span12">
+      <h2>All Diplomas</h2>
+      <p>The list below reflects the current state of all diplomas certified by your institution on the CertChain network.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <table class="table">
+        <tr>
+          <th>Transaction</th>
+          <th>Recipient</th>
+          <th>Degree</th>
+          <th>Conferral Date</th>
+          <th>Signature Timestamp</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+        <tr>
+          <td><a href="">a45fcdef</a></td>
+          <td>Aaron Yates</td>
+          <td>PhD, Chemistry</td>
+          <td>April 10, 2015</td>
+          <td>Sep 19, 2015 5:23 PM</td>
+          <td>CERTIFIED</td>
+          <td><a class="cc-btn" href="">REVOKE</a></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+
+

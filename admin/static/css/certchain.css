@@ -288,3 +288,30 @@ ul#cc-messages > li.success {
 	color: black;
 	text-decoration: none;
 }
+
+#cc-new-diploma {
+	background-color: #E6E6E6;
+	border-radius: 5px;
+	padding: 10px;
+  box-shadow: rgba(0, 0, 0, 0.1) 0px 3px 5px 0px inset;
+}
+
+#cc-new-diploma > form {
+	margin: 0;
+	padding: 0;
+}
+
+#cc-new-diploma > form > div {
+	display: inline-block;
+	padding: 0 20px;
+}
+
+#cc-new-diploma label {
+	font-weight: bold;
+	color: black;
+}
+
+#cc-new-diploma input[type='submit'] {
+	float: right;
+	margin: 20px;
+}

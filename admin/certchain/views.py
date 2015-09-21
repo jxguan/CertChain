@@ -104,5 +104,5 @@ def untrust_institution(request):
   raise Http404
 
 @login_required
-def certifications(request):
-  return render(request, 'certchain/certifications.html', {})
+def diplomas(request):
+  return render(request, 'certchain/diplomas.html', {})
