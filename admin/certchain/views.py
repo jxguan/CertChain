@@ -107,6 +107,30 @@ def untrust_institution(request):
 def diplomas(request):
   return render(request, 'certchain/diplomas.html', {})
 
+@login_required
+def certify_diploma(request):
+  if request.method == 'POST':
+    payload = {
+      'recipient': request.POST['recipient'],
+      'degree': request.POST['degree'],
+      'conferral_date': request.POST['conferral_date']
+    }
+    # Be careful here; remember that changing the way the document
+    # is formatted will create different hashes.
+    document = json.dumps(payload, sort_keys=True)
+    resp = requests.post(create_rpc_url('/certify_document'),
+      data=document)
+    if resp.status_code == 200:
+      txn_id = resp.text
+      messages.success(request,\
+        'The diploma has been submitted to the network as transaction ' + txn_id)
+    else:
+      messages.error(request,\
+        'An error occurred while processing your \
+        certification request: ' + str(resp.status_code))
+    return redirect(reverse('certchain:diplomas'))
+  raise Http404
+
 # No login required for document viewer.
 def viewer(request):
   return render(request, 'certchain/viewer.html', {})

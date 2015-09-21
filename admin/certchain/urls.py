@@ -7,4 +7,5 @@ urlpatterns = patterns('',
   url(r'^trust_institution$', views.trust_institution, name='trust_institution'),
   url(r'^untrust_institution$', views.untrust_institution, name='untrust_institution'),
   url(r'^diplomas$', views.diplomas, name='diplomas'),
+  url(r'^certify_diploma$', views.certify_diploma, name='certify_diploma'),
 )

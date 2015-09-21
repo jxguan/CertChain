@@ -22,18 +22,19 @@
   <div class="row">
     <div class="span12">
       <div id="cc-new-diploma">
-        <form>
+        <form method="post" action="{% url 'certchain:certify_diploma' %}">
+          {% csrf_token %}
           <div>
             <label>Recipient</label>
-            <input type="text"/>
+            <input name="recipient" type="text"/>
           </div>
           <div>
             <label>Degree</label>
-            <input type="text"/>
+            <input name="degree" type="text"/>
           </div>
           <div>
             <label>Conferral Date</label>
-            <input type="text"/>
+            <input name="conferral_date" type="text"/>
           </div>
           <input class="cc-btn" type="submit" value="CERTIFY"/>
         </form>
