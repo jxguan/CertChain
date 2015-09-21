@@ -23,6 +23,11 @@ html, body, #su-wrap {
 	background-color: #56B3FB !important;
 }
 
+.cc-ireland-footer,
+.cc-ireland-brandbar {
+	background-color: #97C713 !important;
+}
+
 #su-wrap {
 	height: auto;
 	min-height: 100%;
