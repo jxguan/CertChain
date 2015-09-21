@@ -15,6 +15,11 @@ html, body, #su-wrap {
 
 .cc-tokyo-footer,
 .cc-tokyo-brandbar {
+	background-color: #C829EB !important;
+}
+
+.cc-uva-footer,
+.cc-uva-brandbar {
 	background-color: #56B3FB !important;
 }
 
