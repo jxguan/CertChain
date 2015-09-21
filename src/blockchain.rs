@@ -169,10 +169,10 @@ impl Blockchain {
                     None => 1,
                 };
                 author_table.insert(val.block.header.author, count);
-                if val.next.len() == 0 {
+                /*if val.next.len() == 0 {
                     info!("BLOCK TABLE SCAN: Found branch with height: {}",
                         val.height);
-                }
+                }*/
             }
 
             // Displays debug info about block authorship.
