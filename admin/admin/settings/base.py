@@ -25,9 +25,6 @@ TEMPLATE_DEBUG = True
 
 ALLOWED_HOSTS = []
 
-# MQUINN 09-19-2015 : Adding global templates directory.
-TEMPLATE_DIRS = [os.path.join(BASE_DIR, 'templates')]
-
 # Application definition
 
 INSTALLED_APPS = (

@@ -13,6 +13,11 @@ html, body, #su-wrap {
 	font-family: 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
 }
 
+.cc-tokyo-footer,
+.cc-tokyo-brandbar {
+	background-color: #56B3FB !important;
+}
+
 #su-wrap {
 	height: auto;
 	min-height: 100%;
