@@ -57,9 +57,8 @@ impl Blockchain {
 
     pub fn add_block(&mut self, block: Block,
                      my_addr: &Address,
-                     my_cert_txns_set: &mut HashSet<TxnId>,
                      all_txns_set: &mut HashSet<TxnId>,
-                     pooled_txns_map: &mut HashMap<TxnId, String>,
+                     pooled_cert_txns_map: &mut HashMap<TxnId, String>,
                      trust_table: &mut HashMap<String, HashSet<String>>,
                      certified_table: &mut HashMap<TxnId, (u32, Vec<u8>)>,
                      revoked_table: &mut HashMap<TxnId, (u32, Vec<u8>)>) {
@@ -85,7 +84,6 @@ impl Blockchain {
         for txn in &(*block_node).block.txns {
 
             all_txns_set.insert(txn.id());
-            pooled_txns_map.remove(&txn.id());
 
             match txn.txn_type {
                 TransactionType::Trust(address) => {
@@ -111,11 +109,13 @@ impl Blockchain {
                 },
                 TransactionType::Certify(_) => {
 
-                    // If this is a cert txn, index in set
-                    // so RPC status requests will pick it up.
-                    if txn.author_addr == *my_addr {
-                        my_cert_txns_set.insert(txn.id());
+                    // We only want to index cert txns made by us.
+                    if txn.author_addr != *my_addr {
+                        continue;
                     }
+
+                    // Remove the txn from the pooled map.
+                    pooled_cert_txns_map.remove(&txn.id());
 
                     match certified_table.entry(txn.id()) {
                         Entry::Occupied(_) => {
@@ -130,6 +130,12 @@ impl Blockchain {
                     };
                 },
                 TransactionType::RevokeCertification(revoked_txn_id) => {
+
+                    // We only want to index revocation txns made by us.
+                    if txn.author_addr != *my_addr {
+                        continue;
+                    }
+
                     match revoked_table.entry(revoked_txn_id) {
                         Entry::Occupied(_) => {
                             error!("Duplicate revocation found; TODO:
