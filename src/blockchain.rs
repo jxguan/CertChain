@@ -159,8 +159,8 @@ impl Blockchain {
                 block_node.prev = &**parent as NodePtr;
                 block_node.height = parent.height + 1;
             },
-            None => panic!("PARENT OF BLOCK DOESNT EXIST IN \
-                           BLOCKCHAIN; TODO: get from peers.")
+            None => panic!("Parent of block doesn't exist in blockchain; \
+                           TODO: get from peers.")
         };
 
         // If the block's height is greater than that of the height
