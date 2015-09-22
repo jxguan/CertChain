@@ -54,5 +54,8 @@ def cc_extract_conferral_date(document_json):
 
 @register.filter
 def cc_format_sig_ts(seconds):
-  return datetime.datetime.fromtimestamp(
-        int(seconds))
+  try:
+    return datetime.datetime.fromtimestamp(
+          int(seconds))
+  except Exception:
+      return ''

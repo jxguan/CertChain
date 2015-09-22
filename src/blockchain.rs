@@ -57,7 +57,7 @@ impl Blockchain {
 
     pub fn add_block(&mut self, block: Block,
                      my_addr: &Address,
-                     my_txns_set: &mut HashSet<TxnId>,
+                     my_cert_txns_set: &mut HashSet<TxnId>,
                      all_txns_set: &mut HashSet<TxnId>,
                      pooled_txns_map: &mut HashMap<TxnId, String>,
                      trust_table: &mut HashMap<String, HashSet<String>>,
@@ -87,10 +87,6 @@ impl Blockchain {
             all_txns_set.insert(txn.id());
             pooled_txns_map.remove(&txn.id());
 
-            if txn.author_addr == *my_addr {
-                my_txns_set.insert(txn.id());
-            }
-
             match txn.txn_type {
                 TransactionType::Trust(address) => {
                     let base58addr = address.to_base58();
@@ -114,6 +110,13 @@ impl Blockchain {
                     };
                 },
                 TransactionType::Certify(_) => {
+
+                    // If this is a cert txn, index in set
+                    // so RPC status requests will pick it up.
+                    if txn.author_addr == *my_addr {
+                        my_cert_txns_set.insert(txn.id());
+                    }
+
                     match certified_table.entry(txn.id()) {
                         Entry::Occupied(_) => {
                             error!("Duplicate certification found; TODO:

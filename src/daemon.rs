@@ -126,7 +126,7 @@ pub fn run(config: CertChainConfig) -> () {
                         let mut txns = Vec::new();
                         let pooled_map = pooled_txns_map_clone.read().unwrap();
 
-                        // First, report all txns in txn pool.
+                        // First, report all cert txns in txn pool.
                         info!("Pooled map len: {}", pooled_map.len());
                         for (txn_id, txn_timestamp) in pooled_map.iter() {
                             txns.push(TxnSummary {
@@ -402,8 +402,13 @@ fn broadcast_and_pool_txn(txn: Transaction,
                 PayloadFlag::Transaction, bytes)).unwrap();
     }
 
-    // Index txn in map for status retrieval in RPC calls.
-    pooled_txn_map.insert(txn.id(), format!("{}", txn.timestamp));
+    // If certification txn, Index txn in map for status retrieval in RPC calls
+    match txn.txn_type {
+        TransactionType::Certify(_) => {
+            pooled_txn_map.insert(txn.id(), format!("{}", txn.timestamp));
+        },
+        _ => ()
+    };
 
     // Add transaction to the provided txn pool.
     txn_pool.push(txn);
