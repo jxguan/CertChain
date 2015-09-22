@@ -59,3 +59,7 @@ def cc_format_sig_ts(seconds):
           int(seconds))
   except Exception:
       return ''
+
+@register.filter
+def cc_txn_status_class(txn_status):
+  return txn_status.lower()

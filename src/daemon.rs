@@ -141,14 +141,17 @@ pub fn run(config: CertChainConfig) -> () {
                                     let (_, ref b) = **revoked_tuple;
                                     let block = Block::deserialize(&b[..]).unwrap();
                                     // Find the revocation transaction in the block.
+                                    // NOTE: The txn_id is that of the certification
+                                    // transaction; the txn id of the revocation txn
+                                    // is included in the last field.
                                     for b_txn in block.txns().iter() {
                                         if let TransactionType::RevokeCertification(revoked_txn_id) = b_txn.txn_type {
                                             if revoked_txn_id == *cert_txn_id {
                                                 txns.push(TxnSummary {
-                                                    txn_id: format!("{:?}", b_txn.id()),
+                                                    txn_id: format!("{:?}", revoked_txn_id),
                                                     signature_ts: format!("{}", b_txn.timestamp),
                                                     status: String::from("REVOKED"),
-                                                    revocation_txn_id: format!("{:?}", revoked_txn_id),
+                                                    revocation_txn_id: format!("{:?}", b_txn.id()),
                                                 });
                                                 break;
                                             }

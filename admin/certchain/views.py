@@ -127,6 +127,9 @@ def diplomas(request):
     if txn_id in txn_doc_map:
       txn['document'] = txn_doc_map[txn_id]
 
+  # Order txns by most recent to least.
+  txns = sorted(txns, key=lambda txn: txn['signature_ts'], reverse=True)
+
   return render(request, 'certchain/diplomas.html', {
       'txns' : txns,
     })
@@ -156,6 +159,26 @@ def certify_diploma(request):
       messages.error(request,\
         'An error occurred while processing your \
         certification request: ' + str(resp.status_code))
+    return redirect(reverse('certchain:diplomas'))
+  raise Http404
+
+@login_required
+def revoke_diploma(request):
+  if request.method == 'POST':
+    txn_id_to_revoke = request.POST['txn_id_to_revoke']
+    payload = {
+      'txn_id': txn_id_to_revoke
+    }
+    resp = requests.post(create_rpc_url('/revoke_document'),
+      data=json.dumps(payload))
+    if resp.status_code == 200:
+      txn_id = resp.text
+      messages.success(request,\
+        'The revocation has been submitted to the network as transaction ' + txn_id)
+    else:
+      messages.error(request,\
+        'An error occurred while processing your \
+        revocation request: ' + str(resp.status_code))
     return redirect(reverse('certchain:diplomas'))
   raise Http404
 

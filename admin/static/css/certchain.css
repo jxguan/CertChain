@@ -315,3 +315,30 @@ ul#cc-messages > li.success {
 	float: right;
 	margin: 20px;
 }
+
+#cc-diploma-table form {
+	margin: 0;
+}
+
+#cc-diploma-table .cc-btn {
+	font-size: 14px !important;
+	float: right;
+}
+
+.cc-txn-status {
+	border: 1px solid gray;
+	border-radius: 5px;
+	padding: 3px 8px;
+}
+
+.cc-txn-status.queued {
+	background-color: #E7E7E7;
+}
+
+.cc-txn-status.certified {
+	background-color: #DBFFA4;
+}
+
+.cc-txn-status.revoked {
+	background-color: #FFA4BC;
+}
