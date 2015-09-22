@@ -61,6 +61,10 @@ pub fn run(config: CertChainConfig) -> () {
         = Arc::new(RwLock::new(HashMap::new()));
     let all_txns_set: Arc<RwLock<HashSet<TxnId>>>
         = Arc::new(RwLock::new(HashSet::new()));
+    let my_txns_set: Arc<RwLock<HashSet<TxnId>>>
+        = Arc::new(RwLock::new(HashSet::new()));
+    let pooled_txns_map: Arc<RwLock<HashMap<TxnId, String>>>
+        = Arc::new(RwLock::new(HashMap::new()));
 
     start_txn_pool_listener(txn_pool.clone(), txn_pool_rx);
 
@@ -72,6 +76,8 @@ pub fn run(config: CertChainConfig) -> () {
     let certified_table_clone = certified_table.clone();
     let revoked_table_clone = revoked_table.clone();
     let all_txns_set_clone = all_txns_set.clone();
+    let my_txns_set_clone = my_txns_set.clone();
+    let pooled_txns_map_clone = pooled_txns_map.clone();
     thread::spawn(move || {
         /*
          * TODO: Save the Listening struct returned here
@@ -118,17 +124,81 @@ pub fn run(config: CertChainConfig) -> () {
                     (hyper::Get, AbsolutePath(ref path))
                             if path == "/my_txns" => {
                         let mut txns = Vec::new();
-                        let txn_pool = txn_pool_refclone.read().unwrap();
-                        for txn in txn_pool.iter() {
-                            if txn.author_addr == institution_addr {
-                                txns.push(TxnSummary {
-                                    txn_id: format!("{:?}", txn.id()),
-                                    signature_ts: format!("{}", txn.timestamp),
-                                    status: String::from("QUEUED"),
-                                    revocation_txn_id: String::new()
-                                });
+                        let pooled_map = pooled_txns_map_clone.read().unwrap();
+
+                        // First, report all txns in txn pool.
+                        info!("Pooled map len: {}", pooled_map.len());
+                        for (txn_id, txn_timestamp) in pooled_map.iter() {
+                            txns.push(TxnSummary {
+                                txn_id: format!("{:?}", txn_id),
+                                signature_ts: format!("{}", txn_timestamp),
+                                status: String::from("QUEUED"),
+                                revocation_txn_id: String::new()
+                            });
+                        }
+
+                        // Then, go through all txns authored by
+                        // us that have been included in blocks.
+                        let my_txns_set = my_txns_set_clone.read().unwrap();
+                        for txn_id in my_txns_set.iter() {
+                            match certified_table_clone.read()
+                                    .unwrap().get(&txn_id) {
+                                Some(ref cert_tuple) => {
+                                    match revoked_table_clone.read()
+                                            .unwrap().get(&txn_id) {
+                                        Some(ref revoked_tuple) => {
+                                            let (_, ref b) = **revoked_tuple;
+                                            let block = Block::deserialize(&b[..]).unwrap();
+                                            // Find the revocation transaction in the block.
+                                            for b_txn in block.txns().iter() {
+                                                if let TransactionType::RevokeCertification(revoked_txn_id) = b_txn.txn_type {
+                                                    if revoked_txn_id == *txn_id {
+                                                        txns.push(TxnSummary {
+                                                            txn_id: format!("{:?}", b_txn.id()),
+                                                            signature_ts: format!("{}", b_txn.timestamp),
+                                                            status: String::from("REVOKED"),
+                                                            revocation_txn_id: format!("{:?}", revoked_txn_id),
+                                                        });
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        None => {
+                                            let (_, ref b) = **cert_tuple;
+                                            let block = Block::deserialize(&b[..]).unwrap();
+                                            // Find the certification transaction in the block.
+                                            for b_txn in block.txns().iter() {
+                                                if let TransactionType::Certify(_) = b_txn.txn_type {
+                                                    if b_txn.id() == *txn_id {
+                                                        txns.push(TxnSummary {
+                                                            txn_id: format!("{:?}", b_txn.id()),
+                                                            signature_ts: format!("{}", b_txn.timestamp),
+                                                            status: String::from("CERTIFIED"),
+                                                            revocation_txn_id: String::new(),
+                                                        });
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                None => {
+                                    /*
+                                     * TODO: We should never get here; possibly make
+                                     * this a panic.
+                                     */
+                                    txns.push(TxnSummary {
+                                        txn_id: format!("{:?}", txn_id),
+                                        signature_ts: String::new(),
+                                        status: String::from("NOT PROCESSED"),
+                                        revocation_txn_id: String::new(),
+                                    });
+                                }
                             }
                         }
+
                         let json = json::as_pretty_json(&txns);
                         res.send(format!("{}", json).as_bytes()).unwrap();
                     }
@@ -147,7 +217,8 @@ pub fn run(config: CertChainConfig) -> () {
                                 TransactionType::Trust(addr),
                                 secret_key.clone(), public_key.clone()).unwrap(),
                             peer_txs_c1.lock().unwrap().deref(),
-                            &mut *txn_pool_refclone.write().unwrap());
+                            &mut *txn_pool_refclone.write().unwrap(),
+                            &mut *pooled_txns_map_clone.write().unwrap());
                     },
                     (hyper::Post, AbsolutePath(ref path))
                             if path == "/untrust_institution" => {
@@ -164,7 +235,8 @@ pub fn run(config: CertChainConfig) -> () {
                                 TransactionType::RevokeTrust(addr),
                                 secret_key.clone(), public_key.clone()).unwrap(),
                             peer_txs_c1.lock().unwrap().deref(),
-                            &mut *txn_pool_refclone.write().unwrap());
+                            &mut *txn_pool_refclone.write().unwrap(),
+                            &mut *pooled_txns_map_clone.write().unwrap());
                     },
                     (hyper::Post, AbsolutePath(ref path))
                             if path == "/certify_document" => {
@@ -178,7 +250,8 @@ pub fn run(config: CertChainConfig) -> () {
                         res.send(format!("{:?}", txn.id()).as_bytes()).unwrap();
                         broadcast_and_pool_txn(txn,
                             peer_txs_c1.lock().unwrap().deref(),
-                            &mut *txn_pool_refclone.write().unwrap());
+                            &mut *txn_pool_refclone.write().unwrap(),
+                            &mut *pooled_txns_map_clone.write().unwrap());
                     },
                     (hyper::Post, AbsolutePath(ref path))
                             if path == "/revoke_document" => {
@@ -195,7 +268,8 @@ pub fn run(config: CertChainConfig) -> () {
                         res.send(format!("{:?}", txn.id()).as_bytes()).unwrap();
                         broadcast_and_pool_txn(txn,
                             peer_txs_c1.lock().unwrap().deref(),
-                            &mut *txn_pool_refclone.write().unwrap());
+                            &mut *txn_pool_refclone.write().unwrap(),
+                            &mut *pooled_txns_map_clone.write().unwrap());
                     },
                     _ => {
                         *res.status_mut() = hyper::NotFound
@@ -286,7 +360,10 @@ pub fn run(config: CertChainConfig) -> () {
 
             // Add block to blockchain.
             blockchain.write().unwrap().add_block(block,
+                    &institution_addr,
+                    &mut my_txns_set.write().unwrap(),
                     &mut all_txns_set.write().unwrap(),
+                    &mut pooled_txns_map.write().unwrap(),
                     &mut trust_table.write().unwrap(),
                     &mut certified_table.write().unwrap(),
                     &mut revoked_table.write().unwrap());
@@ -314,9 +391,10 @@ pub fn run(config: CertChainConfig) -> () {
 
 fn broadcast_and_pool_txn(txn: Transaction,
         peer_txs: &Vec<Sender<NetworkMessage>>,
-        txn_pool: &mut Vec<Transaction>) {
+        txn_pool: &mut Vec<Transaction>,
+        pooled_txn_map: &mut HashMap<TxnId, String>) {
 
-    // Broadcast trust request to peers.
+    // Broadcast transaction to peers.
     for tx in peer_txs {
         let mut bytes = Vec::new();
         txn.serialize(&mut bytes).unwrap();
@@ -324,12 +402,16 @@ fn broadcast_and_pool_txn(txn: Transaction,
                 PayloadFlag::Transaction, bytes)).unwrap();
     }
 
-    // Add trust request to the provided txn pool.
+    // Index txn in map for status retrieval in RPC calls.
+    pooled_txn_map.insert(txn.id(), format!("{}", txn.timestamp));
+
+    // Add transaction to the provided txn pool.
     txn_pool.push(txn);
 }
 
-pub fn start_txn_pool_listener(txn_pool: Arc<RwLock<Vec<Transaction>>>,
-                         rx: Receiver<Transaction>) {
+pub fn start_txn_pool_listener(
+        txn_pool: Arc<RwLock<Vec<Transaction>>>,
+        rx: Receiver<Transaction>) {
     thread::spawn(move || {
         loop {
             info!("Waiting for txn to arrive on channel...");

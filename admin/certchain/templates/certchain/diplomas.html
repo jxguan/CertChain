@@ -71,7 +71,11 @@
           <td>{{ txn.document | cc_extract_conferral_date }}</td>
           <td>{{ txn.signature_ts | cc_format_sig_ts }}</td>
           <td>{{ txn.status }}</td>
-          <td><a class="cc-btn" href="">REVOKE</a></td>
+          <td>
+            {% if txn.status == 'CERTIFIED' %}
+            <a class="cc-btn" href="">REVOKE</a>
+            {% endif %}
+          </td>
         </tr>
         {% empty %}
         <tr>
