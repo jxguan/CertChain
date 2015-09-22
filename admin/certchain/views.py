@@ -1,12 +1,12 @@
 from __future__ import division
+import requests, json, base64
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.contrib import messages
-import requests, json
 from django.core.urlresolvers import reverse
 from django.conf import settings
-from templatetags.certchain_extras import cc_addr_to_name
+from templatetags.certchain_extras import cc_addr_to_name, cc_format_sig_ts
 from models import Transaction
 
 # NOTE: relpath must have leading '/'
@@ -126,6 +126,7 @@ def diplomas(request):
     # but with blank document fields).
     if txn_id in txn_doc_map:
       txn['document'] = txn_doc_map[txn_id]
+      txn['document_base64'] = base64.b64encode(txn['document'])
 
   # Order txns by most recent to least.
   txns = sorted(txns, key=lambda txn: txn['signature_ts'], reverse=True)
@@ -183,5 +184,54 @@ def revoke_diploma(request):
   raise Http404
 
 # No login required for document viewer.
-def viewer(request):
-  return render(request, 'certchain/viewer.html', {})
+# TODO: Handle
+#  - bad txn id (CertChain will return blank response)
+#  - bad document (exception will be thrown)
+def viewer(request, txnid, docb64):
+  context = {
+    'txnid': txnid
+  }
+  try:
+    document = base64.b64decode(docb64)
+    context['doc'] = document
+    payload = {
+      'txn_id': txnid,
+      'document': document
+    }
+    resp = requests.post(create_rpc_url('/diploma_status'),
+      data=json.dumps(payload))
+    latest_txn_id = None
+    if resp.status_code == 200:
+      validity = resp.json()
+      if validity['status'] == 'QUEUED':
+        context['msg_class'] = 'yellow'
+        context['msg'] = 'This diploma has just been submitted for \
+              certification; its validity status\
+              will be available soon.'
+      elif validity['status'] == 'CERTIFIED':
+        context['latest_txn_id'] = validity['latest_txn_id']
+        context['msg_class'] = 'green'
+        context['msg'] = 'Certified by ' + cc_addr_to_name(validity['author_addr'])\
+          + ' on ' + str(cc_format_sig_ts(validity['latest_txn_ts'])) + '. \
+          This diploma is valid and has not been tampered with.'
+      elif validity['status'] == 'REVOKED':
+        context['latest_txn_id'] = validity['latest_txn_id']
+        context['msg_class'] = 'red'
+        context['msg'] = 'Revoked by ' + cc_addr_to_name(validity['author_addr'])\
+          + ' on ' + str(cc_format_sig_ts(validity['latest_txn_ts'])) + '. \
+          This diploma is no longer valid.'
+      elif validity['status'] == 'NONEXISTENT':
+        context['msg_class'] = 'red'
+        context['msg'] = 'This diploma is not valid; it has never been certified.'
+      else:
+        context['msg_class'] = 'red'
+        context['msg'] = 'This diploma has been tampered with and is not valid.'
+    else:
+      context['msg_class'] = 'red'
+      context['msg'] = 'A communications error prevented \
+        the validation of this diploma at the moment: ' + str(resp.status_code)
+  except Exception as ex:
+    context['document'] = ''
+    context['msg_class'] = 'red'
+    context['msg'] = context['msg'] = 'This diploma has been tampered with and is not valid.'
+  return render(request, 'certchain/viewer.html', context)

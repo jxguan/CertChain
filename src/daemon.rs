@@ -22,13 +22,22 @@ use secp256k1::key::{SecretKey, PublicKey};
 use rustc_serialize::json;
 use std::collections::{HashMap, HashSet};
 
-// Used in RCP response; designed to be serializable.
+// Used in RPC response; designed to be serializable.
 #[derive(RustcEncodable)]
 struct TxnSummary {
     pub txn_id: String,
     pub signature_ts: String,
     pub status: String,
     pub revocation_txn_id: String,
+}
+
+// Used in RPC response; designed to be serializable.
+#[derive(RustcEncodable)]
+struct DiplomaValidity {
+    pub author_addr: String,
+    pub status: String,
+    pub latest_txn_id: String,
+    pub latest_txn_ts: String,
 }
 
 pub fn run(config: CertChainConfig) -> () {
@@ -67,7 +76,6 @@ pub fn run(config: CertChainConfig) -> () {
     start_txn_pool_listener(txn_pool.clone(), txn_pool_rx);
 
     let rpc_port = config.rpc_port;
-    let blockchain_clone = blockchain.clone();
     let txn_pool_refclone = txn_pool.clone();
     let peer_txs_c1 = peer_txs.clone();
     let trust_table_clone = trust_table.clone();
@@ -90,30 +98,83 @@ pub fn run(config: CertChainConfig) -> () {
                         res.send(format!("{}", trust_json).as_bytes()).unwrap();
                     },
                     (hyper::Post, AbsolutePath(ref path))
-                            if path == "/certification_status" => {
+                            if path == "/diploma_status" => {
                         let mut req_body = String::new();
                         let _ = req.read_to_string(&mut req_body).unwrap();
                         let req_json = Json::from_str(&req_body[..]).unwrap();
                         let txn_id_str = req_json.as_object().unwrap()
                                 .get("txn_id").unwrap().as_string().unwrap();
+                        let document = req_json.as_object().unwrap()
+                                .get("document").unwrap().as_string().unwrap();
+
+                        let mut validity = DiplomaValidity {
+                            author_addr: institution_addr.to_base58(),
+                            status: String::new(),
+                            latest_txn_id: String::new(),
+                            latest_txn_ts: String::new(),
+                        };
+
                         let txn_id = transaction::txn_id_from_str(&txn_id_str);
+                        let doc_hash = DoubleSha256Hash::hash(&document.as_bytes());
+
+                        // First, check queued txns.
+                        let pooled_map = pooled_txns_map_clone.read().unwrap();
+                        if pooled_map.contains_key(&txn_id) {
+                            validity.status = String::from("QUEUED");
+                            let json = json::as_pretty_json(&validity);
+                            res.send(format!("{}", json).as_bytes()).unwrap();
+                            return;
+                        }
+
+                        // Then, check certification and revocation tables.
                         match certified_table_clone.read().unwrap().get(&txn_id) {
                             Some(ref cert_tuple) => {
                                 match revoked_table_clone.read()
                                         .unwrap().get(&txn_id) {
                                     Some(ref revoked_tuple) => {
-                                        res.send(format!("REVOKED")
-                                                 .as_bytes()).unwrap();
+                                        let (_, ref b) = **revoked_tuple;
+                                        let block = Block::deserialize(&b[..]).unwrap();
+                                        for b_txn in block.txns().iter() {
+                                            if let TransactionType::RevokeCertification(revoked_txn_id) = b_txn.txn_type {
+                                                if revoked_txn_id == txn_id {
+                                                    validity.status = String::from("REVOKED");
+                                                    validity.latest_txn_id = format!("{:?}", b_txn.id());
+                                                    validity.latest_txn_ts = format!("{}", b_txn.timestamp);
+                                                    let json = json::as_pretty_json(&validity);
+                                                    res.send(format!("{}", json).as_bytes()).unwrap();
+                                                    return;
+                                                }
+                                            }
+                                        }
                                     },
                                     None => {
-                                        res.send(format!("CERTIFIED")
-                                                 .as_bytes()).unwrap();
+                                        let (_, ref b) = **cert_tuple;
+                                        let block = Block::deserialize(&b[..]).unwrap();
+                                        // Find the certification transaction in the block.
+                                        for b_txn in block.txns().iter() {
+                                            if let TransactionType::Certify(checksum) = b_txn.txn_type {
+                                                if b_txn.id() == txn_id {
+                                                    validity.latest_txn_id = format!("{:?}", b_txn.id());
+                                                    validity.latest_txn_ts = format!("{}", b_txn.timestamp);
+                                                    if checksum == doc_hash {
+                                                        validity.status = String::from("CERTIFIED");
+                                                    } else {
+                                                        validity.status = String::from("INVALID");
+                                                    }
+                                                    let json = json::as_pretty_json(&validity);
+                                                    res.send(format!("{}", json).as_bytes()).unwrap();
+                                                    return;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             },
                             None => {
-                                res.send(format!("NOT_CERTIFIED")
-                                         .as_bytes()).unwrap();
+                                validity.status = String::from("NONEXISTENT");
+                                let json = json::as_pretty_json(&validity);
+                                res.send(format!("{}", json).as_bytes()).unwrap();
+                                return;
                             }
                         }
                     },

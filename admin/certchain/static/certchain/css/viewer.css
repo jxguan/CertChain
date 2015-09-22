@@ -12,9 +12,9 @@ body {
 
 #document {
   margin: 0 auto;
-  width: 75%;
+  width: 70%;
   height: 100%;
-  background-image: url('/static/certchain/images/diploma_bg.jpg');
+  background-image: url('/static/certchain/images/diploma_bg.png');
   background-position: center;
   background-size: contain;
   background-repeat: no-repeat;
@@ -26,7 +26,7 @@ body {
   width: 90%;
   padding: 10px;
   margin-left: 45px;
-  margin-top: 20px;
+  margin-top: 10px;
   font-size: 1.2em;
   line-height: 130%;
 }
@@ -39,28 +39,23 @@ body {
   font-size: 0.9em !important;
 }
 
-#cert-area.valid {
+#cert-area.green {
   background-color: #BBFF4B;
   border: 1px solid #81CA0C;
 }
 
-#cert-area.invalid {
+#cert-area.red {
   background-color: #FF9292;
   border: 1px solid #C60000;
 }
 
-#cert-area.pending {
-  background-color: #F6FF84;
-  border: 1px solid #D6DE6C;
-}
-
-#cert-area.in-progress {
+#cert-area.yellow {
   background-color: #F6FF84;
   border: 1px solid #D6DE6C;
 }
 
 #document-body {
-  padding-top: 240px;
+  padding-top: 200px;
 }
 
 #document-body > * {

@@ -8,5 +8,5 @@ urlpatterns = patterns('',
     url(r'^$', auth_views.login),
     url(r'^logout/', auth_views.logout),
     url(r'^secure/', include('certchain.urls', namespace='certchain')),
-    url(r'^viewer$', views.viewer, name='viewer'),
+    url(r'^viewer/(?P<txnid>.+?)/(?P<docb64>.+?)/$', views.viewer, name='viewer'),
 )

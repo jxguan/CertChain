@@ -72,9 +72,9 @@
           <td><span class="cc-txn-status {{ txn.status | cc_txn_status_class }}">{{ txn.status }}</span></td>
           <td>
           {% if txn.revocation_txn_id.strip %}
-          <a href="{% url 'viewer' %}">{{ txn.revocation_txn_id | slice:"0:9" }}</a>
+          <a href="">{{ txn.revocation_txn_id | slice:"0:9" }}</a>
           {% else %}
-          <a href="{% url 'viewer' %}">{{ txn.txn_id | slice:"0:9" }}</a>
+          <a href="">{{ txn.txn_id | slice:"0:9" }}</a>
           {% endif %}
           </td>
           <td>{{ txn.signature_ts | cc_format_sig_ts }}</td>
@@ -87,7 +87,7 @@
             </form>
             {% endif %}
           </td>
-          <td><a class="cc-btn">VIEW DIPLOMA</a></td>
+          <td><a class="cc-btn" href="{% url 'viewer' txn.txn_id txn.document_base64 %}">VIEW DIPLOMA</a></td>
         </tr>
         {% empty %}
         <tr>
