@@ -17,9 +17,13 @@
         {% endif %}
       </div>
       <div id="document-body">
+        {% if document_override %}
+        <span id="label-line1">INVALID</span>
+        {% else %}
         <span id="label-line1">{{ doc | cc_extract_recipient }}</span>
         <span id="label-line2">{{ doc | cc_extract_degree }}</span>
         <span id="label-line3">Conferred on {{ doc | cc_extract_conferral_date }}</span>
+        {% endif %}
       </div>
     </div>
   </body>

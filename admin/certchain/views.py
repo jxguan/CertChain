@@ -226,12 +226,13 @@ def viewer(request, txnid, docb64):
       else:
         context['msg_class'] = 'red'
         context['msg'] = 'This diploma has been tampered with and is not valid.'
+        context['document_override'] = 'INVALID'
     else:
       context['msg_class'] = 'red'
       context['msg'] = 'A communications error prevented \
         the validation of this diploma at the moment: ' + str(resp.status_code)
   except Exception as ex:
-    context['document'] = ''
     context['msg_class'] = 'red'
     context['msg'] = context['msg'] = 'This diploma has been tampered with and is not valid.'
+    context['document_override'] = 'INVALID'
   return render(request, 'certchain/viewer.html', context)
