@@ -2,6 +2,7 @@ use std::io::{Result, Read, Write};
 use crypto::ripemd160::Ripemd160;
 use crypto::digest::Digest;
 use rust_base58::base58::{FromBase58, ToBase58};
+use secp256k1::Secp256k1;
 use secp256k1::key::{PublicKey};
 use crypto::sha2::Sha256;
 use hash::DoubleSha256Hash;
@@ -75,9 +76,10 @@ pub fn from_string(addr_str: &str) -> Result<Address> {
 
 pub fn from_pubkey(pub_key: &PublicKey) -> Result<Address> {
     // Generate the address from the compressed public key.
+    let context = Secp256k1::new();
     let mut sha256 = Sha256::new();
     let mut sha256_arr = [0u8; 32];
-    sha256.input(&pub_key[..]);
+    sha256.input(&pub_key.serialize_vec(&context, true)[..]);
     sha256.result(&mut sha256_arr);
     let mut ripemd160 = Ripemd160::new();
     let mut address_arr = [0u8; ADDRESS_LEN_BYTES];

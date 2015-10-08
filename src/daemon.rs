@@ -50,6 +50,7 @@ pub fn run(config: CertChainConfig) -> () {
     let public_key: PublicKey = key::compressed_public_key_from_string(
         &config.compressed_public_key).unwrap();
     let institution_addr: Address = address::from_pubkey(&public_key).unwrap();
+    info!("This node is using address: {}", institution_addr);
 
     // Listen on the network, and connect to all
     // trusted peers on the network.

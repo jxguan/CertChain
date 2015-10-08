@@ -18,9 +18,10 @@ pub fn deserialize_pubkey<R: Read>(mut reader: R) -> Result<PublicKey> {
 }
 
 pub fn serialize_pubkey<W: Write>(pubkey: &PublicKey, mut writer: W) -> Result<()> {
-    assert_eq!(pubkey.len(), COMPRESSED_PUB_KEY_LEN_BYTES);
+    panic!("TODO: Retrofit this fn to use updated secp256k1 API.");
+    /*assert_eq!(pubkey.len(), COMPRESSED_PUB_KEY_LEN_BYTES);
     writer.write(&pubkey[..]).unwrap();
-    Ok(())
+    Ok(())*/
 }
 
 pub fn secret_key_from_string(key_str: &String)
@@ -57,7 +58,9 @@ pub fn compressed_public_key_from_string(key_str: &String)
  * for this function.
  */
 pub fn print_new_keypair() {
-    let mut crypto_rng = OsRng::new().unwrap();
+    panic!("TODO: Retrofit this fn to updated secp256k1 API.");
+
+    /*let mut crypto_rng = OsRng::new().unwrap();
     let context = Secp256k1::new();
 
     // A compressed public key is generated here using
@@ -70,6 +73,6 @@ pub fn print_new_keypair() {
 
     println!("Secret key: {:?}", priv_key);
     println!("Compressed public key: {}", &pub_key[..].to_hex());
-    println!("Address: {}", address.to_base58());
+    println!("Address: {}", address.to_base58());*/
 }
 

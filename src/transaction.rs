@@ -46,9 +46,10 @@ impl Transaction {
     pub fn new(txn_type: TransactionType,
                author_seckey: SecretKey,
                author_pubkey: PublicKey) -> Result<Transaction> {
+        panic!("TODO: Retrofit this fn to use the updated secp256k1 API.");
 
         // Compute author's address from public key.
-        let author_addr = address::from_pubkey(&author_pubkey).unwrap();
+        /*let author_addr = address::from_pubkey(&author_pubkey).unwrap();
 
         let timestamp = time::get_time().sec;
 
@@ -69,7 +70,7 @@ impl Transaction {
         };
 
         assert!(txn.has_valid_signature());
-        Ok(txn)
+        Ok(txn)*/
     }
 
     pub fn deserialize<R: Read>(mut reader: R) -> Result<Transaction> {
@@ -200,11 +201,12 @@ impl Transaction {
 
 pub fn deserialize_signature<R: Read>(reader: R,
             sig_len_bytes: u8) -> Result<Signature> {
-    let mut sig_buf = Vec::new();
+    panic!("TODO: Retrofit this fn for updated secp256k1 API.");
+    /*let mut sig_buf = Vec::new();
     try!(reader.take(sig_len_bytes as u64).read_to_end(&mut sig_buf));
     debug!("Deserialized sig_buf: {:?}", &sig_buf[..]);
     let sig = Signature::from_slice(&sig_buf[..]).unwrap();
-    Ok(sig)
+    Ok(sig)*/
 }
 
 pub fn txn_id_from_str(str: &str) -> TxnId {
