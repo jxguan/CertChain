@@ -7,7 +7,7 @@ use rustc_serialize::json::Json;
 use std::io::Read;
 use std::sync::{Arc, RwLock, Mutex};
 use network;
-use network::{NetworkMessage};
+use network::{NetPayload};
 use blockchain::{Block, Blockchain};
 use address;
 use address::Address;
@@ -76,7 +76,7 @@ pub fn run(config: CertChainConfig) -> () {
 
     start_txn_pool_listener(txn_pool.clone(), txn_pool_rx);
 
-    let mut fsm: LinkedList<Option<NetworkMessage>> = LinkedList::new();
+    let mut fsm: LinkedList<Option<NetPayload>> = LinkedList::new();
     loop {
         match fsm.pop_front() {
             Some(_) => { panic!("TODO: Implement FSM.") },
@@ -89,7 +89,7 @@ pub fn run(config: CertChainConfig) -> () {
 }
 
 fn broadcast_and_pool_txn(txn: Transaction,
-        peer_txs: &Vec<Sender<NetworkMessage>>,
+        peer_txs: &Vec<Sender<NetPayload>>,
         txn_pool: &mut Vec<Transaction>,
         pooled_txn_map: &mut HashMap<TxnId, String>) {
 

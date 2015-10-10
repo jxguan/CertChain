@@ -22,14 +22,14 @@ struct Socket {
 }
 
 #[derive(RustcEncodable, RustcDecodable, Debug)]
-pub struct NetworkMessage {
+struct NetworkMessage {
     pub magic: u32,
-    pub payload: Payload,
+    pub payload: NetPayload,
     pub payload_checksum: u32,
 }
 
 #[derive(RustcEncodable, RustcDecodable, Debug)]
-pub enum Payload {
+pub enum NetPayload {
     IdentReq(IdentityRequest),
 }
 
@@ -53,7 +53,7 @@ impl IdentityRequest {
 }
 
 impl NetworkMessage {
-    pub fn new(payload: Payload) -> NetworkMessage {
+    pub fn new(payload: NetPayload) -> NetworkMessage {
         NetworkMessage {
             magic: 101,
             payload: payload,
@@ -75,7 +75,7 @@ impl Socket {
             Ok(sock) => {
                 self.tcp_sock = Arc::new(Mutex::new(Some(sock)));
                 self.send(NetworkMessage::new(
-                        Payload::IdentReq(IdentityRequest::new()))).unwrap();
+                        NetPayload::IdentReq(IdentityRequest::new()))).unwrap();
                 Ok(())
             },
             Err(err) => {
@@ -183,7 +183,7 @@ pub fn listen(txn_pool_tx: Sender<Transaction>,
     });
 }
 
-pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<NetworkMessage>> {
+pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<NetPayload>> {
 
     let mut peer_txs = Vec::new();
     for peer in &config.peers {
@@ -201,7 +201,8 @@ pub fn connect_to_peers(config: &CertChainConfig) -> Vec<Sender<NetworkMessage>>
                     Ok(_) => {
                         info!("Successfully connected to {}; waiting for messages...`", peer_name);
                         loop {
-                            let net_msg = rx.recv().unwrap();
+                            let net_payload = rx.recv().unwrap();
+                            let net_msg = NetworkMessage::new(net_payload);
                             debug!("Forwarding net msg to socket: {:?}", net_msg);
                             match sock.send(net_msg) {
                                 Ok(_) => debug!("Net msg sent successfully to peer."),
