@@ -9,6 +9,7 @@ extern crate secp256k1;
 extern crate rand;
 extern crate rust_base58;
 extern crate time;
+extern crate rmp_serialize as msgpack;
 
 #[macro_use]
 extern crate log;

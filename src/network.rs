@@ -10,16 +10,19 @@ use std::io::{Read, Write, BufReader, BufWriter};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use transaction::{Transaction};
 use blockchain::Block;
+use rustc_serialize::{Encodable, Decodable};
+use msgpack::{Encoder, Decoder};
 
 const PAYLOAD_FLAG_TXN: u8 = 1;
 const PAYLOAD_FLAG_BLOCK: u8 = 2;
+const PAYLOAD_FLAG_IDENT_REQ: u8 = 3;
 const PEER_CONN_ATTEMPT_INTERVAL_IN_MS: u32 = 3000;
 
 struct Socket {
     tcp_sock: Arc<Mutex<Option<TcpStream>>>,
 }
 
-#[derive(Debug)]
+#[derive(RustcEncodable, RustcDecodable, Debug)]
 pub struct NetworkMessage {
     pub magic: u32,
     pub payload_flag: u8,
@@ -31,7 +34,8 @@ pub struct NetworkMessage {
 #[derive(Debug)]
 pub enum PayloadFlag {
     Transaction,
-    Block
+    Block,
+    IdentityRequest
 }
 
 impl NetworkMessage {
@@ -41,38 +45,12 @@ impl NetworkMessage {
             payload_flag: match payload_type {
                 PayloadFlag::Transaction => PAYLOAD_FLAG_TXN,
                 PayloadFlag::Block => PAYLOAD_FLAG_BLOCK,
+                PayloadFlag::IdentityRequest => PAYLOAD_FLAG_IDENT_REQ,
             },
             payload_len: payload.len() as u32,
             payload_checksum: 55,
             payload: payload
         }
-    }
-}
-
-impl NetworkMessage {
-    pub fn deserialize<R: Read>(mut reader: R) -> Result<NetworkMessage> {
-        let magic = try!(reader.read_u32::<BigEndian>());
-        let payload_flag = try!(reader.read_u8());
-        let payload_len = try!(reader.read_u32::<BigEndian>());
-        let payload_checksum = try!(reader.read_u32::<BigEndian>());
-        let mut payload = Vec::new();
-        try!(reader.take(payload_len as u64).read_to_end(&mut payload));
-        Ok(NetworkMessage {
-            magic: magic,
-            payload_flag: payload_flag,
-            payload_len: payload_len,
-            payload_checksum: payload_checksum,
-            payload: payload,
-        })
-    }
-    pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
-        try!(writer.write_u32::<BigEndian>(self.magic));
-        try!(writer.write_u8(self.payload_flag));
-        try!(writer.write_u32::<BigEndian>(self.payload_len));
-        try!(writer.write_u32::<BigEndian>(self.payload_checksum));
-        try!(writer.write(&self.payload[..]));
-        try!(writer.flush());
-        Ok(())
     }
 }
 
@@ -88,6 +66,8 @@ impl Socket {
         match TcpStream::connect((hostname, port)) {
             Ok(sock) => {
                 self.tcp_sock = Arc::new(Mutex::new(Some(sock)));
+                self.send(NetworkMessage::new(
+                        PayloadFlag::IdentityRequest, Vec::new())).unwrap();
                 Ok(())
             },
             Err(err) => {
@@ -107,7 +87,13 @@ impl Socket {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
                         debug!("Writing out net msg to socket.");
-                        try!(net_msg.serialize(BufWriter::new(tcp_stream)));
+                        let mut buf = Vec::new();
+                        net_msg.encode(&mut Encoder::new(&mut buf));
+                        debug!("Encode buf: {:?}", buf);
+                        let mut buf_writer = BufWriter::new(tcp_stream);
+                        net_msg.encode(&mut Encoder::new(&mut buf_writer));
+                        try!(buf_writer.flush());
+                        //try!(net_msg.serialize(BufWriter::new(tcp_stream)));
                         Ok(())
                     },
                     None => {
@@ -128,13 +114,11 @@ impl Socket {
             Ok(mut guard) => {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
-                        match NetworkMessage::deserialize(
-                                BufReader::new(tcp_stream)) {
-                            Ok(msg) => Ok(msg),
-                            Err(err) => Err(io::Error::new(
-                                    io::ErrorKind::NotConnected,
-                                    format!("{}", err)))
-                        }
+                        let buf_reader = BufReader::new(tcp_stream);
+                        let mut decoder = Decoder::new(buf_reader);
+                        let net_msg: NetworkMessage =
+                            Decodable::decode(&mut decoder).unwrap();
+                        Ok(net_msg)
                     },
                     None => {
                         Err(io::Error::new(io::ErrorKind::NotConnected,
@@ -189,6 +173,9 @@ pub fn listen(txn_pool_tx: Sender<Transaction>,
                                         PAYLOAD_FLAG_BLOCK => {
                                             let block = Block::deserialize(&msg.payload[..]).unwrap();
                                             block_tx_c2.send(block).unwrap();
+                                        },
+                                        PAYLOAD_FLAG_IDENT_REQ => {
+                                            panic!("TODO: Support ident req");
                                         },
                                         n => panic!("Unsupported payload flag: {}.", n)
                                     };
