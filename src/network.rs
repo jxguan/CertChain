@@ -12,6 +12,8 @@ use transaction::{Transaction};
 use blockchain::Block;
 use rustc_serialize::{Encodable, Decodable};
 use msgpack::{Encoder, Decoder};
+use address::Address;
+use secp256k1::key::{SecretKey, PublicKey};
 
 const PEER_CONN_ATTEMPT_INTERVAL_IN_MS: u32 = 3000;
 
@@ -22,27 +24,40 @@ struct Socket {
 #[derive(RustcEncodable, RustcDecodable, Debug)]
 pub struct NetworkMessage {
     pub magic: u32,
-    pub payload_flag: PayloadFlag,
-    pub payload_len: u32,
+    pub payload: Payload,
     pub payload_checksum: u32,
-    pub payload: Vec<u8>,
 }
 
 #[derive(RustcEncodable, RustcDecodable, Debug)]
-pub enum PayloadFlag {
-    Transaction,
-    Block,
-    IdentityRequest
+pub enum Payload {
+    IdentReq(IdentityRequest),
+}
+
+#[derive(RustcEncodable, RustcDecodable, Debug)]
+pub struct IdentityRequest {
+    pub requester_addr: Address,
+    // TODO: Add: pub requester_pubkey: PublicKey,
+    pub requester_hostname: String,
+    pub requester_port: u16,
+    // TODO: Add: pub requester_sig: Signature,
+}
+
+impl IdentityRequest {
+    pub fn new() -> IdentityRequest {
+        IdentityRequest {
+            requester_addr: Address::blank(),
+            requester_hostname: "placeholder".to_string(),
+            requester_port: 1337,
+        }
+    }
 }
 
 impl NetworkMessage {
-    pub fn new(payload_type: PayloadFlag, payload: Vec<u8>) -> NetworkMessage {
+    pub fn new(payload: Payload) -> NetworkMessage {
         NetworkMessage {
             magic: 101,
-            payload_flag: payload_type,
-            payload_len: payload.len() as u32,
-            payload_checksum: 55,
-            payload: payload
+            payload: payload,
+            payload_checksum: 55, // TODO: Make this an actual checksum
         }
     }
 }
@@ -60,7 +75,7 @@ impl Socket {
             Ok(sock) => {
                 self.tcp_sock = Arc::new(Mutex::new(Some(sock)));
                 self.send(NetworkMessage::new(
-                        PayloadFlag::IdentityRequest, Vec::new())).unwrap();
+                        Payload::IdentReq(IdentityRequest::new()))).unwrap();
                 Ok(())
             },
             Err(err) => {

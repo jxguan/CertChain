@@ -7,7 +7,7 @@ use rustc_serialize::json::Json;
 use std::io::Read;
 use std::sync::{Arc, RwLock, Mutex};
 use network;
-use network::{NetworkMessage, PayloadFlag};
+use network::{NetworkMessage};
 use blockchain::{Block, Blockchain};
 use address;
 use address::Address;
@@ -97,8 +97,8 @@ fn broadcast_and_pool_txn(txn: Transaction,
     for tx in peer_txs {
         let mut bytes = Vec::new();
         txn.serialize(&mut bytes).unwrap();
-        tx.send(NetworkMessage::new(
-                PayloadFlag::Transaction, bytes)).unwrap();
+        //TEMP DISABLEtx.send(NetworkMessage::new(
+        //TEMP DISABLE        PayloadFlag::Transaction, bytes)).unwrap();
     }
 
     // If certification txn, Index txn in map for status retrieval in RPC calls

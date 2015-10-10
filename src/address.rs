@@ -7,11 +7,13 @@ use secp256k1::key::{PublicKey};
 use crypto::sha2::Sha256;
 use hash::DoubleSha256Hash;
 use std::fmt::{Display, Formatter};
+use rustc_serialize::{Encodable, Decodable};
+use msgpack::{Encoder, Decoder};
 
 const ADDRESS_LEN_BYTES: usize = 25;
 const MAINNET_ADDRESS_VERSION_PREFIX: u8 = 88; // "c" in Base58
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(RustcEncodable, RustcDecodable, Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Address {
     data: [u8; ADDRESS_LEN_BYTES],
 }
