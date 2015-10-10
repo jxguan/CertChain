@@ -13,9 +13,6 @@ use blockchain::Block;
 use rustc_serialize::{Encodable, Decodable};
 use msgpack::{Encoder, Decoder};
 
-const PAYLOAD_FLAG_TXN: u8 = 1;
-const PAYLOAD_FLAG_BLOCK: u8 = 2;
-const PAYLOAD_FLAG_IDENT_REQ: u8 = 3;
 const PEER_CONN_ATTEMPT_INTERVAL_IN_MS: u32 = 3000;
 
 struct Socket {
@@ -25,13 +22,13 @@ struct Socket {
 #[derive(RustcEncodable, RustcDecodable, Debug)]
 pub struct NetworkMessage {
     pub magic: u32,
-    pub payload_flag: u8,
+    pub payload_flag: PayloadFlag,
     pub payload_len: u32,
     pub payload_checksum: u32,
     pub payload: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(RustcEncodable, RustcDecodable, Debug)]
 pub enum PayloadFlag {
     Transaction,
     Block,
@@ -42,11 +39,7 @@ impl NetworkMessage {
     pub fn new(payload_type: PayloadFlag, payload: Vec<u8>) -> NetworkMessage {
         NetworkMessage {
             magic: 101,
-            payload_flag: match payload_type {
-                PayloadFlag::Transaction => PAYLOAD_FLAG_TXN,
-                PayloadFlag::Block => PAYLOAD_FLAG_BLOCK,
-                PayloadFlag::IdentityRequest => PAYLOAD_FLAG_IDENT_REQ,
-            },
+            payload_flag: payload_type,
             payload_len: payload.len() as u32,
             payload_checksum: 55,
             payload: payload
@@ -87,13 +80,8 @@ impl Socket {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
                         debug!("Writing out net msg to socket.");
-                        let mut buf = Vec::new();
-                        net_msg.encode(&mut Encoder::new(&mut buf));
-                        debug!("Encode buf: {:?}", buf);
                         let mut buf_writer = BufWriter::new(tcp_stream);
                         net_msg.encode(&mut Encoder::new(&mut buf_writer));
-                        try!(buf_writer.flush());
-                        //try!(net_msg.serialize(BufWriter::new(tcp_stream)));
                         Ok(())
                     },
                     None => {
@@ -165,20 +153,6 @@ pub fn listen(txn_pool_tx: Sender<Transaction>,
                             match recv_sock.receive() {
                                 Ok(msg) => {
                                     debug!("Received message from peer: {:?}", msg);
-                                    match msg.payload_flag {
-                                        PAYLOAD_FLAG_TXN => {
-                                            let txn = Transaction::deserialize(&msg.payload[..]).unwrap();
-                                            txn_pool_tx_c2.send(txn).unwrap();
-                                        },
-                                        PAYLOAD_FLAG_BLOCK => {
-                                            let block = Block::deserialize(&msg.payload[..]).unwrap();
-                                            block_tx_c2.send(block).unwrap();
-                                        },
-                                        PAYLOAD_FLAG_IDENT_REQ => {
-                                            panic!("TODO: Support ident req");
-                                        },
-                                        n => panic!("Unsupported payload flag: {}.", n)
-                                    };
                                 },
                                 Err(_) => {
                                     info!("Client disconnected; exiting listener thread.");
