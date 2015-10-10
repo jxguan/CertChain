@@ -18,9 +18,10 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use hash::{MerkleRoot, DoubleSha256Hash};
 use std::thread;
 use key;
+use fsm::{FSM,FSMState};
 use secp256k1::key::{SecretKey, PublicKey};
 use rustc_serialize::json;
-use std::collections::{LinkedList, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 // Used in RPC response; designed to be serializable.
 #[derive(RustcEncodable)]
@@ -73,16 +74,31 @@ pub fn run(config: CertChainConfig) -> () {
     let pooled_txns_map: Arc<RwLock<HashMap<TxnId, String>>>
         = Arc::new(RwLock::new(HashMap::new()));
 
-    /*
-     * TODO: Loop receipt of NetPayloads into this logic
-     * by modifying the FSM queue.
-     */
-    let mut fsm: LinkedList<Option<NetPayload>> = LinkedList::new();
+    let mut fsm: Arc<RwLock<FSM>>
+        = Arc::new(RwLock::new(FSM::new()));
+    let fsm_clone = fsm.clone();
+
+    thread::spawn(move || {
+        loop {
+            let net_payload = net_payload_rx.recv().unwrap();
+            debug!("Received payload on channel: {:?}", net_payload);
+            match net_payload {
+                NetPayload::IdentReq(ref identreq) => {
+                    if identreq.is_valid() {
+                        fsm_clone.write().unwrap().push_state(
+                            FSMState::RespondToIdentReq);
+                    }
+                }
+            }
+        }
+    });
+
     loop {
-        match fsm.pop_front() {
-            Some(_) => { panic!("TODO: Implement FSM.") },
+        let next_state = fsm.write().unwrap().pop_state();
+        match next_state {
+            Some(state) => { panic!("TODO: Transition to state.") },
             None => {
-                info!("FSM idling...");
+                debug!("FSM idling...");
                 thread::sleep_ms(1000);
             }
         }

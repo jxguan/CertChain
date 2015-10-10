@@ -23,6 +23,7 @@ pub mod key;
 pub mod transaction;
 pub mod hash;
 pub mod signature;
+pub mod fsm;
 
 use std::thread;
 use std::default::Default;

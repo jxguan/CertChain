@@ -50,6 +50,10 @@ impl IdentityRequest {
             requester_port: 1337,
         }
     }
+
+    pub fn is_valid(&self) -> bool {
+        return true;
+    }
 }
 
 impl NetworkMessage {
