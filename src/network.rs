@@ -133,8 +133,7 @@ impl Socket {
     }
 }
 
-pub fn listen(txn_pool_tx: Sender<Transaction>,
-              block_tx: Sender<Block>,
+pub fn listen(payload_tx: Sender<NetPayload>,
               config: &CertChainConfig) {
 
     // Start listening on the listener port in the provided config.
@@ -150,24 +149,21 @@ pub fn listen(txn_pool_tx: Sender<Transaction>,
                          listener_port, e),
     };
 
-    // TODO: Clean this up, no need to clone like this.
-    let txn_pool_tx_c1 = txn_pool_tx.clone();
-    let block_tx_c1 = block_tx.clone();
+    let payload_tx_clone1 = payload_tx.clone();
     thread::spawn(move || {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    // TODO: Clean this up, no need to clone like this.
-                    let txn_pool_tx_c2 = txn_pool_tx_c1.clone();
-                    let block_tx_c2 = block_tx_c1.clone();
+                    let payload_tx_clone2 = payload_tx_clone1.clone();
                     thread::spawn(move || {
                         let recv_sock = Socket {
                             tcp_sock: Arc::new(Mutex::new(Some(stream))),
                         };
                         loop {
                             match recv_sock.receive() {
-                                Ok(msg) => {
-                                    debug!("Received message from peer: {:?}", msg);
+                                Ok(net_msg) => {
+                                    debug!("Received message from peer: {:?}", net_msg);
+                                    payload_tx_clone2.send(net_msg.payload);
                                 },
                                 Err(_) => {
                                     info!("Client disconnected; exiting listener thread.");

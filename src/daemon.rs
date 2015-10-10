@@ -43,8 +43,7 @@ struct DiplomaValidity {
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
 
-    let (txn_pool_tx, txn_pool_rx) = channel();
-    let (block_tx, block_rx) = channel();
+    let (net_payload_tx, net_payload_rx) = channel();
     let secret_key: SecretKey = key::secret_key_from_string(
         &config.secret_key).unwrap();
     let public_key: PublicKey = key::compressed_public_key_from_string(
@@ -54,7 +53,7 @@ pub fn run(config: CertChainConfig) -> () {
 
     // Listen on the network, and connect to all
     // trusted peers on the network.
-    network::listen(txn_pool_tx, block_tx, &config);
+    network::listen(net_payload_tx, &config);
 
     // TODO: Rework peer tx access to eliminate need for mutex.
     let peer_txs = Arc::new(Mutex::new(network::connect_to_peers(&config)));
@@ -74,8 +73,10 @@ pub fn run(config: CertChainConfig) -> () {
     let pooled_txns_map: Arc<RwLock<HashMap<TxnId, String>>>
         = Arc::new(RwLock::new(HashMap::new()));
 
-    start_txn_pool_listener(txn_pool.clone(), txn_pool_rx);
-
+    /*
+     * TODO: Loop receipt of NetPayloads into this logic
+     * by modifying the FSM queue.
+     */
     let mut fsm: LinkedList<Option<NetPayload>> = LinkedList::new();
     loop {
         match fsm.pop_front() {
@@ -86,43 +87,4 @@ pub fn run(config: CertChainConfig) -> () {
             }
         }
     }
-}
-
-fn broadcast_and_pool_txn(txn: Transaction,
-        peer_txs: &Vec<Sender<NetPayload>>,
-        txn_pool: &mut Vec<Transaction>,
-        pooled_txn_map: &mut HashMap<TxnId, String>) {
-
-    // Broadcast transaction to peers.
-    for tx in peer_txs {
-        let mut bytes = Vec::new();
-        txn.serialize(&mut bytes).unwrap();
-        //TEMP DISABLEtx.send(NetworkMessage::new(
-        //TEMP DISABLE        PayloadFlag::Transaction, bytes)).unwrap();
-    }
-
-    // If certification txn, Index txn in map for status retrieval in RPC calls
-    match txn.txn_type {
-        TransactionType::Certify(_) => {
-            pooled_txn_map.insert(txn.id(), format!("{}", txn.timestamp));
-        },
-        _ => ()
-    };
-
-    // Add transaction to the provided txn pool.
-    txn_pool.push(txn);
-}
-
-pub fn start_txn_pool_listener(
-        txn_pool: Arc<RwLock<Vec<Transaction>>>,
-        rx: Receiver<Transaction>) {
-    thread::spawn(move || {
-        loop {
-            info!("Waiting for txn to arrive on channel...");
-            let txn = rx.recv().unwrap();
-            info!("Txn arrived on channel.");
-            txn_pool.write().unwrap().push(txn);
-            info!("Pushed txn to txn pool.");
-        }
-    });
 }
