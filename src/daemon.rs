@@ -51,7 +51,8 @@ pub fn run(config: CertChainConfig) -> () {
     let inst_peer = NetPeer::new(
             InstAddress::from_pubkey(&public_key).unwrap(),
             &config.hostname, config.port);
-    info!("This node is peering as: {}", inst_peer);
+    info!("This node is peering as: {} using pubkey {:?}",
+            inst_peer, public_key);
 
     // Listen on the network for inbound messages.
     network::listen(net_payload_tx, &config);
@@ -63,7 +64,7 @@ pub fn run(config: CertChainConfig) -> () {
     for p in &config.peers {
         let mut peer = NetPeer::new(InstAddress::from_string(
                 &p.inst_addr[..]).unwrap(), &p.hostname, p.port);
-        match peer.connect(&inst_peer) {
+        match peer.connect(&inst_peer, &secret_key) {
             Ok(_) => (),
             Err(err) => {
                 warn!("{}", format!("{}", err));
@@ -96,14 +97,22 @@ pub fn run(config: CertChainConfig) -> () {
     /*
      * Start the finite state machine, which idles
      * if there are no states to transition to.
+     * IMPORTANT: For any states that directly reference
+     * network data, do not assume that data is valid.
+     * Call the appropriate validity check before using it.
      */
     loop {
         let next_state = fsm.write().unwrap().pop_state();
         match next_state {
             Some(state) => match state {
                 FSMState::RespondToIdentReq(identreq) => {
-                    match identreq.check_validity() {
-                        Ok(_) => panic!("TODO: Respond to valid ident req."),
+                    match identreq.check_validity(&inst_peer) {
+                        Ok(_) => {
+                            panic!("TODO: Respond to valid ident req.");
+                            /*
+                             * TODO: Issue IdentResp with signature.
+                             */
+                        },
                         Err(err) => panic!("TODO: Log invalid ident req.")
                     }
                 }

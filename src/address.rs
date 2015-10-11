@@ -6,15 +6,16 @@ use secp256k1::Secp256k1;
 use secp256k1::key::{PublicKey};
 use crypto::sha2::Sha256;
 use hash::DoubleSha256Hash;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use rustc_serialize::{Encodable, Decodable};
 use msgpack::{Encoder, Decoder};
 use common::ValidityErr;
+use std::hash::{Hasher, Hash};
 
 const ADDRESS_LEN_BYTES: usize = 25;
 const MAINNET_ADDRESS_VERSION_PREFIX: u8 = 88; // "c" in Base58
 
-#[derive(RustcEncodable, RustcDecodable, Debug, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(RustcEncodable, RustcDecodable, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct InstAddress {
     data: [u8; ADDRESS_LEN_BYTES],
 }
@@ -41,7 +42,7 @@ impl InstAddress {
         self.data[..].to_base58()
     }
 
-    fn check_validity(&self) -> Result<(), ValidityErr> {
+    pub fn check_validity(&self) -> Result<(), ValidityErr> {
         if self.data.len() != ADDRESS_LEN_BYTES {
             return Err(ValidityErr::InstAddressLength)
         }
@@ -92,6 +93,13 @@ impl InstAddress {
 }
 
 impl Display for InstAddress {
+    fn fmt(&self, f: &mut Formatter) -> ::std::fmt::Result {
+        try!(write!(f, "{}", self.to_base58()));
+        Ok(())
+    }
+}
+
+impl Debug for InstAddress {
     fn fmt(&self, f: &mut Formatter) -> ::std::fmt::Result {
         try!(write!(f, "{}", self.to_base58()));
         Ok(())

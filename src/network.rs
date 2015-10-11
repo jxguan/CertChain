@@ -13,9 +13,13 @@ use rustc_serialize::{Encodable, Decodable};
 use msgpack::{Encoder, Decoder};
 use address::InstAddress;
 use secp256k1::key::{SecretKey, PublicKey};
+use secp256k1::{Message};
 use common::ValidityErr;
 use key;
 use std::fmt::{Display, Formatter};
+use signature::RecovSignature;
+use hash::DoubleSha256Hash;
+use std::hash::{SipHasher, Hash};
 
 struct Socket {
     tcp_sock: Arc<Mutex<Option<TcpStream>>>,
@@ -48,8 +52,7 @@ pub struct IdentityRequest {
     pub from_inst_addr: InstAddress,
     pub from_hostname: String,
     pub from_port: u16,
-    // TODO: Add: pub from_pubkey: PublicKey,
-    // TODO: Add: pub from_sig: Signature,
+    pub from_signature: RecovSignature,
 }
 
 impl NetPeer {
@@ -62,9 +65,10 @@ impl NetPeer {
         }
     }
 
-    pub fn connect(&mut self, from_peer: &NetPeer) -> std::io::Result<()> {
+    pub fn connect(&mut self, from_peer: &NetPeer,
+                   from_peer_sk: &SecretKey) -> std::io::Result<()> {
         info!("Contacting peer {}...", self);
-        let identreq = IdentityRequest::new(&self, &from_peer);
+        let identreq = IdentityRequest::new(&self, &from_peer, &from_peer_sk);
         match self.socket.connect(identreq) {
             Ok(_) => {
                 info!("Sent identreq to peer {}; \
@@ -100,18 +104,63 @@ impl Display for NetPeer {
 }
 
 impl IdentityRequest {
-    pub fn new(to_peer: &NetPeer, from_peer: &NetPeer) -> IdentityRequest {
+    pub fn new(to_peer: &NetPeer, from_peer: &NetPeer,
+               from_peer_secret_key: &SecretKey) -> IdentityRequest {
+        let from_inst_addr = from_peer.inst_addr;
+        let from_hostname = String::from(&from_peer.hostname[..]);
+        let from_port = from_peer.port;
+        let to_hash = format!("{},{},{}", from_inst_addr,
+                              from_hostname, from_port);
         IdentityRequest {
             to_inst_addr: to_peer.inst_addr,
             to_hostname: String::from(&to_peer.hostname[..]),
             to_port: to_peer.port,
-            from_inst_addr: from_peer.inst_addr,
-            from_hostname: String::from(&from_peer.hostname[..]),
-            from_port: from_peer.port
+            from_inst_addr: from_inst_addr,
+            from_hostname: from_hostname,
+            from_port: from_port,
+            from_signature: RecovSignature::sign(
+                &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
+                &from_peer_secret_key)
         }
     }
 
-    pub fn check_validity(&self) -> Result<(), ValidityErr> {
+    pub fn check_validity(&self, inst_peer: &NetPeer) -> Result<(), ValidityErr> {
+        if let Err(err) = self.to_inst_addr.check_validity() {
+            return Err(ValidityErr::ToInstAddrInvalid);
+        }
+        if self.to_inst_addr != inst_peer.inst_addr {
+            return Err(ValidityErr::ToInstAddrDoesntMatchOurs);
+        }
+        if self.to_hostname != inst_peer.hostname {
+            return Err(ValidityErr::ToHostNameDoesntMatchOurs);
+        }
+        if self.to_port != inst_peer.port {
+            return Err(ValidityErr::ToPortDoesntMatchOurs);
+        }
+        if let Err(err) = self.from_inst_addr.check_validity() {
+            return Err(ValidityErr::FromInstAddrInvalid);
+        }
+
+        /*
+         * Reconstruct the expected signature message and attempt to
+         * recover the public key from the signature. If it succeeds *and*
+         * the pubkey hashes to the sending institution address, we're good.
+         */
+        let from_combined = format!("{},{},{}", self.from_inst_addr,
+                              self.from_hostname, self.from_port);
+        let from_hash = &DoubleSha256Hash::hash(&from_combined.as_bytes()[..]);
+        let from_pubkey_recov = match self.from_signature
+                .recover_pubkey(&from_hash) {
+            Ok(pubkey) => pubkey,
+            Err(err) => return Err(ValidityErr::UnableToRecoverFromAddrPubkey),
+        };
+        let from_addr_recov = match InstAddress::from_pubkey(&from_pubkey_recov) {
+            Ok(addr) => addr,
+            Err(err) => return Err(ValidityErr::RecoveredFromAddrInvalid)
+        };
+        if self.from_inst_addr != from_addr_recov {
+            return Err(ValidityErr::RecoveredFromAddrDoesntMatch)
+        }
         return Ok(())
     }
 }
