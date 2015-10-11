@@ -1,11 +1,12 @@
 use std::collections::{LinkedList};
+use network::IdentityRequest;
 
 pub struct FSM {
     states: LinkedList<FSMState>,
 }
 
 pub enum FSMState {
-    RespondToIdentReq,
+    RespondToIdentReq(IdentityRequest),
 }
 
 impl FSM {

@@ -10,10 +10,8 @@ use network;
 use network::{NetPayload};
 use blockchain::{Block, Blockchain};
 use address;
-use address::Address;
+use address::InstAddress;
 use std::ops::Deref;
-use transaction;
-use transaction::{Transaction, TransactionType, TxnId};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use hash::{MerkleRoot, DoubleSha256Hash};
 use std::thread;
@@ -22,6 +20,7 @@ use fsm::{FSM,FSMState};
 use secp256k1::key::{SecretKey, PublicKey};
 use rustc_serialize::json;
 use std::collections::{HashMap, HashSet};
+use network::NetPeer;
 
 // Used in RPC response; designed to be serializable.
 #[derive(RustcEncodable)]
@@ -49,54 +48,66 @@ pub fn run(config: CertChainConfig) -> () {
         &config.secret_key).unwrap();
     let public_key: PublicKey = key::compressed_public_key_from_string(
         &config.compressed_public_key).unwrap();
-    let institution_addr: Address = address::from_pubkey(&public_key).unwrap();
-    info!("This node is using address: {}", institution_addr);
+    let inst_peer = NetPeer::new(
+            InstAddress::from_pubkey(&public_key).unwrap(),
+            &config.hostname, config.port);
+    info!("This node is peering as: {}", inst_peer);
 
-    // Listen on the network, and connect to all
-    // trusted peers on the network.
+    // Listen on the network for inbound messages.
     network::listen(net_payload_tx, &config);
 
-    // TODO: Rework peer tx access to eliminate need for mutex.
-    let peer_txs = Arc::new(Mutex::new(network::connect_to_peers(&config)));
-
-    let blockchain: Arc<RwLock<Blockchain>>
-        = Arc::new(RwLock::new(Blockchain::new()));
-    let txn_pool: Arc<RwLock<Vec<Transaction>>>
-        = Arc::new(RwLock::new(Vec::new()));
-    let trust_table: Arc<RwLock<HashMap<String, HashSet<String>>>>
-        = Arc::new(RwLock::new(HashMap::new()));
-    let certified_table: Arc<RwLock<HashMap<TxnId, (u32, Vec<u8>)>>>
-        = Arc::new(RwLock::new(HashMap::new()));
-    let revoked_table: Arc<RwLock<HashMap<TxnId, (u32, Vec<u8>)>>>
-        = Arc::new(RwLock::new(HashMap::new()));
-    let all_txns_set: Arc<RwLock<HashSet<TxnId>>>
-        = Arc::new(RwLock::new(HashSet::new()));
-    let pooled_txns_map: Arc<RwLock<HashMap<TxnId, String>>>
-        = Arc::new(RwLock::new(HashMap::new()));
+    /*
+     * Connect to each of our peers. TODO: Eventually, this should
+     * be limited only to those peers who we want to verify us.
+     */
+    for p in &config.peers {
+        let mut peer = NetPeer::new(InstAddress::from_string(
+                &p.inst_addr[..]).unwrap(), &p.hostname, p.port);
+        match peer.connect(&inst_peer) {
+            Ok(_) => (),
+            Err(err) => {
+                warn!("{}", format!("{}", err));
+            }
+        }
+    }
 
     let mut fsm: Arc<RwLock<FSM>>
         = Arc::new(RwLock::new(FSM::new()));
     let fsm_clone = fsm.clone();
 
+    /*
+     * The payload rx channel is monitored on a separate thread;
+     * any valid messages received on the channel are translated
+     * into one or more states for the FSM to transition to.
+     */
     thread::spawn(move || {
         loop {
             let net_payload = net_payload_rx.recv().unwrap();
             debug!("Received payload on channel: {:?}", net_payload);
+            let mut fsm = fsm_clone.write().unwrap();
             match net_payload {
-                NetPayload::IdentReq(ref identreq) => {
-                    if identreq.is_valid() {
-                        fsm_clone.write().unwrap().push_state(
-                            FSMState::RespondToIdentReq);
-                    }
+                NetPayload::IdentReq(identreq) => {
+                    fsm.push_state(FSMState::RespondToIdentReq(identreq));
                 }
             }
         }
     });
 
+    /*
+     * Start the finite state machine, which idles
+     * if there are no states to transition to.
+     */
     loop {
         let next_state = fsm.write().unwrap().pop_state();
         match next_state {
-            Some(state) => { panic!("TODO: Transition to state.") },
+            Some(state) => match state {
+                FSMState::RespondToIdentReq(identreq) => {
+                    match identreq.check_validity() {
+                        Ok(_) => panic!("TODO: Respond to valid ident req."),
+                        Err(err) => panic!("TODO: Log invalid ident req.")
+                    }
+                }
+            },
             None => {
                 debug!("FSM idling...");
                 thread::sleep_ms(1000);

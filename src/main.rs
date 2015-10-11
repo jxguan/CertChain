@@ -14,13 +14,13 @@ extern crate rmp_serialize as msgpack;
 #[macro_use]
 extern crate log;
 
+pub mod common;
 pub mod address;
 pub mod daemon;
 pub mod config;
 pub mod network;
 pub mod blockchain;
 pub mod key;
-pub mod transaction;
 pub mod hash;
 pub mod signature;
 pub mod fsm;

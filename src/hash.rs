@@ -2,7 +2,6 @@ use crypto::sha2::Sha256;
 use crypto::digest::Digest;
 use std::ops::{Index, Range, RangeFull};
 use std::fmt::{Debug, Formatter};
-use transaction::Transaction;
 use std::io::{Write, Result, Read};
 use std::cmp;
 
@@ -17,7 +16,7 @@ pub trait MerkleRoot {
     fn merkle_root(&self) -> DoubleSha256Hash;
 }
 
-impl<'a> MerkleRoot for &'a [Transaction] {
+/*impl<'a> MerkleRoot for &'a [Transaction] {
     fn merkle_root(&self) -> DoubleSha256Hash {
         fn merkle_root(data: Vec<DoubleSha256Hash>) -> DoubleSha256Hash {
             if data.len() == 0 {
@@ -50,7 +49,7 @@ impl MerkleRoot for Vec<Transaction> {
     fn merkle_root(&self) -> DoubleSha256Hash {
         (&self[..]).merkle_root()
     }
-}
+}*/
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
 pub struct DoubleSha256Hash([u8; 32]);
