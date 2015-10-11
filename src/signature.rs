@@ -36,9 +36,9 @@ impl RecovSignature {
 impl Encodable for RecovSignature {
     fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
         let (recid, bytes) = self.sig.serialize_compact(&self.ctx);
-        s.emit_i32(recid.0);
+        recid.to_i32().encode(s);
         for b in bytes.iter() {
-            s.emit_u8(*b);
+            b.encode(s);
         }
         Ok(())
     }
@@ -47,10 +47,10 @@ impl Encodable for RecovSignature {
 impl Decodable for RecovSignature {
     fn decode<D: Decoder>(d: &mut D) -> Result<RecovSignature, D::Error> {
         let mut ctx = Secp256k1::new();
-        let mut recid = RecoveryId(try!(d.read_i32()));
+        let mut recid = RecoveryId::from_i32(try!(<i32>::decode(d))).unwrap();
         let mut bytes = [0u8; 64];
         for i in 0..bytes.len() {
-            bytes[i] = try!(d.read_u8());
+            bytes[i] = try!(<u8>::decode(d));
         }
         let sig = RecoverableSignature::from_compact(&ctx, &bytes, recid).unwrap();
         Ok(RecovSignature {

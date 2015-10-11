@@ -276,11 +276,6 @@ pub fn listen(payload_tx: Sender<NetPayload>,
                             tcp_sock: Arc::new(Mutex::new(Some(stream))),
                         };
                         loop {
-                            /*
-                             * TODO: Whenever a connection is opened,
-                             * IdentityRequest is always expected first;
-                             * codify this.
-                             */
                             match recv_sock.receive() {
                                 Ok(net_msg) => {
                                     debug!("Received message from peer: {:?}", net_msg);
