@@ -10,6 +10,7 @@ extern crate rand;
 extern crate rust_base58;
 extern crate time;
 extern crate rmp_serialize as msgpack;
+extern crate compress;
 
 #[macro_use]
 extern crate log;

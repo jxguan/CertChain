@@ -16,6 +16,7 @@ rust-base58 = "0.0.4"
 time = "0.1.32"
 rmp-serialize = "0.7.0"
 rustc-serialize = "0.3.16"
+compress = "0.1.1"
 
 # Using my local branch until my PR gets merged.
 [dependencies.secp256k1]

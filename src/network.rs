@@ -22,6 +22,7 @@ use hash::DoubleSha256Hash;
 use std::hash::{SipHasher, Hash};
 use rand::os::OsRng;
 use rand::Rng;
+use compress::checksum::adler;
 
 const MAINNET_MSG_MAGIC: u32 = 0x48FFABCD;
 
@@ -243,10 +244,14 @@ impl IdentityRequest {
 
 impl NetworkMessage {
     pub fn new(payload: NetPayload) -> NetworkMessage {
+        let mut adler = adler::State32::new();
+        let mut payload_bytes = Vec::new();
+        payload.encode(&mut Encoder::new(&mut payload_bytes));
+        adler.feed(&payload_bytes[..]);
         NetworkMessage {
             magic: MAINNET_MSG_MAGIC,
             payload: payload,
-            payload_checksum: 55, // TODO: Make this an actual checksum
+            payload_checksum: adler.result()
         }
     }
 }
@@ -310,14 +315,29 @@ impl Socket {
                         let net_msg: NetworkMessage =
                             Decodable::decode(&mut decoder).unwrap();
 
-                        if net_msg.magic == MAINNET_MSG_MAGIC {
-                            Ok(net_msg)
-                        } else {
-                            Err(io::Error::new(io::ErrorKind::InvalidData,
+                        // Ensure that the message's magic matches expected value.
+                        if net_msg.magic != MAINNET_MSG_MAGIC {
+                            return Err(io::Error::new(io::ErrorKind::InvalidData,
                                     format!("Expected magic {}, msg has magic {}.",
                                     MAINNET_MSG_MAGIC,
                                     net_msg.magic)))
                         }
+
+                        // Ensure that the message payload matches the checksum.
+                        let mut adler = adler::State32::new();
+                        let mut payload_bytes = Vec::new();
+                        net_msg.payload.encode(&mut Encoder::new(&mut payload_bytes));
+                        adler.feed(&payload_bytes[..]);
+                        let gen_checksum = adler.result();
+                        if net_msg.payload_checksum != gen_checksum {
+                            return Err(io::Error::new(io::ErrorKind::InvalidData,
+                                    format!("Expected payload checksum {}, \
+                                    msg payload has checksum {}.",
+                                    net_msg.payload_checksum, gen_checksum)))
+                        }
+
+                        // If all checks pass, message is intact.
+                        Ok(net_msg)
                     },
                     None => {
                         Err(io::Error::new(io::ErrorKind::NotConnected,
