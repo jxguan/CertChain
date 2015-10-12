@@ -5,6 +5,7 @@ use secp256k1::key::{SecretKey, PublicKey};
 use common::ValidityErr;
 use hash::DoubleSha256Hash;
 
+#[derive(Clone)]
 pub struct RecovSignature {
     ctx: Secp256k1,
     sig: RecoverableSignature,

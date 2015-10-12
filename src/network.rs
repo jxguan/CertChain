@@ -44,9 +44,12 @@ pub struct NetPeer {
     pub hostname: String,
     pub port: u16,
     socket: Socket,
+    conn_state: ConnectionState,
+    identreq: Option<IdentityRequest>,
+    identresp: Option<IdentityResponse>
 }
 
-#[derive(RustcEncodable, RustcDecodable, Debug)]
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
 pub struct IdentityRequest {
     pub nonce: u64,
     pub to_inst_addr: InstAddress,
@@ -58,43 +61,71 @@ pub struct IdentityRequest {
     pub from_signature: RecovSignature,
 }
 
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+pub struct IdentityResponse {
+    pub nonce: u64,
+    pub from_inst_addr: InstAddress,
+    pub from_hostname: String,
+    pub from_port: u16,
+    pub from_signature: RecovSignature,
+}
+
+#[derive(Debug)]
+pub enum ConnectionState {
+    NotConnected,
+    IdentityUnconfirmed,
+    IdentityConfirmed
+}
+
 impl NetPeer {
     pub fn new(inst_addr: InstAddress, hostname: &String, port: u16) -> NetPeer {
         NetPeer {
             inst_addr: inst_addr,
             hostname: String::from(&hostname[..]),
             port: port,
-            socket: Socket::new()
+            socket: Socket::new(),
+            conn_state: ConnectionState::NotConnected,
+            identreq: None,
+            identresp: None,
         }
     }
 
     pub fn connect(&mut self, from_peer: &NetPeer,
                    from_peer_sk: &SecretKey) -> std::io::Result<()> {
-        info!("Contacting peer {}...", self);
-        let identreq = IdentityRequest::new(&self, &from_peer, &from_peer_sk);
-        match self.socket.connect(identreq) {
-            Ok(_) => {
-                info!("Sent identreq to peer {}; \
-                      response required to finalize.", self);
-                Ok(())
+        match self.conn_state {
+            ConnectionState::NotConnected => {
+                info!("Contacting peer {}...", self);
+                let identreq = IdentityRequest::new(&self,
+                                                    &from_peer, &from_peer_sk);
+                match self.socket.connect(identreq.clone()) {
+                    Ok(_) => {
+                        info!("Sent identreq to peer {}; \
+                              response required to finalize.", self);
+                        self.identreq = Some(identreq);
+                        self.conn_state = ConnectionState::IdentityUnconfirmed;
+                        Ok(())
+                    },
+                    Err(err) => {
+                        self.conn_state = ConnectionState::NotConnected;
+                        Err(io::Error::new(io::ErrorKind::NotConnected,
+                            format!("Unable to connect to peer {}; \
+                                    error is: {}", self, err)))
+                    }
+                }
             },
-            Err(err) =>
-                Err(io::Error::new(io::ErrorKind::NotConnected,
-                    format!("Unable to connect to peer {}; \
-                            error is: {}", self, err)))
+            _ => Err(io::Error::new(io::ErrorKind::AlreadyExists,
+                    format!("Peer's connection state is {:?}.", self.conn_state)))
         }
     }
 
     pub fn send(&self, payload: NetPayload) -> std::io::Result<()> {
-        if self.has_confirmed_identity() {
-            return Ok(())
+        match self.conn_state {
+            ConnectionState::IdentityConfirmed =>
+                panic!("TODO: Send payload to confirmed peer."),
+            _ =>
+                Err(io::Error::new(io::ErrorKind::Other,
+                    "Peer has not yet confirmed their identity."))
         }
-        Err(io::Error::new(io::ErrorKind::NotConnected,
-            "Peer has not yet confirmed their identity."))
-    }
-
-    pub fn has_confirmed_identity(&self) -> bool {
-        false
     }
 }
 

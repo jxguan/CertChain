@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+use std::io::{Write};
 use crypto::ripemd160::Ripemd160;
 use crypto::digest::Digest;
 use rust_base58::base58::{FromBase58, ToBase58};
@@ -7,10 +7,9 @@ use secp256k1::key::{PublicKey};
 use crypto::sha2::Sha256;
 use hash::DoubleSha256Hash;
 use std::fmt::{Debug, Display, Formatter};
-use rustc_serialize::{Encodable, Decodable};
-use msgpack::{Encoder, Decoder};
+use rustc_serialize::{Encodable};
 use common::ValidityErr;
-use std::hash::{Hasher, Hash};
+use std::hash::{Hash};
 
 const ADDRESS_LEN_BYTES: usize = 25;
 const MAINNET_ADDRESS_VERSION_PREFIX: u8 = 88; // "c" in Base58

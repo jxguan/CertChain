@@ -22,24 +22,6 @@ use rustc_serialize::json;
 use std::collections::{HashMap, HashSet};
 use network::NetPeer;
 
-// Used in RPC response; designed to be serializable.
-#[derive(RustcEncodable)]
-struct TxnSummary {
-    pub txn_id: String,
-    pub signature_ts: String,
-    pub status: String,
-    pub revocation_txn_id: String,
-}
-
-// Used in RPC response; designed to be serializable.
-#[derive(RustcEncodable)]
-struct DiplomaValidity {
-    pub author_addr: String,
-    pub status: String,
-    pub latest_txn_id: String,
-    pub latest_txn_ts: String,
-}
-
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
 
@@ -58,9 +40,13 @@ pub fn run(config: CertChainConfig) -> () {
     network::listen(net_payload_tx, &config);
 
     /*
-     * Connect to each of our peers. TODO: Eventually, this should
+     * Create a NetPeer for each of our peers, and index
+     * them in a map by their institutional address.
+     * TODO: Eventually, this should
      * be limited only to those peers who we want to verify us.
      */
+    let peer_table: Arc<RwLock<HashMap<InstAddress, NetPeer>>>
+            = Arc::new(RwLock::new(HashMap::new()));
     for p in &config.peers {
         let mut peer = NetPeer::new(InstAddress::from_string(
                 &p.inst_addr[..]).unwrap(), &p.hostname, p.port);
@@ -70,6 +56,7 @@ pub fn run(config: CertChainConfig) -> () {
                 warn!("{}", format!("{}", err));
             }
         }
+        peer_table.write().unwrap().insert(peer.inst_addr, peer);
     }
 
     let mut fsm: Arc<RwLock<FSM>>
