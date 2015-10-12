@@ -20,6 +20,8 @@ use std::fmt::{Display, Formatter};
 use signature::RecovSignature;
 use hash::DoubleSha256Hash;
 use std::hash::{SipHasher, Hash};
+use rand::os::OsRng;
+use rand::Rng;
 
 struct Socket {
     tcp_sock: Arc<Mutex<Option<TcpStream>>>,
@@ -46,6 +48,7 @@ pub struct NetPeer {
 
 #[derive(RustcEncodable, RustcDecodable, Debug)]
 pub struct IdentityRequest {
+    pub nonce: u64,
     pub to_inst_addr: InstAddress,
     pub to_hostname: String,
     pub to_port: u16,
@@ -106,12 +109,15 @@ impl Display for NetPeer {
 impl IdentityRequest {
     pub fn new(to_peer: &NetPeer, from_peer: &NetPeer,
                from_peer_secret_key: &SecretKey) -> IdentityRequest {
+        let mut crypto_rng = OsRng::new().unwrap();
+        let nonce = crypto_rng.gen::<u64>();
         let from_inst_addr = from_peer.inst_addr;
         let from_hostname = String::from(&from_peer.hostname[..]);
         let from_port = from_peer.port;
-        let to_hash = format!("{},{},{}", from_inst_addr,
+        let to_hash = format!("{},{},{},{}", nonce, from_inst_addr,
                               from_hostname, from_port);
         IdentityRequest {
+            nonce: nonce,
             to_inst_addr: to_peer.inst_addr,
             to_hostname: String::from(&to_peer.hostname[..]),
             to_port: to_peer.port,
@@ -146,7 +152,7 @@ impl IdentityRequest {
          * recover the public key from the signature. If it succeeds *and*
          * the pubkey hashes to the sending institution address, we're good.
          */
-        let from_combined = format!("{},{},{}", self.from_inst_addr,
+        let from_combined = format!("{},{},{},{}", self.nonce, self.from_inst_addr,
                               self.from_hostname, self.from_port);
         let from_hash = &DoubleSha256Hash::hash(&from_combined.as_bytes()[..]);
         let from_pubkey_recov = match self.from_signature
