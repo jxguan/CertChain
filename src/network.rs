@@ -23,15 +23,17 @@ use std::hash::{SipHasher, Hash};
 use rand::os::OsRng;
 use rand::Rng;
 
+const MAINNET_MSG_MAGIC: u32 = 0x48FFABCD;
+
 struct Socket {
     tcp_sock: Arc<Mutex<Option<TcpStream>>>,
 }
 
 #[derive(RustcEncodable, RustcDecodable, Debug)]
 struct NetworkMessage {
-    pub magic: u32,
-    pub payload: NetPayload,
-    pub payload_checksum: u32,
+    magic: u32,
+    payload: NetPayload,
+    payload_checksum: u32,
 }
 
 #[derive(RustcEncodable, RustcDecodable, Debug)]
@@ -242,7 +244,7 @@ impl IdentityRequest {
 impl NetworkMessage {
     pub fn new(payload: NetPayload) -> NetworkMessage {
         NetworkMessage {
-            magic: 101,
+            magic: MAINNET_MSG_MAGIC,
             payload: payload,
             payload_checksum: 55, // TODO: Make this an actual checksum
         }
@@ -307,7 +309,15 @@ impl Socket {
                         let mut decoder = Decoder::new(buf_reader);
                         let net_msg: NetworkMessage =
                             Decodable::decode(&mut decoder).unwrap();
-                        Ok(net_msg)
+
+                        if net_msg.magic == MAINNET_MSG_MAGIC {
+                            Ok(net_msg)
+                        } else {
+                            Err(io::Error::new(io::ErrorKind::InvalidData,
+                                    format!("Expected magic {}, msg has magic {}.",
+                                    MAINNET_MSG_MAGIC,
+                                    net_msg.magic)))
+                        }
                     },
                     None => {
                         Err(io::Error::new(io::ErrorKind::NotConnected,
