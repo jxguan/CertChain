@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, SocketAddr};
 use std::io;
 use std;
 use config::CertChainConfig;
@@ -73,9 +73,28 @@ pub struct IdentityResponse {
 #[derive(Debug)]
 pub enum ConnectionState {
     NotConnected,
-    IdentityUnconfirmed,
-    IdentityConfirmed
+    ConnectedIdentityConfirmed,
+    ConnectedIdentityUnconfirmed,
 }
+
+/*
+ * TODO
+ *  - Set up NetPeerTable
+ *    - Seed with initial peers, have them connect at construction
+ *      and ask for the identity from each.
+ *    - fn issue_identresp(IdentityResponse) will look up an existing
+ *      peer or create one if needed. Sending an identresp doesn't care if
+ *      if peer's identity is not confirmed.
+ *    - fn process_identresp(IdentityResponse) will look up the existing
+ *      peer or drop the payload if it doesn't exist / identity was never
+ *      requested in the first place; otherwise, set status to confirmed.
+ *    - REMEMBER: The point is not to have full duplex, as we have no way
+ *      of confirming whether an inbound socket maps to a hostname, nor
+ *      should we, as messages are async and can be repeated. For inbound
+ *      connections that have requested our identity but we never requested
+ *      theirs, they will simply sit in the peer table, unverified, until/unless
+ *      we have the need to connect and verify their identity.
+ */
 
 impl NetPeer {
     pub fn new(inst_addr: InstAddress, hostname: &String, port: u16) -> NetPeer {
@@ -90,19 +109,15 @@ impl NetPeer {
         }
     }
 
-    pub fn connect(&mut self, from_peer: &NetPeer,
-                   from_peer_sk: &SecretKey) -> std::io::Result<()> {
+    pub fn connect(&mut self, hostname: &str, port: u16) -> std::io::Result<()> {
         match self.conn_state {
             ConnectionState::NotConnected => {
-                info!("Contacting peer {}...", self);
-                let identreq = IdentityRequest::new(&self,
-                                                    &from_peer, &from_peer_sk);
-                match self.socket.connect(identreq.clone()) {
+                info!("Connecting to peer {}...", self);
+                match self.socket.connect(hostname, port) {
                     Ok(_) => {
-                        info!("Sent identreq to peer {}; \
-                              response required to finalize.", self);
-                        self.identreq = Some(identreq);
-                        self.conn_state = ConnectionState::IdentityUnconfirmed;
+                        info!("Connected to peer {}.", self);
+                        self.conn_state =
+                            ConnectionState::ConnectedIdentityUnconfirmed;
                         Ok(())
                     },
                     Err(err) => {
@@ -118,13 +133,35 @@ impl NetPeer {
         }
     }
 
+    pub fn request_identity(&mut self, from_peer: &NetPeer,
+                            from_peer_sk: &SecretKey) -> std::io::Result<()> {
+        match self.conn_state {
+            ConnectionState::ConnectedIdentityUnconfirmed => {
+                let identreq = IdentityRequest::new(&self,
+                        &from_peer, &from_peer_sk);
+                self.send(NetPayload::IdentReq(identreq.clone())).unwrap();
+                self.identreq = Some(identreq);
+                Ok(())
+            },
+            _ => Err(io::Error::new(io::ErrorKind::Other,
+                    "Peer must be connected but unconfirmed to request identity."))
+        }
+    }
+
     pub fn send(&self, payload: NetPayload) -> std::io::Result<()> {
         match self.conn_state {
-            ConnectionState::IdentityConfirmed =>
-                panic!("TODO: Send payload to confirmed peer."),
-            _ =>
-                Err(io::Error::new(io::ErrorKind::Other,
-                    "Peer has not yet confirmed their identity."))
+            ConnectionState::NotConnected =>
+                Err(io::Error::new(io::ErrorKind::NotConnected,
+                    "Unable to send payload to disconnected peer.")),
+            ConnectionState::ConnectedIdentityUnconfirmed => {
+                match payload {
+                    NetPayload::IdentReq(_) => {
+                        self.socket.send(NetworkMessage::new(payload))
+                    },
+                }
+            },
+            ConnectionState::ConnectedIdentityConfirmed =>
+                panic!("TODO: Send payload to confirmed peer.")
         }
     }
 }
@@ -220,15 +257,11 @@ impl Socket {
         }
     }
 
-    pub fn connect(&mut self, identreq: IdentityRequest)
+    pub fn connect(&mut self, hostname: &str, port: u16)
             -> std::io::Result<()> {
-        let socket_host = String::from(&identreq.to_hostname[..]);
-        let socket_addr = (&socket_host[..], identreq.to_port);
-        match TcpStream::connect(socket_addr) {
+        match TcpStream::connect((hostname, port)) {
             Ok(sock) => {
                 self.tcp_sock = Arc::new(Mutex::new(Some(sock)));
-                self.send(NetworkMessage::new(
-                        NetPayload::IdentReq(identreq))).unwrap();
                 Ok(())
             },
             Err(err) => {

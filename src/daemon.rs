@@ -50,7 +50,13 @@ pub fn run(config: CertChainConfig) -> () {
     for p in &config.peers {
         let mut peer = NetPeer::new(InstAddress::from_string(
                 &p.inst_addr[..]).unwrap(), &p.hostname, p.port);
-        match peer.connect(&inst_peer, &secret_key) {
+        match peer.connect(&p.hostname[..], p.port) {
+            Ok(_) => (),
+            Err(err) => {
+                warn!("{}", format!("{}", err));
+            }
+        }
+        match peer.request_identity(&inst_peer, &secret_key) {
             Ok(_) => (),
             Err(err) => {
                 warn!("{}", format!("{}", err));
@@ -95,10 +101,7 @@ pub fn run(config: CertChainConfig) -> () {
                 FSMState::RespondToIdentReq(identreq) => {
                     match identreq.check_validity(&inst_peer) {
                         Ok(_) => {
-                            panic!("TODO: Respond to valid ident req.");
-                            /*
-                             * TODO: Issue IdentResp with signature.
-                             */
+                            panic!("TODO: Respond to valid ident req.")
                         },
                         Err(err) => panic!("TODO: Log invalid ident req.")
                     }
