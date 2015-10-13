@@ -1,9 +1,9 @@
-use std::sync::{Arc, Mutex};
 use std::net::{TcpListener, TcpStream, SocketAddr};
 use std::io;
 use std;
 use config::CertChainConfig;
 use std::thread;
+use std::sync::{Arc, RwLock, Mutex};
 use std::sync::mpsc::{channel, Sender};
 use std::ops::DerefMut;
 use std::io::{Read, Write, BufReader, BufWriter};
@@ -23,6 +23,7 @@ use std::hash::{SipHasher, Hash};
 use rand::os::OsRng;
 use rand::Rng;
 use compress::checksum::adler;
+use std::collections::HashMap;
 
 const MAINNET_MSG_MAGIC: u32 = 0x48FFABCD;
 
@@ -40,12 +41,13 @@ struct NetworkMessage {
 #[derive(RustcEncodable, RustcDecodable, Debug)]
 pub enum NetPayload {
     IdentReq(IdentityRequest),
+    IdentResp(IdentityResponse),
 }
 
-pub struct NetPeer {
-    pub inst_addr: InstAddress,
-    pub hostname: String,
-    pub port: u16,
+struct NetPeer {
+    inst_addr: InstAddress,
+    hostname: String,
+    port: u16,
     socket: Socket,
     conn_state: ConnectionState,
     identreq: Option<IdentityRequest>,
@@ -68,36 +70,95 @@ pub struct IdentityRequest {
 pub struct IdentityResponse {
     pub nonce: u64,
     pub from_inst_addr: InstAddress,
-    pub from_hostname: String,
-    pub from_port: u16,
     pub from_signature: RecovSignature,
 }
 
 #[derive(Debug)]
-pub enum ConnectionState {
+enum ConnectionState {
     NotConnected,
     ConnectedIdentityConfirmed,
     ConnectedIdentityUnconfirmed,
 }
 
-/*
- * TODO
- *  - Set up NetPeerTable
- *    - Seed with initial peers, have them connect at construction
- *      and ask for the identity from each.
- *    - fn issue_identresp(IdentityResponse) will look up an existing
- *      peer or create one if needed. Sending an identresp doesn't care if
- *      if peer's identity is not confirmed.
- *    - fn process_identresp(IdentityResponse) will look up the existing
- *      peer or drop the payload if it doesn't exist / identity was never
- *      requested in the first place; otherwise, set status to confirmed.
- *    - REMEMBER: The point is not to have full duplex, as we have no way
- *      of confirming whether an inbound socket maps to a hostname, nor
- *      should we, as messages are async and can be repeated. For inbound
- *      connections that have requested our identity but we never requested
- *      theirs, they will simply sit in the peer table, unverified, until/unless
- *      we have the need to connect and verify their identity.
- */
+pub struct NetPeerTable {
+    peer_map: Arc<RwLock<HashMap<InstAddress, NetPeer>>>,
+    our_inst_addr: InstAddress,
+    our_hostname: String,
+    our_port: u16,
+}
+
+impl NetPeerTable {
+    pub fn new(config: &CertChainConfig) -> NetPeerTable {
+        let inst_pubkey = key::compressed_public_key_from_string(
+                &config.compressed_public_key).unwrap();
+        let inst_addr = InstAddress::from_pubkey(&inst_pubkey).unwrap();
+        info!("This node is peering as {}.", inst_addr);
+        NetPeerTable {
+            peer_map: Arc::new(RwLock::new(HashMap::new())),
+            our_inst_addr: inst_addr,
+            our_hostname: String::from(&config.hostname[..]),
+            our_port: config.port,
+        }
+    }
+
+    /// Register's an institution as a peer based on their institutional address,
+    /// and initiates a TCP connection to them.
+    pub fn register(&mut self, peer_addr: InstAddress, hostname: &String, port: u16) {
+        let mut peer_map = self.peer_map.write().unwrap();
+        match peer_map.get(&peer_addr) {
+            Some(_) => info!("Already peering with {}; ignorning call to register it.", peer_addr),
+            None => {
+                let mut peer = NetPeer::new(peer_addr, hostname, port);
+                peer.connect();
+                peer_map.insert(peer_addr, peer);
+            }
+        }
+    }
+
+    pub fn send_identreq(&mut self, peer_addr: InstAddress,
+            our_secret_key: &SecretKey) -> std::io::Result<()> {
+        let mut peer_map = self.peer_map.write().unwrap();
+        match peer_map.get_mut(&peer_addr) {
+            Some(peer) => {
+                let identreq = IdentityRequest::new(&peer,
+                        self.our_inst_addr,
+                        &self.our_hostname[..],
+                        self.our_port,
+                        &our_secret_key);
+                match peer.send(NetPayload::IdentReq(identreq.clone())) {
+                    Ok(_) => {
+                        peer.identreq = Some(identreq);
+                        Ok(())
+                    },
+                    Err(err) => Err(err)
+                }
+            },
+            None => Err(io::Error::new(io::ErrorKind::Other,
+                    format!("Peer {} is not registered, can't request identity.",
+                    peer_addr))),
+        }
+    }
+
+    pub fn handle_identreq(&mut self, identreq: IdentityRequest,
+            our_secret_key: &SecretKey) -> std::io::Result<()> {
+        // First, determine if the contents of this request are valid.
+        if let Err(err) = identreq.check_validity(&self.our_inst_addr,
+                &self.our_hostname, &self.our_port) {
+            panic!("TODO: Log invalid ident req.")
+        }
+
+        // Second, ensure this peer is registered, then get the peer.
+        self.register(identreq.from_inst_addr,
+                &identreq.from_hostname, identreq.from_port);
+        let mut peer_map = self.peer_map.write().unwrap();
+        let mut peer = peer_map.get_mut(&identreq.from_inst_addr).unwrap();
+
+        // Third, create a response and send to the peer.
+        let identresp = IdentityResponse::new(self.our_inst_addr,
+                identreq.nonce, &our_secret_key);
+        peer.send(NetPayload::IdentResp(identresp))
+    }
+}
 
 impl NetPeer {
     pub fn new(inst_addr: InstAddress, hostname: &String, port: u16) -> NetPeer {
@@ -112,11 +173,11 @@ impl NetPeer {
         }
     }
 
-    pub fn connect(&mut self, hostname: &str, port: u16) -> std::io::Result<()> {
+    pub fn connect(&mut self) -> std::io::Result<()> {
         match self.conn_state {
             ConnectionState::NotConnected => {
                 info!("Connecting to peer {}...", self);
-                match self.socket.connect(hostname, port) {
+                match self.socket.connect(&self.hostname[..], self.port) {
                     Ok(_) => {
                         info!("Connected to peer {}.", self);
                         self.conn_state =
@@ -136,34 +197,31 @@ impl NetPeer {
         }
     }
 
-    pub fn request_identity(&mut self, from_peer: &NetPeer,
-                            from_peer_sk: &SecretKey) -> std::io::Result<()> {
-        match self.conn_state {
-            ConnectionState::ConnectedIdentityUnconfirmed => {
-                let identreq = IdentityRequest::new(&self,
-                        &from_peer, &from_peer_sk);
-                self.send(NetPayload::IdentReq(identreq.clone())).unwrap();
-                self.identreq = Some(identreq);
-                Ok(())
-            },
-            _ => Err(io::Error::new(io::ErrorKind::Other,
-                    "Peer must be connected but unconfirmed to request identity."))
-        }
-    }
+    pub fn send(&mut self, payload: NetPayload) -> std::io::Result<()> {
 
-    pub fn send(&self, payload: NetPayload) -> std::io::Result<()> {
+        // If we're not connected to this peer, try one to connect
+        // before sending.
+        if let ConnectionState::NotConnected = self.conn_state {
+            self.connect();
+        }
+
         match self.conn_state {
             ConnectionState::NotConnected =>
                 Err(io::Error::new(io::ErrorKind::NotConnected,
                     "Unable to send payload to disconnected peer.")),
             ConnectionState::ConnectedIdentityUnconfirmed => {
                 match payload {
-                    NetPayload::IdentReq(_) => {
+                    NetPayload::IdentReq(_) |
+                    NetPayload::IdentResp(_) => {
                         self.socket.send(NetworkMessage::new(payload))
                     },
+                    /*_ => Err(io::Error::new(io::ErrorKind::Other,
+                        "Attempted to send a non-identity msg to a peer \
+                         whose identity is not yet confirmed."))*/
                 }
             },
             ConnectionState::ConnectedIdentityConfirmed =>
+                // TODO: When peer is confirmed, do not send identity req.
                 panic!("TODO: Send payload to confirmed peer.")
         }
     }
@@ -178,40 +236,41 @@ impl Display for NetPeer {
 }
 
 impl IdentityRequest {
-    pub fn new(to_peer: &NetPeer, from_peer: &NetPeer,
-               from_peer_secret_key: &SecretKey) -> IdentityRequest {
+    fn new(to_peer: &NetPeer,
+               our_inst_addr: InstAddress,
+               our_hostname: &str,
+               our_port: u16,
+               our_secret_key: &SecretKey) -> IdentityRequest {
         let mut crypto_rng = OsRng::new().unwrap();
         let nonce = crypto_rng.gen::<u64>();
-        let from_inst_addr = from_peer.inst_addr;
-        let from_hostname = String::from(&from_peer.hostname[..]);
-        let from_port = from_peer.port;
-        let to_hash = format!("{},{},{},{}", nonce, from_inst_addr,
-                              from_hostname, from_port);
+        let to_hash = format!("{},{},{},{}", nonce, our_inst_addr,
+                              our_hostname, our_port);
         IdentityRequest {
             nonce: nonce,
             to_inst_addr: to_peer.inst_addr,
             to_hostname: String::from(&to_peer.hostname[..]),
             to_port: to_peer.port,
-            from_inst_addr: from_inst_addr,
-            from_hostname: from_hostname,
-            from_port: from_port,
+            from_inst_addr: our_inst_addr,
+            from_hostname: String::from(our_hostname),
+            from_port: our_port,
             from_signature: RecovSignature::sign(
                 &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
-                &from_peer_secret_key)
+                &our_secret_key)
         }
     }
 
-    pub fn check_validity(&self, inst_peer: &NetPeer) -> Result<(), ValidityErr> {
+    fn check_validity(&self, our_addr: &InstAddress,
+            our_hostname: &String, our_port: &u16) -> Result<(), ValidityErr> {
         if let Err(err) = self.to_inst_addr.check_validity() {
             return Err(ValidityErr::ToInstAddrInvalid);
         }
-        if self.to_inst_addr != inst_peer.inst_addr {
+        if self.to_inst_addr != *our_addr {
             return Err(ValidityErr::ToInstAddrDoesntMatchOurs);
         }
-        if self.to_hostname != inst_peer.hostname {
+        if self.to_hostname != *our_hostname {
             return Err(ValidityErr::ToHostNameDoesntMatchOurs);
         }
-        if self.to_port != inst_peer.port {
+        if self.to_port != *our_port {
             return Err(ValidityErr::ToPortDoesntMatchOurs);
         }
         if let Err(err) = self.from_inst_addr.check_validity() {
@@ -239,6 +298,20 @@ impl IdentityRequest {
             return Err(ValidityErr::RecoveredFromAddrDoesntMatch)
         }
         return Ok(())
+    }
+}
+
+impl IdentityResponse {
+    fn new(our_inst_addr: InstAddress, request_nonce: u64,
+            our_secret_key: &SecretKey) -> IdentityResponse {
+        let to_hash = format!("{}", our_inst_addr);
+        IdentityResponse {
+            nonce: request_nonce,
+            from_inst_addr: our_inst_addr,
+            from_signature: RecovSignature::sign(
+                &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
+                &our_secret_key)
+        }
     }
 }
 

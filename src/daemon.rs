@@ -20,7 +20,7 @@ use fsm::{FSM,FSMState};
 use secp256k1::key::{SecretKey, PublicKey};
 use rustc_serialize::json;
 use std::collections::{HashMap, HashSet};
-use network::NetPeer;
+use network::NetPeerTable;
 
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
@@ -28,41 +28,18 @@ pub fn run(config: CertChainConfig) -> () {
     let (net_payload_tx, net_payload_rx) = channel();
     let secret_key: SecretKey = key::secret_key_from_string(
         &config.secret_key).unwrap();
-    let public_key: PublicKey = key::compressed_public_key_from_string(
-        &config.compressed_public_key).unwrap();
-    let inst_peer = NetPeer::new(
-            InstAddress::from_pubkey(&public_key).unwrap(),
-            &config.hostname, config.port);
-    info!("This node is peering as: {} using pubkey {:?}",
-            inst_peer, public_key);
 
     // Listen on the network for inbound messages.
     network::listen(net_payload_tx, &config);
 
-    /*
-     * Create a NetPeer for each of our peers, and index
-     * them in a map by their institutional address.
-     * TODO: Eventually, this should
-     * be limited only to those peers who we want to verify us.
-     */
-    let peer_table: Arc<RwLock<HashMap<InstAddress, NetPeer>>>
-            = Arc::new(RwLock::new(HashMap::new()));
+    // Connect to each of our peers.
+    // TODO: Only request identity if we want verification of our txns.
+    let mut peer_table = NetPeerTable::new(&config);
     for p in &config.peers {
-        let mut peer = NetPeer::new(InstAddress::from_string(
-                &p.inst_addr[..]).unwrap(), &p.hostname, p.port);
-        match peer.connect(&p.hostname[..], p.port) {
-            Ok(_) => (),
-            Err(err) => {
-                warn!("{}", format!("{}", err));
-            }
-        }
-        match peer.request_identity(&inst_peer, &secret_key) {
-            Ok(_) => (),
-            Err(err) => {
-                warn!("{}", format!("{}", err));
-            }
-        }
-        peer_table.write().unwrap().insert(peer.inst_addr, peer);
+        let peer_inst_addr = InstAddress::from_string(
+                &p.inst_addr[..]).unwrap();
+        peer_table.register(peer_inst_addr, &p.hostname, p.port);
+        peer_table.send_identreq(peer_inst_addr, &secret_key);
     }
 
     let mut fsm: Arc<RwLock<FSM>>
@@ -82,6 +59,9 @@ pub fn run(config: CertChainConfig) -> () {
             match net_payload {
                 NetPayload::IdentReq(identreq) => {
                     fsm.push_state(FSMState::RespondToIdentReq(identreq));
+                },
+                NetPayload::IdentResp(_) => {
+                    panic!("TODO: Handle IdentResp in net receiver.");
                 }
             }
         }
@@ -99,12 +79,8 @@ pub fn run(config: CertChainConfig) -> () {
         match next_state {
             Some(state) => match state {
                 FSMState::RespondToIdentReq(identreq) => {
-                    match identreq.check_validity(&inst_peer) {
-                        Ok(_) => {
-                            panic!("TODO: Respond to valid ident req.")
-                        },
-                        Err(err) => panic!("TODO: Log invalid ident req.")
-                    }
+                    peer_table.handle_identreq(
+                        identreq, &secret_key).unwrap();
                 }
             },
             None => {
