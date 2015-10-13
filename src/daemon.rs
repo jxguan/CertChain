@@ -70,9 +70,6 @@ pub fn run(config: CertChainConfig) -> () {
     /*
      * Start the finite state machine, which idles
      * if there are no states to transition to.
-     * IMPORTANT: For any states that directly reference
-     * network data, do not assume that data is valid.
-     * Call the appropriate validity check before using it.
      */
     loop {
         let next_state = fsm.write().unwrap().pop_state();
