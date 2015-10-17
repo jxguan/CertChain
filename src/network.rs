@@ -283,7 +283,7 @@ impl IdentityRequest {
                our_secret_key: &SecretKey) -> IdentityRequest {
         let mut crypto_rng = OsRng::new().unwrap();
         let nonce = crypto_rng.gen::<u64>();
-        let to_hash = format!("{},{},{},{}", nonce, our_inst_addr,
+        let to_hash = format!("IDENTREQ:{},{},{},{}", nonce, our_inst_addr,
                               our_hostname, our_port);
         IdentityRequest {
             nonce: nonce,
@@ -322,7 +322,7 @@ impl IdentityRequest {
          * recover the public key from the signature. If it succeeds *and*
          * the pubkey hashes to the sending institution address, we're good.
          */
-        let from_combined = format!("{},{},{},{}", self.nonce, self.from_inst_addr,
+        let from_combined = format!("IDENTREQ:{},{},{},{}", self.nonce, self.from_inst_addr,
                               self.from_hostname, self.from_port);
         let from_hash = &DoubleSha256Hash::hash(&from_combined.as_bytes()[..]);
         let from_pubkey_recov = match self.from_signature
@@ -344,7 +344,7 @@ impl IdentityRequest {
 impl IdentityResponse {
     fn new(our_inst_addr: InstAddress, request_nonce: u64,
             our_secret_key: &SecretKey) -> IdentityResponse {
-        let to_hash = format!("{},{}", request_nonce, our_inst_addr);
+        let to_hash = format!("IDENTRESP:{},{}", request_nonce, our_inst_addr);
         IdentityResponse {
             nonce: request_nonce,
             from_inst_addr: our_inst_addr,
@@ -368,7 +368,8 @@ impl IdentityResponse {
          * recover the public key from the signature. If it succeeds *and*
          * the pubkey hashes to the sending institution address, we're good.
          */
-        let from_combined = format!("{},{}", self.nonce, self.from_inst_addr);
+        let from_combined = format!("IDENTRESP:{},{}", self.nonce,
+                                    self.from_inst_addr);
         let from_hash = &DoubleSha256Hash::hash(&from_combined.as_bytes()[..]);
         let from_pubkey_recov = match self.from_signature
                 .recover_pubkey(&from_hash) {
