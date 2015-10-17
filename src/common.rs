@@ -12,5 +12,6 @@ pub enum ValidityErr {
     RecoveredFromAddrInvalid,
     RecoveredFromAddrDoesntMatch,
     Secp256k1MessageInvalidErr,
-    Secp256k1PubkeyRecoveryErr
+    Secp256k1PubkeyRecoveryErr,
+    NonceDoesntMatch,
 }

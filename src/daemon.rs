@@ -60,8 +60,8 @@ pub fn run(config: CertChainConfig) -> () {
                 NetPayload::IdentReq(identreq) => {
                     fsm.push_state(FSMState::RespondToIdentReq(identreq));
                 },
-                NetPayload::IdentResp(_) => {
-                    panic!("TODO: Handle IdentResp in net receiver.");
+                NetPayload::IdentResp(identresp) => {
+                    fsm.push_state(FSMState::ProcessIdentResp(identresp));
                 }
             }
         }
@@ -78,6 +78,9 @@ pub fn run(config: CertChainConfig) -> () {
                 FSMState::RespondToIdentReq(identreq) => {
                     peer_table.handle_identreq(
                         identreq, &secret_key).unwrap();
+                },
+                FSMState::ProcessIdentResp(identresp) => {
+                    peer_table.process_identresp(identresp).unwrap();
                 }
             },
             None => {
