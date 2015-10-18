@@ -17,8 +17,4 @@ time = "0.1.32"
 rmp-serialize = "0.7.0"
 rustc-serialize = "0.3.16"
 compress = "0.1.1"
-
-# Using my local branch until my PR gets merged.
-[dependencies.secp256k1]
-git = "https://github.com/mquinn/rust-secp256k1.git"
-branch = "mquinn-recov-id"
+secp256k1 = "0.3.2"
