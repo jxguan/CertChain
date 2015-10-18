@@ -21,6 +21,7 @@ use secp256k1::key::{SecretKey, PublicKey};
 use rustc_serialize::json;
 use std::collections::{HashMap, HashSet};
 use network::NetPeerTable;
+use rpc;
 
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
@@ -41,6 +42,11 @@ pub fn run(config: CertChainConfig) -> () {
         peer_table.register(peer_inst_addr, &p.hostname, p.port);
         peer_table.send_identreq(peer_inst_addr, &secret_key);
     }
+
+    // Start the RPC server.
+    thread::spawn(move || {
+        rpc::start(&config);
+    });
 
     let mut fsm: Arc<RwLock<FSM>>
         = Arc::new(RwLock::new(FSM::new()));

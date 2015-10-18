@@ -25,6 +25,7 @@ pub mod key;
 pub mod hash;
 pub mod signature;
 pub mod fsm;
+pub mod rpc;
 
 use std::thread;
 use std::default::Default;
