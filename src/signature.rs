@@ -1,5 +1,5 @@
 use rustc_serialize::{Encodable, Decodable, Encoder, Decoder};
-use std::fmt::{Display, Formatter, Debug};
+use std::fmt::{Formatter, Debug};
 use secp256k1::{RecoverableSignature, Secp256k1, RecoveryId, Message};
 use secp256k1::key::{SecretKey, PublicKey};
 use common::ValidityErr;
@@ -25,11 +25,11 @@ impl RecovSignature {
             -> Result<PublicKey, ValidityErr> {
         let msg = match Message::from_slice(&hash[..]) {
             Ok(msg) => msg,
-            Err(err) => return Err(ValidityErr::Secp256k1MessageInvalidErr)
+            Err(_) => return Err(ValidityErr::Secp256k1MessageInvalidErr)
         };
         match self.ctx.recover(&msg, &self.sig) {
             Ok(pubkey) => return Ok(pubkey),
-            Err(err) => return Err(ValidityErr::Secp256k1PubkeyRecoveryErr)
+            Err(_) => return Err(ValidityErr::Secp256k1PubkeyRecoveryErr)
         };
     }
 }
@@ -37,9 +37,9 @@ impl RecovSignature {
 impl Encodable for RecovSignature {
     fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
         let (recid, bytes) = self.sig.serialize_compact(&self.ctx);
-        recid.to_i32().encode(s);
+        let _ = recid.to_i32().encode(s);
         for b in bytes.iter() {
-            b.encode(s);
+            let _ = b.encode(s);
         }
         Ok(())
     }
@@ -47,8 +47,8 @@ impl Encodable for RecovSignature {
 
 impl Decodable for RecovSignature {
     fn decode<D: Decoder>(d: &mut D) -> Result<RecovSignature, D::Error> {
-        let mut ctx = Secp256k1::new();
-        let mut recid = RecoveryId::from_i32(try!(<i32>::decode(d))).unwrap();
+        let ctx = Secp256k1::new();
+        let recid = RecoveryId::from_i32(try!(<i32>::decode(d))).unwrap();
         let mut bytes = [0u8; 64];
         for i in 0..bytes.len() {
             bytes[i] = try!(<u8>::decode(d));

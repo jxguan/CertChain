@@ -1,25 +1,13 @@
 use config::CertChainConfig;
-use hyper;
-use hyper::server::{Server, Request, Response};
-use hyper::uri::RequestUri::AbsolutePath;
-use hyper::net::Fresh;
-use rustc_serialize::json::Json;
-use std::io::Read;
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::{Arc, RwLock};
 use network;
 use network::{NetPayload};
-use blockchain::{Block, Blockchain};
-use address;
 use address::InstAddress;
-use std::ops::Deref;
-use std::sync::mpsc::{channel, Receiver, Sender};
-use hash::{MerkleRoot, DoubleSha256Hash};
+use std::sync::mpsc::{channel};
 use std::thread;
 use key;
 use fsm::{FSM,FSMState};
-use secp256k1::key::{SecretKey, PublicKey};
-use rustc_serialize::json;
-use std::collections::{HashMap, HashSet};
+use secp256k1::key::{SecretKey};
 use network::NetPeerTable;
 use rpc;
 
@@ -40,7 +28,7 @@ pub fn run(config: CertChainConfig) -> () {
         let peer_inst_addr = InstAddress::from_string(
                 &p.inst_addr[..]).unwrap();
         peer_table.register(peer_inst_addr, &p.hostname, p.port);
-        peer_table.send_identreq(peer_inst_addr, &secret_key);
+        peer_table.send_identreq(peer_inst_addr, &secret_key).unwrap();
     }
 
     // Start the RPC server.
@@ -48,7 +36,7 @@ pub fn run(config: CertChainConfig) -> () {
         rpc::start(&config);
     });
 
-    let mut fsm: Arc<RwLock<FSM>>
+    let fsm: Arc<RwLock<FSM>>
         = Arc::new(RwLock::new(FSM::new()));
     let fsm_clone = fsm.clone();
 

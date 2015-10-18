@@ -1,12 +1,6 @@
 use hash::DoubleSha256Hash;
-use std::collections::{HashMap, HashSet};
-use std::ptr;
+use std::collections::{HashMap};
 use time;
-use std::io::{Result, Write, Read};
-use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
-use address;
-use address::InstAddress;
-use std::collections::hash_map::Entry;
 
 type BlockTree = HashMap<DoubleSha256Hash, Box<BlockchainNode>>;
 type NodePtr = *const BlockchainNode;

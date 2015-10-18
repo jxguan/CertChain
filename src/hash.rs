@@ -3,7 +3,6 @@ use crypto::digest::Digest;
 use std::ops::{Index, Range, RangeFull};
 use std::fmt::{Debug, Formatter};
 use std::io::{Write, Result, Read};
-use std::cmp;
 
 /*
  * Credit to Andrew Poelstra for the following implementations

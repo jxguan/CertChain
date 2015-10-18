@@ -13,7 +13,7 @@ pub fn start(config: &CertChainConfig) {
     // TODO: Save the Listening struct returned here
     // and call close() on it when graceful shutdown is supported.
     let _ = rpc_server.handle(
-        move |mut req: Request, mut res: Response<Fresh>| {
+        move |req: Request, mut res: Response<Fresh>| {
             match (req.method.clone(), req.uri.clone()) {
                 (hyper::Get, AbsolutePath(ref path))
                     if path == "/peers" => {

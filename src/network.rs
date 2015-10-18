@@ -1,25 +1,22 @@
-use std::net::{TcpListener, TcpStream, SocketAddr};
+use std::net::{TcpListener, TcpStream};
 use std::io;
 use std;
 use config::CertChainConfig;
 use std::thread;
 use std::sync::{Arc, RwLock, Mutex};
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{Sender};
 use std::ops::DerefMut;
-use std::io::{Read, Write, BufReader, BufWriter};
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use blockchain::Block;
+use std::io::{Write, BufReader, BufWriter};
 use rustc_serialize::{Encodable, Decodable};
 use msgpack::{Encoder, Decoder};
 use address::InstAddress;
-use secp256k1::key::{SecretKey, PublicKey};
-use secp256k1::{Message};
+use secp256k1::key::{SecretKey};
 use common::ValidityErr;
 use key;
 use std::fmt::{Display, Formatter};
 use signature::RecovSignature;
 use hash::DoubleSha256Hash;
-use std::hash::{SipHasher, Hash};
+use std::hash::{Hash};
 use rand::os::OsRng;
 use rand::Rng;
 use compress::checksum::adler;
@@ -107,10 +104,11 @@ impl NetPeerTable {
             hostname: &String, port: u16) {
         let mut peer_map = self.peer_map.write().unwrap();
         match peer_map.get(&peer_addr) {
-            Some(_) => info!("Already peering with {}; ignorning call to register it.", peer_addr),
+            Some(_) => info!("Already peering with {}; \
+                             ignorning call to register it.", peer_addr),
             None => {
                 let mut peer = NetPeer::new(peer_addr, hostname, port);
-                peer.connect();
+                peer.connect().unwrap();
                 peer_map.insert(peer_addr, peer);
             }
         }
@@ -143,7 +141,7 @@ impl NetPeerTable {
     pub fn handle_identreq(&mut self, identreq: IdentityRequest,
             our_secret_key: &SecretKey) -> std::io::Result<()> {
         // First, determine if the contents of this request are valid.
-        if let Err(err) = identreq.check_validity(&self.our_inst_addr,
+        if let Err(_) = identreq.check_validity(&self.our_inst_addr,
                 &self.our_hostname, &self.our_port) {
             panic!("TODO: Log invalid ident req.")
         }
@@ -187,7 +185,7 @@ impl NetPeerTable {
         };
 
         // Third, check the validity of the response's nonce and signature.
-        if let Err(err) = identresp.check_validity(identreq) {
+        if let Err(_) = identresp.check_validity(identreq) {
             panic!("TODO: Log invalid identresp.")
         }
 
@@ -242,7 +240,7 @@ impl NetPeer {
         // If we're not connected to this peer, try one to connect
         // before sending.
         if let ConnectionState::NotConnected = self.conn_state {
-            self.connect();
+            self.connect().unwrap();
         }
 
         match self.conn_state {
@@ -301,7 +299,7 @@ impl IdentityRequest {
 
     fn check_validity(&self, our_addr: &InstAddress,
             our_hostname: &String, our_port: &u16) -> Result<(), ValidityErr> {
-        if let Err(err) = self.to_inst_addr.check_validity() {
+        if let Err(_) = self.to_inst_addr.check_validity() {
             return Err(ValidityErr::ToInstAddrInvalid);
         }
         if self.to_inst_addr != *our_addr {
@@ -313,7 +311,7 @@ impl IdentityRequest {
         if self.to_port != *our_port {
             return Err(ValidityErr::ToPortDoesntMatchOurs);
         }
-        if let Err(err) = self.from_inst_addr.check_validity() {
+        if let Err(_) = self.from_inst_addr.check_validity() {
             return Err(ValidityErr::FromInstAddrInvalid);
         }
 
@@ -328,11 +326,11 @@ impl IdentityRequest {
         let from_pubkey_recov = match self.from_signature
                 .recover_pubkey(&from_hash) {
             Ok(pubkey) => pubkey,
-            Err(err) => return Err(ValidityErr::UnableToRecoverFromAddrPubkey),
+            Err(_) => return Err(ValidityErr::UnableToRecoverFromAddrPubkey),
         };
         let from_addr_recov = match InstAddress::from_pubkey(&from_pubkey_recov) {
             Ok(addr) => addr,
-            Err(err) => return Err(ValidityErr::RecoveredFromAddrInvalid)
+            Err(_) => return Err(ValidityErr::RecoveredFromAddrInvalid)
         };
         if self.from_inst_addr != from_addr_recov {
             return Err(ValidityErr::RecoveredFromAddrDoesntMatch)
@@ -359,7 +357,7 @@ impl IdentityResponse {
         if self.nonce != identreq.nonce {
             return Err(ValidityErr::NonceDoesntMatch);
         }
-        if let Err(err) = self.from_inst_addr.check_validity() {
+        if let Err(_) = self.from_inst_addr.check_validity() {
             return Err(ValidityErr::FromInstAddrInvalid);
         }
 
@@ -374,11 +372,11 @@ impl IdentityResponse {
         let from_pubkey_recov = match self.from_signature
                 .recover_pubkey(&from_hash) {
             Ok(pubkey) => pubkey,
-            Err(err) => return Err(ValidityErr::UnableToRecoverFromAddrPubkey),
+            Err(_) => return Err(ValidityErr::UnableToRecoverFromAddrPubkey),
         };
         let from_addr_recov = match InstAddress::from_pubkey(&from_pubkey_recov) {
             Ok(addr) => addr,
-            Err(err) => return Err(ValidityErr::RecoveredFromAddrInvalid)
+            Err(_) => return Err(ValidityErr::RecoveredFromAddrInvalid)
         };
         if self.from_inst_addr != from_addr_recov {
             return Err(ValidityErr::RecoveredFromAddrDoesntMatch)
@@ -391,7 +389,7 @@ impl NetworkMessage {
     pub fn new(payload: NetPayload) -> NetworkMessage {
         let mut adler = adler::State32::new();
         let mut payload_bytes = Vec::new();
-        payload.encode(&mut Encoder::new(&mut payload_bytes));
+        payload.encode(&mut Encoder::new(&mut payload_bytes)).unwrap();
         adler.feed(&payload_bytes[..]);
         NetworkMessage {
             magic: MAINNET_MSG_MAGIC,
@@ -434,7 +432,7 @@ impl Socket {
                     Some(ref mut tcp_stream) => {
                         debug!("Writing out net msg to socket.");
                         let mut buf_writer = BufWriter::new(tcp_stream);
-                        net_msg.encode(&mut Encoder::new(&mut buf_writer));
+                        net_msg.encode(&mut Encoder::new(&mut buf_writer)).unwrap();
                         Ok(())
                     },
                     None => {
@@ -471,7 +469,7 @@ impl Socket {
                         // Ensure that the message payload matches the checksum.
                         let mut adler = adler::State32::new();
                         let mut payload_bytes = Vec::new();
-                        net_msg.payload.encode(&mut Encoder::new(&mut payload_bytes));
+                        net_msg.payload.encode(&mut Encoder::new(&mut payload_bytes)).unwrap();
                         adler.feed(&payload_bytes[..]);
                         let gen_checksum = adler.result();
                         if net_msg.payload_checksum != gen_checksum {
@@ -524,7 +522,7 @@ pub fn listen(payload_tx: Sender<NetPayload>,
                             match recv_sock.receive() {
                                 Ok(net_msg) => {
                                     debug!("Received message from peer: {:?}", net_msg);
-                                    payload_tx_clone2.send(net_msg.payload);
+                                    payload_tx_clone2.send(net_msg.payload).unwrap();
                                 },
                                 Err(_) => {
                                     info!("Client disconnected; exiting listener thread.");

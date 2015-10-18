@@ -1,10 +1,7 @@
 use secp256k1::key::{SecretKey, PublicKey};
-use std::io::{Result, Read, Write};
-use rustc_serialize::hex::{FromHex, ToHex};
+use std::io::{Result, Read};
+use rustc_serialize::hex::{FromHex};
 use secp256k1::Secp256k1;
-use rand::os::OsRng;
-use rust_base58::base58::ToBase58;
-use address;
 
 const SECRET_KEY_LEN_BYTES: usize = 32;
 const COMPRESSED_PUB_KEY_LEN_BYTES: usize = 33;
@@ -17,12 +14,12 @@ pub fn deserialize_pubkey<R: Read>(mut reader: R) -> Result<PublicKey> {
     Ok(pub_key)
 }
 
-pub fn serialize_pubkey<W: Write>(pubkey: &PublicKey, mut writer: W) -> Result<()> {
+/*pub fn serialize_pubkey<W: Write>(pubkey: &PublicKey, mut writer: W) -> Result<()> {
     panic!("TODO: Retrofit this fn to use updated secp256k1 API.");
-    /*assert_eq!(pubkey.len(), COMPRESSED_PUB_KEY_LEN_BYTES);
+    assert_eq!(pubkey.len(), COMPRESSED_PUB_KEY_LEN_BYTES);
     writer.write(&pubkey[..]).unwrap();
-    Ok(())*/
-}
+    Ok(())
+}*/
 
 pub fn secret_key_from_string(key_str: &String)
         -> Result<SecretKey> {
