@@ -19,7 +19,7 @@ pub struct CertChainConfig {
     pub compressed_public_key: String,
 }
 
-#[derive(Debug, RustcDecodable)]
+#[derive(Debug, RustcDecodable, Clone)]
 pub struct CertChainConfigPeer {
     pub inst_addr: String,
     pub hostname: String,

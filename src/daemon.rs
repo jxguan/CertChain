@@ -21,14 +21,35 @@ pub fn run(config: CertChainConfig) -> () {
     // Listen on the network for inbound messages.
     network::listen(net_payload_tx, &config);
 
+    let peer_table = Arc::new(
+        RwLock::new(NetPeerTable::new(&config)));
+
     // Connect to each of our peers.
     // TODO: Only request identity if we want verification of our txns.
-    let mut peer_table = NetPeerTable::new(&config);
-    for p in &config.peers {
+    for p in config.peers.clone() {
         let peer_inst_addr = InstAddress::from_string(
                 &p.inst_addr[..]).unwrap();
-        peer_table.register(peer_inst_addr, &p.hostname, p.port);
-        peer_table.send_identreq(peer_inst_addr, &secret_key).unwrap();
+        let peer_table_c1 = peer_table.clone();
+        thread::spawn(move || {
+            let ref mut peer_table = *peer_table_c1.write().unwrap();
+            peer_table.register(peer_inst_addr, &p.hostname, p.port);
+            loop {
+                if let Err(_) = peer_table.connect(peer_inst_addr) {
+                    info!("Unable to connect to {}, will retry.", peer_inst_addr);
+                    thread::sleep_ms(3000);
+                    continue;
+                }
+                if let Err(_) = peer_table.send_identreq(peer_inst_addr,
+                                                         &secret_key) {
+                    info!("Unable to request identity from \
+                          {}, will retry.", peer_inst_addr);
+                    thread::sleep_ms(3000);
+                    continue;
+                }
+                info!("Successfully connected to {}", peer_inst_addr);
+                break;
+            }
+        });
     }
 
     // Start the RPC server.
@@ -36,8 +57,7 @@ pub fn run(config: CertChainConfig) -> () {
         rpc::start(&config);
     });
 
-    let fsm: Arc<RwLock<FSM>>
-        = Arc::new(RwLock::new(FSM::new()));
+    let fsm = Arc::new(RwLock::new(FSM::new()));
     let fsm_clone = fsm.clone();
 
     /*
@@ -70,11 +90,12 @@ pub fn run(config: CertChainConfig) -> () {
         match next_state {
             Some(state) => match state {
                 FSMState::RespondToIdentReq(identreq) => {
-                    peer_table.handle_identreq(
+                    peer_table.write().unwrap().handle_identreq(
                         identreq, &secret_key).unwrap();
                 },
                 FSMState::ProcessIdentResp(identresp) => {
-                    peer_table.process_identresp(identresp).unwrap();
+                    peer_table.write().unwrap().
+                        process_identresp(identresp).unwrap();
                 }
             },
             None => {

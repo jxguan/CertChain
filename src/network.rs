@@ -98,19 +98,27 @@ impl NetPeerTable {
         }
     }
 
-    /// Register's an institution as a peer based on their institutional address,
-    /// and initiates a TCP connection to them.
+    /// Registers an institution as a peer based on their institutional address.
     pub fn register(&mut self, peer_addr: InstAddress,
             hostname: &String, port: u16) {
         let mut peer_map = self.peer_map.write().unwrap();
         match peer_map.get(&peer_addr) {
-            Some(_) => info!("Already peering with {}; \
-                             ignorning call to register it.", peer_addr),
+            Some(_) => info!("Already registered {}; \
+                             ignorning call to re-register it.", peer_addr),
             None => {
-                let mut peer = NetPeer::new(peer_addr, hostname, port);
-                peer.connect().unwrap();
+                let peer = NetPeer::new(peer_addr, hostname, port);
                 peer_map.insert(peer_addr, peer);
             }
+        }
+    }
+
+    pub fn connect(&mut self, peer_addr: InstAddress) -> std::io::Result<()> {
+        let mut peer_map = self.peer_map.write().unwrap();
+        match peer_map.get_mut(&peer_addr) {
+            Some(mut peer) => peer.connect(),
+            None => Err(io::Error::new(io::ErrorKind::Other,
+                    format!("Peer {} is not registered, can't connect.",
+                    peer_addr))),
         }
     }
 
@@ -214,7 +222,7 @@ impl NetPeer {
     pub fn connect(&mut self) -> std::io::Result<()> {
         match self.conn_state {
             ConnectionState::NotConnected => {
-                info!("Connecting to peer {}...", self);
+                info!("Attempting to connect to peer {}...", self);
                 match self.socket.connect(&self.hostname[..], self.port) {
                     Ok(_) => {
                         info!("Connected to peer {}.", self);
