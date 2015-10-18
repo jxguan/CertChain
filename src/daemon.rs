@@ -31,16 +31,19 @@ pub fn run(config: CertChainConfig) -> () {
                 &p.inst_addr[..]).unwrap();
         let peer_table_c1 = peer_table.clone();
         thread::spawn(move || {
-            let ref mut peer_table = *peer_table_c1.write().unwrap();
-            peer_table.register(peer_inst_addr, &p.hostname, p.port);
+            peer_table_c1.write().unwrap()
+                .register(peer_inst_addr, &p.hostname, p.port);
             loop {
-                if let Err(_) = peer_table.connect(peer_inst_addr) {
-                    info!("Unable to connect to {}, will retry.", peer_inst_addr);
+                let conn_res = peer_table_c1.write()
+                        .unwrap().connect(peer_inst_addr);
+                if let Err(err) = conn_res {
+                    info!("Unable to connect to {}, will retry: {}.", peer_inst_addr, err);
                     thread::sleep_ms(3000);
                     continue;
                 }
-                if let Err(_) = peer_table.send_identreq(peer_inst_addr,
-                                                         &secret_key) {
+                let identreq_res = peer_table_c1.write()
+                        .unwrap().send_identreq(peer_inst_addr, &secret_key);
+                if let Err(_) = identreq_res {
                     info!("Unable to request identity from \
                           {}, will retry.", peer_inst_addr);
                     thread::sleep_ms(3000);
@@ -53,8 +56,9 @@ pub fn run(config: CertChainConfig) -> () {
     }
 
     // Start the RPC server.
+    let peer_table_c3 = peer_table.clone();
     thread::spawn(move || {
-        rpc::start(&config);
+        rpc::start(&config, peer_table_c3);
     });
 
     let fsm = Arc::new(RwLock::new(FSM::new()));

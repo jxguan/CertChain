@@ -3,10 +3,12 @@ use hyper;
 use hyper::net::Fresh;
 use hyper::uri::RequestUri::AbsolutePath;
 use config::CertChainConfig;
+use std::sync::{Arc, RwLock};
+use network::NetPeerTable;
 
 const RPC_LISTEN : &'static str = "0.0.0.0";
 
-pub fn start(config: &CertChainConfig) {
+pub fn start(config: &CertChainConfig, peer_table: Arc<RwLock<NetPeerTable>>) {
     info!("Starting RPC server...");
     let rpc_server = Server::http((&RPC_LISTEN[..], config.rpc_port)).unwrap();
     info!("RPC server started on {}:{}.", RPC_LISTEN, config.rpc_port);
@@ -17,7 +19,8 @@ pub fn start(config: &CertChainConfig) {
             match (req.method.clone(), req.uri.clone()) {
                 (hyper::Get, AbsolutePath(ref path))
                     if path == "/peers" => {
-                    res.send(b"TODO: Return peers.").unwrap();
+                    let ref peer_table = *peer_table.read().unwrap();
+                    res.send(format!("Peers: {}", peer_table.num_peers()).as_bytes()).unwrap();
                 },
                 _ => *res.status_mut() = hyper::NotFound
             }

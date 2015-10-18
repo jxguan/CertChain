@@ -204,6 +204,10 @@ impl NetPeerTable {
         info!("Peer {} has confirmed their identity to us.", peer.inst_addr);
         Ok(())
     }
+
+    pub fn num_peers(&self) -> usize {
+        self.peer_map.read().unwrap().len()
+    }
 }
 
 impl NetPeer {
@@ -238,8 +242,11 @@ impl NetPeer {
                     }
                 }
             },
-            _ => Err(io::Error::new(io::ErrorKind::AlreadyExists,
-                    format!("Peer's connection state is {:?}.", self.conn_state)))
+            _ => {
+                info!("We are already connected to {}; ignoring \
+                        connect call.", self);
+                Ok(())
+            }
         }
     }
 
@@ -267,8 +274,15 @@ impl NetPeer {
                 }
             },
             ConnectionState::ConnectedIdentityConfirmed =>
-                // TODO: When peer is confirmed, do not send identity req.
-                panic!("TODO: Send payload to confirmed peer.")
+                match payload {
+                    NetPayload::IdentReq(_) => {
+                        panic!("Why are you sending an identity request \
+                                to a peer that is already confirmed?");
+                    },
+                    NetPayload::IdentResp(_) => {
+                        self.socket.send(NetworkMessage::new(payload))
+                    }
+                }
         }
     }
 }

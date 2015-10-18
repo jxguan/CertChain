@@ -37,9 +37,9 @@ impl RecovSignature {
 impl Encodable for RecovSignature {
     fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
         let (recid, bytes) = self.sig.serialize_compact(&self.ctx);
-        let _ = recid.to_i32().encode(s);
+        try!(recid.to_i32().encode(s));
         for b in bytes.iter() {
-            let _ = b.encode(s);
+            try!(b.encode(s));
         }
         Ok(())
     }
