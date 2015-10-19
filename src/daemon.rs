@@ -37,7 +37,8 @@ pub fn run(config: CertChainConfig) -> () {
                 let conn_res = peer_table_c1.write()
                         .unwrap().connect(peer_inst_addr);
                 if let Err(err) = conn_res {
-                    info!("Unable to connect to {}, will retry: {}.", peer_inst_addr, err);
+                    info!("Unable to connect to {}, will \
+                          retry: {}.", peer_inst_addr, err);
                     thread::sleep_ms(3000);
                     continue;
                 }

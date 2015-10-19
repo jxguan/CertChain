@@ -7,8 +7,7 @@ use std::sync::{Arc, RwLock, Mutex};
 use std::sync::mpsc::{Sender};
 use std::ops::DerefMut;
 use std::io::{Write, BufReader, BufWriter};
-use rustc_serialize::{Encodable, Decodable};
-use msgpack::{Encoder, Decoder};
+use rustc_serialize::{Encodable, Decodable, Encoder};
 use address::InstAddress;
 use secp256k1::key::{SecretKey};
 use common::ValidityErr;
@@ -21,6 +20,7 @@ use rand::os::OsRng;
 use rand::Rng;
 use compress::checksum::adler;
 use std::collections::HashMap;
+use msgpack;
 
 const MAINNET_MSG_MAGIC: u32 = 0x48FFABCD;
 
@@ -39,16 +39,6 @@ struct NetworkMessage {
 pub enum NetPayload {
     IdentReq(IdentityRequest),
     IdentResp(IdentityResponse),
-}
-
-struct NetPeer {
-    inst_addr: InstAddress,
-    hostname: String,
-    port: u16,
-    socket: Socket,
-    conn_state: ConnectionState,
-    identreq: Option<IdentityRequest>,
-    identresp: Option<IdentityResponse>
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -82,6 +72,62 @@ pub struct NetPeerTable {
     our_inst_addr: InstAddress,
     our_hostname: String,
     our_port: u16,
+}
+
+struct NetPeer {
+    inst_addr: InstAddress,
+    hostname: String,
+    port: u16,
+    socket: Socket,
+    conn_state: ConnectionState,
+    identreq: Option<IdentityRequest>,
+    identresp: Option<IdentityResponse>
+}
+
+impl Encodable for NetPeerTable {
+    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+        s.emit_struct("NetPeerTable", 1, |s| {
+            try!(s.emit_struct_field("peer_map", 0, |s| {
+                try!(s.emit_map(1, |s| {
+                    let ref peer_map: HashMap<InstAddress, NetPeer>
+                        = *self.peer_map.read().unwrap();
+                    let mut idx = 0;
+                    for (key, val) in peer_map.iter() {
+                        try!(s.emit_map_elt_key(idx, |s|
+                            key.to_string().encode(s)));
+                        try!(s.emit_map_elt_val(idx, |s|
+                            val.encode(s)));
+                        idx += 1;
+                    }
+                    Ok(())
+                }));
+                Ok(())
+            }));
+            try!(s.emit_struct_field("our_inst_addr", 1,
+                    |s| self.our_inst_addr.to_string().encode(s)));
+            try!(s.emit_struct_field("our_hostname", 2,
+                    |s| self.our_hostname.encode(s)));
+            try!(s.emit_struct_field("our_port", 3,
+                    |s| self.our_port.encode(s)));
+            Ok(())
+        })
+    }
+}
+
+impl Encodable for NetPeer {
+    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+        s.emit_struct("NetPeer", 1, |s| {
+            try!(s.emit_struct_field("inst_addr", 0,
+                    |s| self.inst_addr.to_string().encode(s)));
+            try!(s.emit_struct_field("hostname", 1,
+                    |s| self.hostname.encode(s)));
+            try!(s.emit_struct_field("port", 2,
+                    |s| self.port.encode(s)));
+            try!(s.emit_struct_field("conn_state", 3,
+                    |s| format!("{:?}", self.conn_state).encode(s)));
+            Ok(())
+        })
+    }
 }
 
 impl NetPeerTable {
@@ -203,10 +249,6 @@ impl NetPeerTable {
         peer.identresp = Some(identresp);
         info!("Peer {} has confirmed their identity to us.", peer.inst_addr);
         Ok(())
-    }
-
-    pub fn num_peers(&self) -> usize {
-        self.peer_map.read().unwrap().len()
     }
 }
 
@@ -411,7 +453,7 @@ impl NetworkMessage {
     pub fn new(payload: NetPayload) -> NetworkMessage {
         let mut adler = adler::State32::new();
         let mut payload_bytes = Vec::new();
-        payload.encode(&mut Encoder::new(&mut payload_bytes)).unwrap();
+        payload.encode(&mut msgpack::Encoder::new(&mut payload_bytes)).unwrap();
         adler.feed(&payload_bytes[..]);
         NetworkMessage {
             magic: MAINNET_MSG_MAGIC,
@@ -454,7 +496,7 @@ impl Socket {
                     Some(ref mut tcp_stream) => {
                         debug!("Writing out net msg to socket.");
                         let mut buf_writer = BufWriter::new(tcp_stream);
-                        net_msg.encode(&mut Encoder::new(&mut buf_writer)).unwrap();
+                        net_msg.encode(&mut msgpack::Encoder::new(&mut buf_writer)).unwrap();
                         Ok(())
                     },
                     None => {
@@ -476,7 +518,7 @@ impl Socket {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
                         let buf_reader = BufReader::new(tcp_stream);
-                        let mut decoder = Decoder::new(buf_reader);
+                        let mut decoder = msgpack::Decoder::new(buf_reader);
                         let net_msg: NetworkMessage =
                             Decodable::decode(&mut decoder).unwrap();
 
@@ -491,7 +533,7 @@ impl Socket {
                         // Ensure that the message payload matches the checksum.
                         let mut adler = adler::State32::new();
                         let mut payload_bytes = Vec::new();
-                        net_msg.payload.encode(&mut Encoder::new(&mut payload_bytes)).unwrap();
+                        net_msg.payload.encode(&mut msgpack::Encoder::new(&mut payload_bytes)).unwrap();
                         adler.feed(&payload_bytes[..]);
                         let gen_checksum = adler.result();
                         if net_msg.payload_checksum != gen_checksum {

@@ -5,6 +5,7 @@ use hyper::uri::RequestUri::AbsolutePath;
 use config::CertChainConfig;
 use std::sync::{Arc, RwLock};
 use network::NetPeerTable;
+use rustc_serialize::json;
 
 const RPC_LISTEN : &'static str = "0.0.0.0";
 
@@ -20,7 +21,8 @@ pub fn start(config: &CertChainConfig, peer_table: Arc<RwLock<NetPeerTable>>) {
                 (hyper::Get, AbsolutePath(ref path))
                     if path == "/peers" => {
                     let ref peer_table = *peer_table.read().unwrap();
-                    res.send(format!("Peers: {}", peer_table.num_peers()).as_bytes()).unwrap();
+                    let pt_json = format!("{}", json::as_pretty_json(&peer_table));
+                    res.send(pt_json.as_bytes()).unwrap();
                 },
                 _ => *res.status_mut() = hyper::NotFound
             }

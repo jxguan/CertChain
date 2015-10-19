@@ -35,6 +35,9 @@ impl RecovSignature {
 }
 
 impl Encodable for RecovSignature {
+    // TODO: This should use the emit_struct, et al methods so that
+    // this can be compatible with both MessagePack for net serialization
+    // *and* JSON for RPC HTTP responses.
     fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
         let (recid, bytes) = self.sig.serialize_compact(&self.ctx);
         try!(recid.to_i32().encode(s));
@@ -46,6 +49,7 @@ impl Encodable for RecovSignature {
 }
 
 impl Decodable for RecovSignature {
+    // TODO: See note above for Encodable impl.
     fn decode<D: Decoder>(d: &mut D) -> Result<RecovSignature, D::Error> {
         let ctx = Secp256k1::new();
         let recid = RecoveryId::from_i32(try!(<i32>::decode(d))).unwrap();
