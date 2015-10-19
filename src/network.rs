@@ -519,8 +519,12 @@ impl Socket {
                     Some(ref mut tcp_stream) => {
                         let buf_reader = BufReader::new(tcp_stream);
                         let mut decoder = msgpack::Decoder::new(buf_reader);
-                        let net_msg: NetworkMessage =
-                            Decodable::decode(&mut decoder).unwrap();
+                        let net_msg: NetworkMessage
+                                = match Decodable::decode(&mut decoder) {
+                            Ok(msg) => msg,
+                            Err(err) => return Err(io::Error::new(
+                                    io::ErrorKind::Other, err))
+                        };
 
                         // Ensure that the message's magic matches expected value.
                         if net_msg.magic != MAINNET_MSG_MAGIC {
@@ -533,7 +537,8 @@ impl Socket {
                         // Ensure that the message payload matches the checksum.
                         let mut adler = adler::State32::new();
                         let mut payload_bytes = Vec::new();
-                        net_msg.payload.encode(&mut msgpack::Encoder::new(&mut payload_bytes)).unwrap();
+                        net_msg.payload.encode(&mut msgpack::Encoder::new(
+                                &mut payload_bytes)).unwrap();
                         adler.feed(&payload_bytes[..]);
                         let gen_checksum = adler.result();
                         if net_msg.payload_checksum != gen_checksum {
