@@ -63,8 +63,13 @@ pub struct IdentityResponse {
 #[derive(Debug)]
 enum ConnectionState {
     NotConnected,
-    ConnectedIdentityConfirmed,
-    ConnectedIdentityUnconfirmed,
+    Connected,
+}
+
+#[derive(Debug)]
+enum IdentityState {
+    NotConfirmed,
+    Confirmed
 }
 
 pub struct NetPeerTable {
@@ -80,6 +85,7 @@ struct NetPeer {
     port: u16,
     socket: Socket,
     conn_state: ConnectionState,
+    ident_state: IdentityState,
     identreq: Option<IdentityRequest>,
     identresp: Option<IdentityResponse>
 }
@@ -125,6 +131,8 @@ impl Encodable for NetPeer {
                     |s| self.port.encode(s)));
             try!(s.emit_struct_field("conn_state", 3,
                     |s| format!("{:?}", self.conn_state).encode(s)));
+            try!(s.emit_struct_field("ident_state", 4,
+                    |s| format!("{:?}", self.ident_state).encode(s)));
             Ok(())
         })
     }
@@ -150,7 +158,7 @@ impl NetPeerTable {
         let mut peer_map = self.peer_map.write().unwrap();
         match peer_map.get(&peer_addr) {
             Some(_) => info!("Already registered {}; \
-                             ignorning call to re-register it.", peer_addr),
+                        ignorning call to re-register it.", peer_addr),
             None => {
                 let peer = NetPeer::new(peer_addr, hostname, port);
                 peer_map.insert(peer_addr, peer);
@@ -158,17 +166,35 @@ impl NetPeerTable {
         }
     }
 
-    pub fn connect(&mut self, peer_addr: InstAddress) -> std::io::Result<()> {
-        let mut peer_map = self.peer_map.write().unwrap();
-        match peer_map.get_mut(&peer_addr) {
-            Some(mut peer) => peer.connect(),
-            None => Err(io::Error::new(io::ErrorKind::Other,
+    /// Connects to a peer. If a secret key is provided, we will ask
+    /// that peer to confirm their identity.
+    pub fn connect(&mut self, peer_addr: InstAddress,
+                   secret_key: Option<&SecretKey>) -> std::io::Result<()> {
+        match self.peer_map.write().unwrap().get_mut(&peer_addr) {
+            Some(mut peer) => {
+                if let Err(_) = peer.connect() {
+                    return Err(io::Error::new(io::ErrorKind::NotConnected,
+                        format!("Peer {} is not available, can't connect.",
+                        peer_addr)));
+                }
+            },
+            None => return Err(io::Error::new(io::ErrorKind::Other,
                     format!("Peer {} is not registered, can't connect.",
                     peer_addr))),
+        };
+
+        // If secret key is provided, ask peer to confirm their identity.
+        if let Some(ref sec_key) = secret_key {
+            if let Err(_) = self.send_identreq(peer_addr, sec_key) {
+                return Err(io::Error::new(io::ErrorKind::Other,
+                    format!("Unable to send identreq to peer {}.",
+                    peer_addr)));
+            }
         }
+        Ok(())
     }
 
-    pub fn send_identreq(&mut self, peer_addr: InstAddress,
+    fn send_identreq(&mut self, peer_addr: InstAddress,
             our_secret_key: &SecretKey) -> std::io::Result<()> {
         let mut peer_map = self.peer_map.write().unwrap();
         match peer_map.get_mut(&peer_addr) {
@@ -200,13 +226,21 @@ impl NetPeerTable {
             panic!("TODO: Log invalid ident req.")
         }
 
-        // Second, ensure this peer is registered, then get the peer.
+        // Second, ensure the peer is registered.
         self.register(identreq.from_inst_addr,
                 &identreq.from_hostname, identreq.from_port);
         let mut peer_map = self.peer_map.write().unwrap();
         let mut peer = peer_map.get_mut(&identreq.from_inst_addr).unwrap();
 
-        // Third, create a response and send to the peer.
+        // Third, start with a fresh socket. The peer could have disconnected,
+        // and if we send the response down the old socket, it will never
+        // receive it. Note that we *do not* reset the identity state;
+        // if the peer has already verified their identity, we don't
+        // need to ask again.
+        peer.socket = Socket::new();
+        peer.conn_state = ConnectionState::NotConnected;
+
+        // Fourth, create a response and send to the peer.
         let identresp = IdentityResponse::new(self.our_inst_addr,
                 identreq.nonce, &our_secret_key);
         peer.send(NetPayload::IdentResp(identresp))
@@ -245,7 +279,7 @@ impl NetPeerTable {
 
         // Now that all checks passed, elevate the peer's identity status
         // to confirmed.
-        peer.conn_state = ConnectionState::ConnectedIdentityConfirmed;
+        peer.ident_state = IdentityState::Confirmed;
         peer.identresp = Some(identresp);
         info!("Peer {} has confirmed their identity to us.", peer.inst_addr);
         Ok(())
@@ -260,6 +294,7 @@ impl NetPeer {
             port: port,
             socket: Socket::new(),
             conn_state: ConnectionState::NotConnected,
+            ident_state: IdentityState::NotConfirmed,
             identreq: None,
             identresp: None,
         }
@@ -272,8 +307,7 @@ impl NetPeer {
                 match self.socket.connect(&self.hostname[..], self.port) {
                     Ok(_) => {
                         info!("Connected to peer {}.", self);
-                        self.conn_state =
-                            ConnectionState::ConnectedIdentityUnconfirmed;
+                        self.conn_state = ConnectionState::Connected;
                         Ok(())
                     },
                     Err(err) => {
@@ -294,37 +328,29 @@ impl NetPeer {
 
     pub fn send(&mut self, payload: NetPayload) -> std::io::Result<()> {
 
-        // If we're not connected to this peer, try one to connect
+        // If we're not connected to this peer, try once to connect
         // before sending.
         if let ConnectionState::NotConnected = self.conn_state {
-            self.connect().unwrap();
+            let _ = self.connect();
         }
 
         match self.conn_state {
             ConnectionState::NotConnected =>
                 Err(io::Error::new(io::ErrorKind::NotConnected,
                     "Unable to send payload to disconnected peer.")),
-            ConnectionState::ConnectedIdentityUnconfirmed => {
+            ConnectionState::Connected => {
                 match payload {
                     NetPayload::IdentReq(_) |
                     NetPayload::IdentResp(_) => {
                         self.socket.send(NetworkMessage::new(payload))
                     },
-                    /*_ => Err(io::Error::new(io::ErrorKind::Other,
-                        "Attempted to send a non-identity msg to a peer \
-                         whose identity is not yet confirmed."))*/
+                    /*
+                     * TODO: For future messages, be sure to prevent
+                     * any non-ident messages from being sent if
+                     * identity state is not confirmed.
+                     */
                 }
-            },
-            ConnectionState::ConnectedIdentityConfirmed =>
-                match payload {
-                    NetPayload::IdentReq(_) => {
-                        panic!("Why are you sending an identity request \
-                                to a peer that is already confirmed?");
-                    },
-                    NetPayload::IdentResp(_) => {
-                        self.socket.send(NetworkMessage::new(payload))
-                    }
-                }
+            }
         }
     }
 }

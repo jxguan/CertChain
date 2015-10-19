@@ -35,18 +35,10 @@ pub fn run(config: CertChainConfig) -> () {
                 .register(peer_inst_addr, &p.hostname, p.port);
             loop {
                 let conn_res = peer_table_c1.write()
-                        .unwrap().connect(peer_inst_addr);
+                        .unwrap().connect(peer_inst_addr, Some(&secret_key));
                 if let Err(err) = conn_res {
                     info!("Unable to connect to {}, will \
                           retry: {}.", peer_inst_addr, err);
-                    thread::sleep_ms(3000);
-                    continue;
-                }
-                let identreq_res = peer_table_c1.write()
-                        .unwrap().send_identreq(peer_inst_addr, &secret_key);
-                if let Err(_) = identreq_res {
-                    info!("Unable to request identity from \
-                          {}, will retry.", peer_inst_addr);
                     thread::sleep_ms(3000);
                     continue;
                 }
@@ -73,7 +65,7 @@ pub fn run(config: CertChainConfig) -> () {
     thread::spawn(move || {
         loop {
             let net_payload = net_payload_rx.recv().unwrap();
-            debug!("Received payload on channel: {:?}", net_payload);
+            //debug!("Received payload on channel: {:?}", net_payload);
             let mut fsm = fsm_clone.write().unwrap();
             match net_payload {
                 NetPayload::IdentReq(identreq) => {
@@ -95,12 +87,20 @@ pub fn run(config: CertChainConfig) -> () {
         match next_state {
             Some(state) => match state {
                 FSMState::RespondToIdentReq(identreq) => {
-                    peer_table.write().unwrap().handle_identreq(
-                        identreq, &secret_key).unwrap();
+                    match peer_table.write().unwrap().handle_identreq(
+                        identreq, &secret_key) {
+                        Ok(_) => info!("FSM: sent identreq to peer."),
+                        Err(err) => warn!("FSM: unable to send identreq: {}",
+                                        err)
+                    };
                 },
                 FSMState::ProcessIdentResp(identresp) => {
-                    peer_table.write().unwrap().
-                        process_identresp(identresp).unwrap();
+                    match peer_table.write().unwrap().
+                        process_identresp(identresp) {
+                        Ok(_) => info!("FSM: processed identresp."),
+                        Err(err) => warn!("FSM: unable to process identresp: {}",
+                                          err)
+                    }
                 }
             },
             None => {
