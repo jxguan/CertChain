@@ -19,7 +19,7 @@ pub fn start(config: &CertChainConfig, peer_table: Arc<RwLock<NetPeerTable>>) {
         move |req: Request, mut res: Response<Fresh>| {
             match (req.method.clone(), req.uri.clone()) {
                 (hyper::Get, AbsolutePath(ref path))
-                    if path == "/peers" => {
+                    if path == "/network" => {
                     let ref peer_table = *peer_table.read().unwrap();
                     let pt_json = format!("{}", json::as_pretty_json(&peer_table));
                     res.send(pt_json.as_bytes()).unwrap();

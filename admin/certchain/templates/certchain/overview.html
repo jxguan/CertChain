@@ -6,7 +6,7 @@
 <div class="container cc-container">
   <div class="row">
     <div id="cc-secure-links" class="span12">
-      <span><a class="selected" href="{% url 'certchain:overview' %}">Network Overview</a></span>
+      <span><a class="selected" href="{% url 'certchain:overview' %}">Network Status</a></span>
       <span>-</span>
       <span><a href="{% url 'certchain:diplomas' %}">Certify and Revoke Diplomas</a></span>
     </div>
@@ -14,12 +14,29 @@
 
   <div class="row">
     <div class="span12">
-      <h2>Network Overview</h2>
-      <p>The institutions below have been registered on the network, and are accompanied by a list of those that trust them. In order to perform certifications and revocations on the network, an institution must maintain the trust of at least 75% of those peer institutions that are themselves trusted by at least one other institution.</p>
+      <h2>Network Presence</h2>
+      <p>Other institutions peer with your institution using the information below. </p>
     </div>
   </div>
 
   <div class="row">
+    <div class="span12">
+      <strong>Address</strong>: {{ network.our_inst_addr }}
+      <br/>
+      <strong>Hostname</strong>: {{ network.our_hostname }}
+      <br/>
+      <strong>Port</strong>: {{ network.our_port }}
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <h2>Network Peers</h2>
+      <p>Your institution maintains peering connections with the institutions below. </p>
+    </div>
+  </div>
+
+  <!-- <div class="row">
     <div class="span8">
       <p>To trust an institution that has not yet been trusted by anyone else, enter their address here:</p>
     </div>
@@ -30,42 +47,24 @@
         <input type="submit" class="cc-btn" value="TRUST"/>
       </form>
     </div>
-  </div>
+  </div> -->
 
-  {% for inst_addr, inst_trusting_addrs, trust_ratio in trust_list %}
-  <div class="row cc-inst-trust-row">
-    <div class="span8">
-      <h3>{{ inst_addr | cc_addr_to_name }}</h3>
-      <span class="{{ trust_ratio | cc_trust_ratio_class }}">{{ trust_ratio | cc_trust_ratio }}</span>
-      <ul>
-        {% for trusting_addr in inst_trusting_addrs %}
-          <li>{{ trusting_addr | cc_addr_to_name }} ({{ trusting_addr }})</li>
-        {% empty %}
-          <li>No trusting institutions.</li>
-        {% endfor %}
-      </ul>
-    </div>
-    <div class="span4">
-      {% if inst_addr in can_trust_insts %}
-        <form method="post" action="{% url 'certchain:trust_institution' %}">
-          {% csrf_token %}
-          <input name="addr_to_trust" type="hidden" value="{{ inst_addr }}"/>
-          <input type="submit" class="cc-btn" value="TRUST"/>
-        </form>
-      {% endif %}
-      {% if inst_addr in can_revoke_insts %}
-        <form method="post" action="{% url 'certchain:untrust_institution' %}">
-          {% csrf_token %}
-          <input name="addr_to_untrust" type="hidden" value="{{ inst_addr }}"/>
-          <input type="submit" class="cc-btn" value="REVOKE TRUST"/>
-        </form>
-      {% endif %}
+  {% for _, peer in network.peer_map.items %}
+  <div class="row">
+    <div class="span12">
+      <strong>Address</strong>: {{ peer.inst_addr }}
+      <br/>
+      <strong>Hostname</strong>: {{ peer.hostname }}
+      <br/>
+      <strong>Port</strong>: {{ peer.port }}
+      <br/>
+      <strong>Connection State</strong>: {{ peer.conn_state }}
     </div>
   </div>
   {% empty %}
-  <div class="row cc-inst-trust-row">
+  <div class="row">
     <div class="span12">
-      <p id="cc-no-institutions">There are no registered institutions on the network at this time.</p>
+      <p id="cc-no-institutions">Your institution has no peers.</p>
     </div>
   </div>
   {% endfor %}
