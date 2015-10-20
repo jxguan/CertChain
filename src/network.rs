@@ -39,7 +39,7 @@ struct NetworkMessage {
 pub enum NetPayload {
     IdentReq(IdentityRequest),
     IdentResp(IdentityResponse),
-    VerifierReq(VerifierRequest),
+    PeerReq(PeerRequest),
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -55,7 +55,7 @@ pub struct IdentityRequest {
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
-pub struct VerifierRequest {
+pub struct PeerRequest {
     pub nonce: u64,
     pub to_inst_addr: InstAddress,
     pub from_inst_addr: InstAddress,
@@ -81,14 +81,14 @@ enum IdentityState {
     Confirmed
 }
 
-pub struct NetPeerTable {
-    peer_map: Arc<RwLock<HashMap<InstAddress, NetPeer>>>,
+pub struct NetNodeTable {
+    node_map: Arc<RwLock<HashMap<InstAddress, NetNode>>>,
     our_inst_addr: InstAddress,
     our_hostname: String,
     our_port: u16,
 }
 
-struct NetPeer {
+struct NetNode {
     inst_addr: InstAddress,
     hostname: String,
     port: u16,
@@ -99,15 +99,15 @@ struct NetPeer {
     identresp: Option<IdentityResponse>
 }
 
-impl Encodable for NetPeerTable {
+impl Encodable for NetNodeTable {
     fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-        s.emit_struct("NetPeerTable", 1, |s| {
-            try!(s.emit_struct_field("peer_map", 0, |s| {
+        s.emit_struct("NetNodeTable", 1, |s| {
+            try!(s.emit_struct_field("node_map", 0, |s| {
                 try!(s.emit_map(1, |s| {
-                    let ref peer_map: HashMap<InstAddress, NetPeer>
-                        = *self.peer_map.read().unwrap();
+                    let ref node_map: HashMap<InstAddress, NetNode>
+                        = *self.node_map.read().unwrap();
                     let mut idx = 0;
-                    for (key, val) in peer_map.iter() {
+                    for (key, val) in node_map.iter() {
                         try!(s.emit_map_elt_key(idx, |s|
                             key.to_string().encode(s)));
                         try!(s.emit_map_elt_val(idx, |s|
@@ -129,9 +129,9 @@ impl Encodable for NetPeerTable {
     }
 }
 
-impl Encodable for NetPeer {
+impl Encodable for NetNode {
     fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-        s.emit_struct("NetPeer", 1, |s| {
+        s.emit_struct("NetNode", 1, |s| {
             try!(s.emit_struct_field("inst_addr", 0,
                     |s| self.inst_addr.to_string().encode(s)));
             try!(s.emit_struct_field("hostname", 1,
@@ -147,83 +147,83 @@ impl Encodable for NetPeer {
     }
 }
 
-impl NetPeerTable {
-    pub fn new(config: &CertChainConfig) -> NetPeerTable {
+impl NetNodeTable {
+    pub fn new(config: &CertChainConfig) -> NetNodeTable {
         let inst_pubkey = key::compressed_public_key_from_string(
                 &config.compressed_public_key).unwrap();
         let inst_addr = InstAddress::from_pubkey(&inst_pubkey).unwrap();
-        info!("This node is peering as {}.", inst_addr);
-        NetPeerTable {
-            peer_map: Arc::new(RwLock::new(HashMap::new())),
+        info!("This node identifies itself as {}.", inst_addr);
+        NetNodeTable {
+            node_map: Arc::new(RwLock::new(HashMap::new())),
             our_inst_addr: inst_addr,
             our_hostname: String::from(&config.hostname[..]),
             our_port: config.port,
         }
     }
 
-    /// Registers an institution as a peer based on their institutional address.
-    pub fn register(&mut self, peer_addr: InstAddress,
+    /// Registers an institution as a node based on their institutional address.
+    pub fn register(&mut self, node_addr: InstAddress,
             hostname: &String, port: u16) {
-        let mut peer_map = self.peer_map.write().unwrap();
-        match peer_map.get(&peer_addr) {
+        let mut node_map = self.node_map.write().unwrap();
+        match node_map.get(&node_addr) {
             Some(_) => info!("Already registered {}; \
-                        ignorning call to re-register it.", peer_addr),
+                        ignorning call to re-register it.", node_addr),
             None => {
-                let peer = NetPeer::new(peer_addr, hostname, port);
-                peer_map.insert(peer_addr, peer);
+                let node = NetNode::new(node_addr, hostname, port);
+                node_map.insert(node_addr, node);
             }
         }
     }
 
-    /// Connects to a peer. If a secret key is provided, we will ask
-    /// that peer to confirm their identity.
-    pub fn connect(&mut self, peer_addr: InstAddress,
+    /// Connects to a node. If a secret key is provided, we will ask
+    /// that node to confirm their identity.
+    pub fn connect(&mut self, node_addr: InstAddress,
                    secret_key: Option<&SecretKey>) -> std::io::Result<()> {
-        match self.peer_map.write().unwrap().get_mut(&peer_addr) {
-            Some(mut peer) => {
-                if let Err(_) = peer.connect() {
+        match self.node_map.write().unwrap().get_mut(&node_addr) {
+            Some(mut node) => {
+                if let Err(_) = node.connect() {
                     return Err(io::Error::new(io::ErrorKind::NotConnected,
-                        format!("Peer {} is not available, can't connect.",
-                        peer_addr)));
+                        format!("Node {} is not available, can't connect.",
+                        node_addr)));
                 }
             },
             None => return Err(io::Error::new(io::ErrorKind::Other,
-                    format!("Peer {} is not registered, can't connect.",
-                    peer_addr))),
+                    format!("Node {} is not registered, can't connect.",
+                    node_addr))),
         };
 
-        // If secret key is provided, ask peer to confirm their identity.
+        // If secret key is provided, ask node to confirm their identity.
         if let Some(ref sec_key) = secret_key {
-            if let Err(_) = self.send_identreq(peer_addr, sec_key) {
+            if let Err(_) = self.send_identreq(node_addr, sec_key) {
                 return Err(io::Error::new(io::ErrorKind::Other,
-                    format!("Unable to send identreq to peer {}.",
-                    peer_addr)));
+                    format!("Unable to send identreq to node {}.",
+                    node_addr)));
             }
         }
         Ok(())
     }
 
-    fn send_identreq(&mut self, peer_addr: InstAddress,
+    fn send_identreq(&mut self, node_addr: InstAddress,
             our_secret_key: &SecretKey) -> std::io::Result<()> {
-        let mut peer_map = self.peer_map.write().unwrap();
-        match peer_map.get_mut(&peer_addr) {
-            Some(peer) => {
-                let identreq = IdentityRequest::new(&peer,
+        let mut node_map = self.node_map.write().unwrap();
+        match node_map.get_mut(&node_addr) {
+            Some(node) => {
+                let identreq = IdentityRequest::new(&node,
                         self.our_inst_addr,
                         &self.our_hostname[..],
                         self.our_port,
                         &our_secret_key);
-                match peer.send(NetPayload::IdentReq(identreq.clone())) {
+                match node.send(NetPayload::IdentReq(identreq.clone())) {
                     Ok(_) => {
-                        peer.identreq = Some(identreq);
+                        node.identreq = Some(identreq);
                         Ok(())
                     },
                     Err(err) => Err(err)
                 }
             },
             None => Err(io::Error::new(io::ErrorKind::Other,
-                    format!("Peer {} is not registered, can't request identity.",
-                    peer_addr))),
+                    format!("Node {} is not registered, can't request identity.",
+                    node_addr))),
         }
     }
 
@@ -235,48 +235,48 @@ impl NetPeerTable {
             panic!("TODO: Log invalid ident req.")
         }
 
-        // Second, ensure the peer is registered.
+        // Second, ensure the node is registered.
         self.register(identreq.from_inst_addr,
                 &identreq.from_hostname, identreq.from_port);
-        let mut peer_map = self.peer_map.write().unwrap();
-        let mut peer = peer_map.get_mut(&identreq.from_inst_addr).unwrap();
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&identreq.from_inst_addr).unwrap();
 
-        // Third, start with a fresh socket. The peer could have disconnected,
+        // Third, start with a fresh socket. The node could have disconnected,
         // and if we send the response down the old socket, it will never
         // receive it. Note that we *do not* reset the identity state;
-        // if the peer has already verified their identity, we don't
+        // if the node has already verified their identity, we don't
         // need to ask again.
-        peer.socket = Socket::new();
-        peer.conn_state = ConnectionState::NotConnected;
+        node.socket = Socket::new();
+        node.conn_state = ConnectionState::NotConnected;
 
-        // Fourth, create a response and send to the peer.
+        // Fourth, create a response and send to the node.
         let identresp = IdentityResponse::new(self.our_inst_addr,
                 identreq.nonce, &our_secret_key);
-        peer.send(NetPayload::IdentResp(identresp))
+        node.send(NetPayload::IdentResp(identresp))
     }
 
     pub fn process_identresp(&mut self, identresp: IdentityResponse)
             -> std::io::Result<()> {
-        // First, ensure that we actually have a peer matching that
+        // First, ensure that we actually have a node matching that
         // of the responding institution.
-        let mut peer_map = self.peer_map.write().unwrap();
-        let mut peer = match peer_map.get_mut(&identresp.from_inst_addr) {
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = match node_map.get_mut(&identresp.from_inst_addr) {
             Some(p) => p,
             None => {
                 warn!("Ignoring identresp from {}; we are \
-                       not peering with this institution.",
+                       not connected to this institution.",
                        &identresp.from_inst_addr);
                 return Ok(())
             }
         };
 
-        // Next, ensure that we sent out an identity request for this peer.
-        let identreq = match peer.identreq {
+        // Next, ensure that we sent out an identity request for this node.
+        let identreq = match node.identreq {
             Some(ref req) => req,
             None => {
                 warn!("Ignoring identresp from {}; we never \
                        sent out an identreq for this institution.",
-                       peer.inst_addr);
+                       node.inst_addr);
                 return Ok(())
             }
         };
@@ -286,38 +286,38 @@ impl NetPeerTable {
             panic!("TODO: Log invalid identresp.")
         }
 
-        // Now that all checks passed, elevate the peer's identity status
+        // Now that all checks passed, elevate the node's identity status
         // to confirmed.
-        peer.ident_state = IdentityState::Confirmed;
-        peer.identresp = Some(identresp);
-        info!("Peer {} has confirmed their identity to us.", peer.inst_addr);
+        node.ident_state = IdentityState::Confirmed;
+        node.identresp = Some(identresp);
+        info!("Node {} has confirmed their identity to us.", node.inst_addr);
         Ok(())
     }
 
-    pub fn request_verifier(&mut self, peer_addr: InstAddress,
+    pub fn request_peer(&mut self, node_addr: InstAddress,
             our_secret_key: &SecretKey) -> std::io::Result<()> {
 
-        // First, ensure that the provided address maps to a peer
+        // First, ensure that the provided address maps to a node
         // whose identity has been confirmed.
-        if !self.is_confirmed_peer(&peer_addr) {
+        if !self.is_confirmed_node(&node_addr) {
             return Err(io::Error::new(io::ErrorKind::Other,
-                format!("Ignorning verifier request for peer {}; their \
-                         identity has not been confirmed.", &peer_addr)));
+                format!("Ignorning peer request for node {}; their \
+                         identity has not been confirmed.", &node_addr)));
         }
 
-        // Second, get the peer (we can unwrap due to above check).
-        let mut peer_map = self.peer_map.write().unwrap();
-        let mut peer = peer_map.get_mut(&peer_addr).unwrap();
+        // Second, get the node (we can unwrap due to above check).
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&node_addr).unwrap();
 
-        // Third, create a request and send to the peer.
-        let verifierreq = VerifierRequest::new(peer_addr,
+        // Third, create a request and send to the node.
+        let peerreq = PeerRequest::new(node_addr,
             self.our_inst_addr, &our_secret_key);
-        peer.send(NetPayload::VerifierReq(verifierreq))
+        node.send(NetPayload::PeerReq(peerreq))
     }
 
-    pub fn is_confirmed_peer(&self, peer_addr: &InstAddress) -> bool {
-        let peer_map = self.peer_map.read().unwrap();
-        match peer_map.get(peer_addr) {
+    pub fn is_confirmed_node(&self, node_addr: &InstAddress) -> bool {
+        let node_map = self.node_map.read().unwrap();
+        match node_map.get(node_addr) {
             Some(p) => {
                 p.ident_state == IdentityState::Confirmed
             }
@@ -326,9 +326,9 @@ impl NetPeerTable {
     }
 }
 
-impl NetPeer {
-    pub fn new(inst_addr: InstAddress, hostname: &String, port: u16) -> NetPeer {
-        NetPeer {
+impl NetNode {
+    pub fn new(inst_addr: InstAddress, hostname: &String, port: u16) -> NetNode {
+        NetNode {
             inst_addr: inst_addr,
             hostname: String::from(&hostname[..]),
             port: port,
@@ -343,17 +343,17 @@ impl NetPeer {
     pub fn connect(&mut self) -> std::io::Result<()> {
         match self.conn_state {
             ConnectionState::NotConnected => {
-                info!("Attempting to connect to peer {}...", self);
+                info!("Attempting to connect to node {}...", self);
                 match self.socket.connect(&self.hostname[..], self.port) {
                     Ok(_) => {
-                        info!("Connected to peer {}.", self);
+                        info!("Connected to node {}.", self);
                         self.conn_state = ConnectionState::Connected;
                         Ok(())
                     },
                     Err(err) => {
                         self.conn_state = ConnectionState::NotConnected;
                         Err(io::Error::new(io::ErrorKind::NotConnected,
-                            format!("Unable to connect to peer {}; \
+                            format!("Unable to connect to node {}; \
                                     error is: {}", self, err)))
                     }
                 }
@@ -368,7 +368,7 @@ impl NetPeer {
 
     pub fn send(&mut self, payload: NetPayload) -> std::io::Result<()> {
 
-        // If we're not connected to this peer, try once to connect
+        // If we're not connected to this node, try once to connect
         // before sending.
         if self.conn_state == ConnectionState::NotConnected {
             let _ = self.connect();
@@ -377,7 +377,7 @@ impl NetPeer {
         // If we're still not connected, give up.
         if self.conn_state == ConnectionState::NotConnected {
             return Err(io::Error::new(io::ErrorKind::NotConnected,
-                "Unable to send payload to disconnected peer."));
+                "Unable to send payload to disconnected node."));
         }
 
         match self.ident_state {
@@ -389,7 +389,7 @@ impl NetPeer {
                     },
                     _ => {
                         panic!("Encountered attempt to send non-identity-related \
-                                message to an unconfirmed peer: {:?}", payload)
+                                message to an unconfirmed node: {:?}", payload)
                     }
                 }
             }
@@ -399,16 +399,16 @@ impl NetPeer {
     }
 }
 
-impl Display for NetPeer {
+impl Display for NetNode {
     fn fmt(&self, f: &mut Formatter) -> ::std::fmt::Result {
-        try!(write!(f, "NetPeer[{}, {}:{}]", self.inst_addr,
+        try!(write!(f, "NetNode[{}, {}:{}]", self.inst_addr,
                     self.hostname, self.port));
         Ok(())
     }
 }
 
 impl IdentityRequest {
-    fn new(to_peer: &NetPeer,
+    fn new(to_node: &NetNode,
                our_inst_addr: InstAddress,
                our_hostname: &str,
                our_port: u16,
@@ -419,9 +419,9 @@ impl IdentityRequest {
                               our_hostname, our_port);
         IdentityRequest {
             nonce: nonce,
-            to_inst_addr: to_peer.inst_addr,
-            to_hostname: String::from(&to_peer.hostname[..]),
-            to_port: to_peer.port,
+            to_inst_addr: to_node.inst_addr,
+            to_hostname: String::from(&to_node.hostname[..]),
+            to_port: to_node.port,
             from_inst_addr: our_inst_addr,
             from_hostname: String::from(our_hostname),
             from_port: our_port,
@@ -533,15 +533,15 @@ impl NetworkMessage {
     }
 }
 
-impl VerifierRequest {
+impl PeerRequest {
     fn new(to_inst_addr: InstAddress,
            our_inst_addr: InstAddress,
-           our_secret_key: &SecretKey) -> VerifierRequest {
+           our_secret_key: &SecretKey) -> PeerRequest {
         let mut crypto_rng = OsRng::new().unwrap();
         let nonce = crypto_rng.gen::<u64>();
-        let to_hash = format!("VERIFIERREQ:{},{},{}", nonce, to_inst_addr,
+        let to_hash = format!("PEERREQ:{},{},{}", nonce, to_inst_addr,
                               our_inst_addr);
-        VerifierRequest {
+        PeerRequest {
             nonce: nonce,
             to_inst_addr: to_inst_addr,
             from_inst_addr: our_inst_addr,
@@ -590,7 +590,7 @@ impl Socket {
                     },
                     None => {
                         Err(io::Error::new(io::ErrorKind::NotConnected,
-                                           "Socket not connected to peer."))
+                                           "Socket not connected to node."))
                     }
                 }
             }
@@ -642,7 +642,7 @@ impl Socket {
                     },
                     None => {
                         Err(io::Error::new(io::ErrorKind::NotConnected,
-                                           "Socket not connected to peer."))
+                                           "Socket not connected to node."))
                     }
                 }
             }
@@ -679,7 +679,7 @@ pub fn listen(payload_tx: Sender<NetPayload>,
                         loop {
                             match recv_sock.receive() {
                                 Ok(net_msg) => {
-                                    debug!("Received message from peer: {:?}", net_msg);
+                                    debug!("Received message from node: {:?}", net_msg);
                                     payload_tx_clone2.send(net_msg.payload).unwrap();
                                 },
                                 Err(_) => {

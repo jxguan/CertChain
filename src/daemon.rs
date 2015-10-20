@@ -8,7 +8,7 @@ use std::thread;
 use key;
 use fsm::{FSM,FSMState};
 use secp256k1::key::{SecretKey};
-use network::NetPeerTable;
+use network::NetNodeTable;
 use rpc;
 
 pub fn run(config: CertChainConfig) -> () {
@@ -22,28 +22,30 @@ pub fn run(config: CertChainConfig) -> () {
     network::listen(net_payload_tx, &config);
 
     let fsm = Arc::new(RwLock::new(FSM::new()));
-    let peer_table = Arc::new(
-        RwLock::new(NetPeerTable::new(&config)));
+    let node_table = Arc::new(
+        RwLock::new(NetNodeTable::new(&config)));
 
-    // Connect to each of our peers.
+    // Connect to desired nodes.
+    // TODO: This should probably only connect to peers (we will connect
+    // to subscribers on an on-demand basis).
     // TODO: Only request identity if we want verification of our txns.
-    for p in config.peers.clone() {
-        let peer_inst_addr = InstAddress::from_string(
+    for p in config.nodes.clone() {
+        let node_inst_addr = InstAddress::from_string(
                 &p.inst_addr[..]).unwrap();
-        let peer_table_c1 = peer_table.clone();
+        let node_table_c1 = node_table.clone();
         thread::spawn(move || {
-            peer_table_c1.write().unwrap()
-                .register(peer_inst_addr, &p.hostname, p.port);
+            node_table_c1.write().unwrap()
+                .register(node_inst_addr, &p.hostname, p.port);
             loop {
-                let conn_res = peer_table_c1.write()
-                        .unwrap().connect(peer_inst_addr, Some(&secret_key));
+                let conn_res = node_table_c1.write()
+                        .unwrap().connect(node_inst_addr, Some(&secret_key));
                 if let Err(err) = conn_res {
                     info!("Unable to connect to {}, will \
-                          retry: {}.", peer_inst_addr, err);
+                          retry: {}.", node_inst_addr, err);
                     thread::sleep_ms(3000);
                     continue;
                 }
-                info!("Successfully connected to {}", peer_inst_addr);
+                info!("Successfully connected to {}", node_inst_addr);
                 break;
             }
         });
@@ -51,9 +53,9 @@ pub fn run(config: CertChainConfig) -> () {
 
     // Start the RPC server.
     let fsm_c1 = fsm.clone();
-    let peer_table_c3 = peer_table.clone();
+    let node_table_c3 = node_table.clone();
     thread::spawn(move || {
-        rpc::start(&config, fsm_c1, peer_table_c3);
+        rpc::start(&config, fsm_c1, node_table_c3);
     });
 
     /*
@@ -74,8 +76,8 @@ pub fn run(config: CertChainConfig) -> () {
                 NetPayload::IdentResp(identresp) => {
                     fsm.push_state(FSMState::ProcessIdentResp(identresp));
                 },
-                NetPayload::VerifierReq(_) => {
-                    panic!("TODO: Handle verifier request.");
+                NetPayload::PeerReq(_) => {
+                    panic!("TODO: Handle peer request.");
                 }
             }
         }
@@ -90,26 +92,26 @@ pub fn run(config: CertChainConfig) -> () {
         match next_state {
             Some(state) => match state {
                 FSMState::RespondToIdentReq(identreq) => {
-                    match peer_table.write().unwrap().handle_identreq(
+                    match node_table.write().unwrap().handle_identreq(
                         identreq, &secret_key) {
-                        Ok(_) => info!("FSM: sent identreq to peer."),
+                        Ok(_) => info!("FSM: sent identreq to node."),
                         Err(err) => warn!("FSM: unable to send identreq: {}",
                                         err)
                     };
                 },
                 FSMState::ProcessIdentResp(identresp) => {
-                    match peer_table.write().unwrap().
+                    match node_table.write().unwrap().
                         process_identresp(identresp) {
                         Ok(_) => info!("FSM: processed identresp."),
                         Err(err) => warn!("FSM: unable to process identresp: {}",
                                           err)
                     }
                 },
-                FSMState::RequestVerifier(addr) => {
-                    match peer_table.write().unwrap().
-                        request_verifier(addr, &secret_key) {
-                        Ok(_) => info!("FSM: requested verifier."),
-                        Err(err) => warn!("FSM: unable to request verifier: {}",
+                FSMState::RequestPeer(addr) => {
+                    match node_table.write().unwrap().
+                        request_peer(addr, &secret_key) {
+                        Ok(_) => info!("FSM: requested peer."),
+                        Err(err) => warn!("FSM: unable to request peer: {}",
                                           err)
                         }
                 }

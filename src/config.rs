@@ -14,13 +14,13 @@ pub struct CertChainConfig {
     pub log_config_filename: String,
     pub port: u16,
     pub rpc_port: u16,
-    pub peers: Vec<CertChainConfigPeer>,
+    pub nodes: Vec<CertChainConfigNode>,
     pub secret_key: String,
     pub compressed_public_key: String,
 }
 
 #[derive(Debug, RustcDecodable, Clone)]
-pub struct CertChainConfigPeer {
+pub struct CertChainConfigNode {
     pub inst_addr: String,
     pub hostname: String,
     pub port: u16,

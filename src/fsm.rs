@@ -9,7 +9,7 @@ pub struct FSM {
 pub enum FSMState {
     RespondToIdentReq(IdentityRequest),
     ProcessIdentResp(IdentityResponse),
-    RequestVerifier(InstAddress)
+    RequestPeer(InstAddress)
 }
 
 impl FSM {
