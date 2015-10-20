@@ -1,5 +1,6 @@
 use std::collections::{LinkedList};
 use network::{IdentityRequest, IdentityResponse};
+use address::InstAddress;
 
 pub struct FSM {
     states: LinkedList<FSMState>,
@@ -7,7 +8,8 @@ pub struct FSM {
 
 pub enum FSMState {
     RespondToIdentReq(IdentityRequest),
-    ProcessIdentResp(IdentityResponse)
+    ProcessIdentResp(IdentityResponse),
+    RequestVerifier(InstAddress)
 }
 
 impl FSM {

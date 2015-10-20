@@ -39,6 +39,7 @@ struct NetworkMessage {
 pub enum NetPayload {
     IdentReq(IdentityRequest),
     IdentResp(IdentityResponse),
+    VerifierReq(VerifierRequest),
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -50,6 +51,14 @@ pub struct IdentityRequest {
     pub from_inst_addr: InstAddress,
     pub from_hostname: String,
     pub from_port: u16,
+    pub from_signature: RecovSignature,
+}
+
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+pub struct VerifierRequest {
+    pub nonce: u64,
+    pub to_inst_addr: InstAddress,
+    pub from_inst_addr: InstAddress,
     pub from_signature: RecovSignature,
 }
 
@@ -285,6 +294,27 @@ impl NetPeerTable {
         Ok(())
     }
 
+    pub fn request_verifier(&mut self, peer_addr: InstAddress,
+            our_secret_key: &SecretKey) -> std::io::Result<()> {
+
+        // First, ensure that the provided address maps to a peer
+        // whose identity has been confirmed.
+        if !self.is_confirmed_peer(&peer_addr) {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                format!("Ignorning verifier request for peer {}; their \
+                         identity has not been confirmed.", &peer_addr)));
+        }
+
+        // Second, get the peer (we can unwrap due to above check).
+        let mut peer_map = self.peer_map.write().unwrap();
+        let mut peer = peer_map.get_mut(&peer_addr).unwrap();
+
+        // Third, create a request and send to the peer.
+        let verifierreq = VerifierRequest::new(peer_addr,
+            self.our_inst_addr, &our_secret_key);
+        peer.send(NetPayload::VerifierReq(verifierreq))
+    }
+
     pub fn is_confirmed_peer(&self, peer_addr: &InstAddress) -> bool {
         let peer_map = self.peer_map.read().unwrap();
         match peer_map.get(peer_addr) {
@@ -340,27 +370,31 @@ impl NetPeer {
 
         // If we're not connected to this peer, try once to connect
         // before sending.
-        if let ConnectionState::NotConnected = self.conn_state {
+        if self.conn_state == ConnectionState::NotConnected {
             let _ = self.connect();
         }
 
-        match self.conn_state {
-            ConnectionState::NotConnected =>
-                Err(io::Error::new(io::ErrorKind::NotConnected,
-                    "Unable to send payload to disconnected peer.")),
-            ConnectionState::Connected => {
+        // If we're still not connected, give up.
+        if self.conn_state == ConnectionState::NotConnected {
+            return Err(io::Error::new(io::ErrorKind::NotConnected,
+                "Unable to send payload to disconnected peer."));
+        }
+
+        match self.ident_state {
+            IdentityState::NotConfirmed => {
                 match payload {
                     NetPayload::IdentReq(_) |
                     NetPayload::IdentResp(_) => {
                         self.socket.send(NetworkMessage::new(payload))
                     },
-                    /*
-                     * TODO: For future messages, be sure to prevent
-                     * any non-ident messages from being sent if
-                     * identity state is not confirmed.
-                     */
+                    _ => {
+                        panic!("Encountered attempt to send non-identity-related \
+                                message to an unconfirmed peer: {:?}", payload)
+                    }
                 }
             }
+            IdentityState::Confirmed =>
+                self.socket.send(NetworkMessage::new(payload))
         }
     }
 }
@@ -495,6 +529,25 @@ impl NetworkMessage {
             magic: MAINNET_MSG_MAGIC,
             payload: payload,
             payload_checksum: adler.result()
+        }
+    }
+}
+
+impl VerifierRequest {
+    fn new(to_inst_addr: InstAddress,
+           our_inst_addr: InstAddress,
+           our_secret_key: &SecretKey) -> VerifierRequest {
+        let mut crypto_rng = OsRng::new().unwrap();
+        let nonce = crypto_rng.gen::<u64>();
+        let to_hash = format!("VERIFIERREQ:{},{},{}", nonce, to_inst_addr,
+                              our_inst_addr);
+        VerifierRequest {
+            nonce: nonce,
+            to_inst_addr: to_inst_addr,
+            from_inst_addr: our_inst_addr,
+            from_signature: RecovSignature::sign(
+                &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
+                &our_secret_key)
         }
     }
 }

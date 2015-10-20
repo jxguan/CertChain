@@ -21,6 +21,7 @@ pub fn run(config: CertChainConfig) -> () {
     // Listen on the network for inbound messages.
     network::listen(net_payload_tx, &config);
 
+    let fsm = Arc::new(RwLock::new(FSM::new()));
     let peer_table = Arc::new(
         RwLock::new(NetPeerTable::new(&config)));
 
@@ -49,19 +50,18 @@ pub fn run(config: CertChainConfig) -> () {
     }
 
     // Start the RPC server.
+    let fsm_c1 = fsm.clone();
     let peer_table_c3 = peer_table.clone();
     thread::spawn(move || {
-        rpc::start(&config, peer_table_c3);
+        rpc::start(&config, fsm_c1, peer_table_c3);
     });
-
-    let fsm = Arc::new(RwLock::new(FSM::new()));
-    let fsm_clone = fsm.clone();
 
     /*
      * The payload rx channel is monitored on a separate thread;
      * any valid messages received on the channel are translated
      * into one or more states for the FSM to transition to.
      */
+    let fsm_clone = fsm.clone();
     thread::spawn(move || {
         loop {
             let net_payload = net_payload_rx.recv().unwrap();
@@ -73,6 +73,9 @@ pub fn run(config: CertChainConfig) -> () {
                 },
                 NetPayload::IdentResp(identresp) => {
                     fsm.push_state(FSMState::ProcessIdentResp(identresp));
+                },
+                NetPayload::VerifierReq(_) => {
+                    panic!("TODO: Handle verifier request.");
                 }
             }
         }
@@ -101,6 +104,14 @@ pub fn run(config: CertChainConfig) -> () {
                         Err(err) => warn!("FSM: unable to process identresp: {}",
                                           err)
                     }
+                },
+                FSMState::RequestVerifier(addr) => {
+                    match peer_table.write().unwrap().
+                        request_verifier(addr, &secret_key) {
+                        Ok(_) => info!("FSM: requested verifier."),
+                        Err(err) => warn!("FSM: unable to request verifier: {}",
+                                          err)
+                        }
                 }
             },
             None => {

@@ -7,10 +7,13 @@ use std::sync::{Arc, RwLock};
 use network::NetPeerTable;
 use rustc_serialize::json;
 use address::InstAddress;
+use fsm::{FSM, FSMState};
 
 const RPC_LISTEN : &'static str = "0.0.0.0";
 
-pub fn start(config: &CertChainConfig, peer_table: Arc<RwLock<NetPeerTable>>) {
+pub fn start(config: &CertChainConfig,
+             fsm: Arc<RwLock<FSM>>,
+             peer_table: Arc<RwLock<NetPeerTable>>) {
     info!("Starting RPC server...");
     let rpc_server = Server::http((&RPC_LISTEN[..], config.rpc_port)).unwrap();
     info!("RPC server started on {}:{}.", RPC_LISTEN, config.rpc_port);
@@ -26,7 +29,8 @@ pub fn start(config: &CertChainConfig, peer_table: Arc<RwLock<NetPeerTable>>) {
                 (hyper::Get, AbsolutePath(ref path))
                     if path.len() > 18
                         && &path[0..18] == "/request_verifier/" => {
-                    handle_verifier_req(res, peer_table.clone(), &path[18..]);
+                    handle_verifier_req(res, fsm.clone(),
+                            peer_table.clone(), &path[18..]);
                 },
                 _ => *res.status_mut() = hyper::NotFound
             }
@@ -42,6 +46,7 @@ fn handle_network_req(res: Response<Fresh>,
 }
 
 fn handle_verifier_req(res: Response<Fresh>,
+                       fsm: Arc<RwLock<FSM>>,
                        peer_table: Arc<RwLock<NetPeerTable>>,
                        addr_param: &str) {
     // Convert the address parameter into an InstAddress.
@@ -63,5 +68,9 @@ fn handle_verifier_req(res: Response<Fresh>,
         return;
     }
 
-    res.send("TODO: Send verifier req.".as_bytes()).unwrap();
+    // Have the FSM eventually send a verifier request
+    // to the address.
+    let ref mut fsm = *fsm.write().unwrap();
+    fsm.push_state(FSMState::RequestVerifier(addr));
+    res.send("OK; verifier request submitted.".as_bytes()).unwrap();
 }
