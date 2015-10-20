@@ -6,6 +6,7 @@ use config::CertChainConfig;
 use std::sync::{Arc, RwLock};
 use network::NetPeerTable;
 use rustc_serialize::json;
+use address::InstAddress;
 
 const RPC_LISTEN : &'static str = "0.0.0.0";
 
@@ -20,12 +21,47 @@ pub fn start(config: &CertChainConfig, peer_table: Arc<RwLock<NetPeerTable>>) {
             match (req.method.clone(), req.uri.clone()) {
                 (hyper::Get, AbsolutePath(ref path))
                     if path == "/network" => {
-                    let ref peer_table = *peer_table.read().unwrap();
-                    let pt_json = format!("{}", json::as_pretty_json(&peer_table));
-                    res.send(pt_json.as_bytes()).unwrap();
+                    handle_network_req(res, peer_table.clone());
+                },
+                (hyper::Get, AbsolutePath(ref path))
+                    if path.len() > 18
+                        && &path[0..18] == "/request_verifier/" => {
+                    handle_verifier_req(res, peer_table.clone(), &path[18..]);
                 },
                 _ => *res.status_mut() = hyper::NotFound
             }
         }
     );
+}
+
+fn handle_network_req(res: Response<Fresh>,
+                      peer_table: Arc<RwLock<NetPeerTable>>) {
+    let ref peer_table = *peer_table.read().unwrap();
+    let pt_json = format!("{}", json::as_pretty_json(&peer_table));
+    res.send(pt_json.as_bytes()).unwrap();
+}
+
+fn handle_verifier_req(res: Response<Fresh>,
+                       peer_table: Arc<RwLock<NetPeerTable>>,
+                       addr_param: &str) {
+    // Convert the address parameter into an InstAddress.
+    let addr = match InstAddress::from_string(addr_param) {
+        Ok(addr) => addr,
+        Err(_) => {
+            res.send("The address provided is not \
+                     valid.".as_bytes()).unwrap();
+            return;
+        }
+    };
+
+    // Ensure that we have confirmed this institution's
+    // identity.
+    let ref peer_table = *peer_table.read().unwrap();
+    if !peer_table.is_confirmed_peer(&addr) {
+        res.send("The peer you specified has not confirmed \
+                 their identity.".as_bytes()).unwrap();
+        return;
+    }
+
+    res.send("TODO: Send verifier req.".as_bytes()).unwrap();
 }

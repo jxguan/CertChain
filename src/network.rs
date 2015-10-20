@@ -60,13 +60,13 @@ pub struct IdentityResponse {
     pub from_signature: RecovSignature,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum ConnectionState {
     NotConnected,
     Connected,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum IdentityState {
     NotConfirmed,
     Confirmed
@@ -283,6 +283,16 @@ impl NetPeerTable {
         peer.identresp = Some(identresp);
         info!("Peer {} has confirmed their identity to us.", peer.inst_addr);
         Ok(())
+    }
+
+    pub fn is_confirmed_peer(&self, peer_addr: &InstAddress) -> bool {
+        let peer_map = self.peer_map.read().unwrap();
+        match peer_map.get(peer_addr) {
+            Some(p) => {
+                p.ident_state == IdentityState::Confirmed
+            }
+            None => false
+        }
     }
 }
 
