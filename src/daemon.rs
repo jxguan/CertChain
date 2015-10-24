@@ -76,8 +76,9 @@ pub fn run(config: CertChainConfig) -> () {
                 NetPayload::IdentResp(identresp) => {
                     fsm.push_state(FSMState::ProcessIdentResp(identresp));
                 },
-                NetPayload::PeerReq(_) => {
-                    panic!("TODO: Handle peer request.");
+                NetPayload::PeerReq(peerreq) => {
+                    fsm.push_state(FSMState::HandlePeerReq(peerreq));
+                    fsm.push_state(FSMState::SyncNodeTableToDisk);
                 }
             }
         }
@@ -100,20 +101,31 @@ pub fn run(config: CertChainConfig) -> () {
                     };
                 },
                 FSMState::ProcessIdentResp(identresp) => {
-                    match node_table.write().unwrap().
-                        process_identresp(identresp) {
+                    match node_table.write().unwrap()
+                        .process_identresp(identresp) {
                         Ok(_) => info!("FSM: processed identresp."),
                         Err(err) => warn!("FSM: unable to process identresp: {}",
                                           err)
                     }
                 },
                 FSMState::RequestPeer(addr) => {
-                    match node_table.write().unwrap().
-                        request_peer(addr, &secret_key) {
+                    match node_table.write().unwrap()
+                        .request_peer(addr, &secret_key) {
                         Ok(_) => info!("FSM: requested peer."),
                         Err(err) => warn!("FSM: unable to request peer: {}",
                                           err)
                         }
+                },
+                FSMState::HandlePeerReq(peerreq) => {
+                    match node_table.write().unwrap()
+                        .handle_peerreq(peerreq) {
+                        Ok(_) => info!("FSM: handled peer request."),
+                        Err(err) => warn!("FSM: unable to handle peer req: {}",
+                                          err)
+                    }
+                },
+                FSMState::SyncNodeTableToDisk => {
+                    panic!("TODO: Sync node table to disk.");
                 }
             },
             None => {

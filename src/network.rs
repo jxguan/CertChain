@@ -81,6 +81,12 @@ enum IdentityState {
     Confirmed
 }
 
+#[derive(Debug, PartialEq)]
+enum PeeringState {
+    NotPeering,
+    PeeringRequested,
+}
+
 pub struct NetNodeTable {
     node_map: Arc<RwLock<HashMap<InstAddress, NetNode>>>,
     our_inst_addr: InstAddress,
@@ -95,6 +101,7 @@ struct NetNode {
     socket: Socket,
     conn_state: ConnectionState,
     ident_state: IdentityState,
+    peering_state: PeeringState,
     identreq: Option<IdentityRequest>,
     identresp: Option<IdentityResponse>
 }
@@ -142,6 +149,8 @@ impl Encodable for NetNode {
                     |s| format!("{:?}", self.conn_state).encode(s)));
             try!(s.emit_struct_field("ident_state", 4,
                     |s| format!("{:?}", self.ident_state).encode(s)));
+            try!(s.emit_struct_field("peering_state", 5,
+                    |s| format!("{:?}", self.peering_state).encode(s)));
             Ok(())
         })
     }
@@ -263,8 +272,8 @@ impl NetNodeTable {
         let mut node = match node_map.get_mut(&identresp.from_inst_addr) {
             Some(p) => p,
             None => {
-                warn!("Ignoring identresp from {}; we are \
-                       not connected to this institution.",
+                warn!("Ignoring identresp from {}; the responding node \
+                       is not registered in our node table.",
                        &identresp.from_inst_addr);
                 return Ok(())
             }
@@ -315,6 +324,31 @@ impl NetNodeTable {
         node.send(NetPayload::PeerReq(peerreq))
     }
 
+    pub fn handle_peerreq(&mut self,
+            peer_req: PeerRequest) -> std::io::Result<()> {
+        // First, determine if the contents of this request are valid.
+        if let Err(_) = peer_req.check_validity(&self.our_inst_addr) {
+            panic!("TODO: Log invalid peer request.")
+        }
+
+        // Second, ensure the node has already been registered (i.e.,
+        // has requested our identity).
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = match node_map.get_mut(&peer_req.from_inst_addr) {
+            Some(p) => p,
+            None => {
+                warn!("Ignoring peerreq from {}; the requesting node \
+                       is not registered in our node table.",
+                       &peer_req.from_inst_addr);
+                return Ok(())
+            }
+        };
+
+        // Third and finally, set the peering state accordingly.
+        node.peering_state = PeeringState::PeeringRequested;
+        Ok(())
+    }
+
     pub fn is_confirmed_node(&self, node_addr: &InstAddress) -> bool {
         let node_map = self.node_map.read().unwrap();
         match node_map.get(node_addr) {
@@ -335,6 +369,7 @@ impl NetNode {
             socket: Socket::new(),
             conn_state: ConnectionState::NotConnected,
             ident_state: IdentityState::NotConfirmed,
+            peering_state: PeeringState::NotPeering,
             identreq: None,
             identresp: None,
         }
@@ -433,6 +468,7 @@ impl IdentityRequest {
 
     fn check_validity(&self, our_addr: &InstAddress,
             our_hostname: &String, our_port: &u16) -> Result<(), ValidityErr> {
+        // Check individual fields.
         if let Err(_) = self.to_inst_addr.check_validity() {
             return Err(ValidityErr::ToInstAddrInvalid);
         }
@@ -449,27 +485,11 @@ impl IdentityRequest {
             return Err(ValidityErr::FromInstAddrInvalid);
         }
 
-        /*
-         * Reconstruct the expected signature message and attempt to
-         * recover the public key from the signature. If it succeeds *and*
-         * the pubkey hashes to the sending institution address, we're good.
-         */
-        let from_combined = format!("IDENTREQ:{},{},{},{}", self.nonce, self.from_inst_addr,
-                              self.from_hostname, self.from_port);
-        let from_hash = &DoubleSha256Hash::hash(&from_combined.as_bytes()[..]);
-        let from_pubkey_recov = match self.from_signature
-                .recover_pubkey(&from_hash) {
-            Ok(pubkey) => pubkey,
-            Err(_) => return Err(ValidityErr::UnableToRecoverFromAddrPubkey),
-        };
-        let from_addr_recov = match InstAddress::from_pubkey(&from_pubkey_recov) {
-            Ok(addr) => addr,
-            Err(_) => return Err(ValidityErr::RecoveredFromAddrInvalid)
-        };
-        if self.from_inst_addr != from_addr_recov {
-            return Err(ValidityErr::RecoveredFromAddrDoesntMatch)
-        }
-        return Ok(())
+        // Check signature validity.
+        let expected_msg = &DoubleSha256Hash::hash(
+            &format!("IDENTREQ:{},{},{},{}", self.nonce, self.from_inst_addr,
+                    self.from_hostname, self.from_port).as_bytes()[..]);
+        self.from_signature.check_validity(&expected_msg, &self.from_inst_addr)
     }
 }
 
@@ -488,6 +508,7 @@ impl IdentityResponse {
 
     fn check_validity(&self, identreq: &IdentityRequest)
             -> Result<(), ValidityErr> {
+        // Check individual fields.
         if self.nonce != identreq.nonce {
             return Err(ValidityErr::NonceDoesntMatch);
         }
@@ -495,27 +516,10 @@ impl IdentityResponse {
             return Err(ValidityErr::FromInstAddrInvalid);
         }
 
-        /*
-         * Reconstruct the expected signature message and attempt to
-         * recover the public key from the signature. If it succeeds *and*
-         * the pubkey hashes to the sending institution address, we're good.
-         */
-        let from_combined = format!("IDENTRESP:{},{}", self.nonce,
-                                    self.from_inst_addr);
-        let from_hash = &DoubleSha256Hash::hash(&from_combined.as_bytes()[..]);
-        let from_pubkey_recov = match self.from_signature
-                .recover_pubkey(&from_hash) {
-            Ok(pubkey) => pubkey,
-            Err(_) => return Err(ValidityErr::UnableToRecoverFromAddrPubkey),
-        };
-        let from_addr_recov = match InstAddress::from_pubkey(&from_pubkey_recov) {
-            Ok(addr) => addr,
-            Err(_) => return Err(ValidityErr::RecoveredFromAddrInvalid)
-        };
-        if self.from_inst_addr != from_addr_recov {
-            return Err(ValidityErr::RecoveredFromAddrDoesntMatch)
-        }
-        return Ok(())
+        // Check signature validity.
+        let expected_msg = &DoubleSha256Hash::hash(&format!("IDENTRESP:{},{}",
+            self.nonce, self.from_inst_addr).as_bytes()[..]);
+        self.from_signature.check_validity(&expected_msg, &self.from_inst_addr)
     }
 }
 
@@ -549,6 +553,25 @@ impl PeerRequest {
                 &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
                 &our_secret_key)
         }
+    }
+
+    fn check_validity(&self,
+                our_addr: &InstAddress) -> Result<(), ValidityErr> {
+        // Check individual fields.
+        if let Err(_) = self.to_inst_addr.check_validity() {
+            return Err(ValidityErr::ToInstAddrInvalid);
+        }
+        if let Err(_) = self.from_inst_addr.check_validity() {
+            return Err(ValidityErr::FromInstAddrInvalid);
+        }
+        if self.to_inst_addr != *our_addr {
+            return Err(ValidityErr::ToInstAddrDoesntMatchOurs);
+        }
+
+        // Check signature validity.
+        let expected_msg = &DoubleSha256Hash::hash(&format!("PEERREQ:{},{},{}",
+            self.nonce, self.to_inst_addr, self.from_inst_addr).as_bytes()[..]);
+        self.from_signature.check_validity(&expected_msg, &self.from_inst_addr)
     }
 }
 

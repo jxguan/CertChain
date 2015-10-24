@@ -4,6 +4,7 @@ use secp256k1::{RecoverableSignature, Secp256k1, RecoveryId, Message};
 use secp256k1::key::{SecretKey, PublicKey};
 use common::ValidityErr;
 use hash::DoubleSha256Hash;
+use address::InstAddress;
 
 #[derive(Clone)]
 pub struct RecovSignature {
@@ -21,7 +22,30 @@ impl RecovSignature {
             sig: sig
         }
     }
-    pub fn recover_pubkey(&self, hash: &DoubleSha256Hash)
+
+    pub fn check_validity(&self, expected_msg: &DoubleSha256Hash,
+            expected_from_inst_addr: &InstAddress) -> Result<(), ValidityErr> {
+        /*
+         * Hash the expected signature message and attempt to
+         * recover the public key from the signature. If it succeeds *and*
+         * the pubkey hashes to the sending institution address, we're good.
+         */
+        let from_pubkey_recov = match self.recover_pubkey(&expected_msg) {
+            Ok(pubkey) => pubkey,
+            Err(_) => return Err(ValidityErr::UnableToRecoverFromAddrPubkey),
+        };
+        let from_addr_recov = match InstAddress::from_pubkey(&from_pubkey_recov) {
+            Ok(addr) => addr,
+            Err(_) => return Err(ValidityErr::RecoveredFromAddrInvalid)
+        };
+        if *expected_from_inst_addr != from_addr_recov {
+            return Err(ValidityErr::RecoveredFromAddrDoesntMatch)
+        }
+        return Ok(())
+
+    }
+
+    fn recover_pubkey(&self, hash: &DoubleSha256Hash)
             -> Result<PublicKey, ValidityErr> {
         let msg = match Message::from_slice(&hash[..]) {
             Ok(msg) => msg,

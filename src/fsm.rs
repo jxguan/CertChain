@@ -1,5 +1,5 @@
 use std::collections::{LinkedList};
-use network::{IdentityRequest, IdentityResponse};
+use network::{IdentityRequest, IdentityResponse, PeerRequest};
 use address::InstAddress;
 
 pub struct FSM {
@@ -9,7 +9,9 @@ pub struct FSM {
 pub enum FSMState {
     RespondToIdentReq(IdentityRequest),
     ProcessIdentResp(IdentityResponse),
-    RequestPeer(InstAddress)
+    RequestPeer(InstAddress),
+    HandlePeerReq(PeerRequest),
+    SyncNodeTableToDisk,
 }
 
 impl FSM {
