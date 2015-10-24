@@ -310,7 +310,7 @@ impl NetNodeTable {
         // whose identity has been confirmed.
         if !self.is_confirmed_node(&node_addr) {
             return Err(io::Error::new(io::ErrorKind::Other,
-                format!("Ignorning peer request for node {}; their \
+                format!("Ignoring peer request for node {}; their \
                          identity has not been confirmed.", &node_addr)));
         }
 
@@ -331,20 +331,19 @@ impl NetNodeTable {
             panic!("TODO: Log invalid peer request.")
         }
 
-        // Second, ensure the node has already been registered (i.e.,
-        // has requested our identity).
-        let mut node_map = self.node_map.write().unwrap();
-        let mut node = match node_map.get_mut(&peer_req.from_inst_addr) {
-            Some(p) => p,
-            None => {
-                warn!("Ignoring peerreq from {}; the requesting node \
-                       is not registered in our node table.",
-                       &peer_req.from_inst_addr);
-                return Ok(())
-            }
-        };
+        // Third, ensure that we have confirmed the node's identity.
+        if !self.is_confirmed_node(&peer_req.from_inst_addr) {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                format!("Ignoring peer request from node {}; their \
+                         identity has not been confirmed.",
+                         &peer_req.from_inst_addr)));
+        }
 
-        // Third and finally, set the peering state accordingly.
+        // Third, get the node (we can unwrap due to above check).
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&peer_req.from_inst_addr).unwrap();
+
+        // Fourth and finally, set the peering state accordingly.
         node.peering_state = PeeringState::PeeringRequested;
         Ok(())
     }
