@@ -72,5 +72,6 @@ fn handle_peer_req(res: Response<Fresh>,
     // to the address.
     let ref mut fsm = *fsm.write().unwrap();
     fsm.push_state(FSMState::RequestPeer(addr));
+    fsm.push_state(FSMState::SyncNodeTableToDisk);
     res.send("OK; peer request submitted.".as_bytes()).unwrap();
 }

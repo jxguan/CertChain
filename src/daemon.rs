@@ -1,7 +1,7 @@
 use config::CertChainConfig;
 use std::sync::{Arc, RwLock};
 use network;
-use network::{NetPayload};
+use network::{NetPayload, OnDiskNetNode};
 use address::InstAddress;
 use std::sync::mpsc::{channel};
 use std::thread;
@@ -28,17 +28,18 @@ pub fn run(config: CertChainConfig) -> () {
     let node_table = Arc::new(
         RwLock::new(NetNodeTable::new(&config)));
 
-    // Connect to desired nodes.
-    // TODO: This should probably only connect to peers (we will connect
-    // to subscribers on an on-demand basis).
-    // TODO: Only request identity if we want verification of our txns.
-    for p in config.nodes.clone() {
+    // Connect to known nodes, as serialized to disk during prior execution.
+    // TODO: This should probably only connect to pending/approved peers
+    // (we will connect to subscribers on an on-demand basis).
+    let nodes_file = File::open(&config.path_to("nodes.dat")).unwrap();
+    let nodes: Vec<OnDiskNetNode> = serde_json::from_reader(nodes_file).unwrap();
+    for p in nodes {
         let node_inst_addr = InstAddress::from_string(
                 &p.inst_addr[..]).unwrap();
         let node_table_c1 = node_table.clone();
         thread::spawn(move || {
             node_table_c1.write().unwrap()
-                .register(node_inst_addr, &p.hostname, p.port);
+                .register(node_inst_addr, &p.hostname, p.port, p.peering_state);
             loop {
                 let conn_res = node_table_c1.write()
                         .unwrap().connect(node_inst_addr, Some(&secret_key));
@@ -131,7 +132,7 @@ pub fn run(config: CertChainConfig) -> () {
                 FSMState::SyncNodeTableToDisk => {
                     let ref node_table = *node_table.read().unwrap();
                     let mut writer = BufWriter::new(File::create(
-                            &config.path_to("node_table.dat")).unwrap());
+                            &config.path_to("nodes.dat")).unwrap());
                     serde_json::to_writer_pretty(&mut writer,
                                                  &node_table.to_disk()).unwrap();
                     info!("FSM: sync'ed node table to disk.");

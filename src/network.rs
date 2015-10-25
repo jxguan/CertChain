@@ -81,10 +81,12 @@ enum IdentityState {
     Confirmed
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
-enum PeeringState {
-    NotPeering,
-    PeeringRequested,
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum PeeringState {
+    No,
+    PendingOurApproval,
+    PendingTheirApproval,
+    Yes
 }
 
 pub struct NetNodeTable {
@@ -106,12 +108,12 @@ struct NetNode {
     identresp: Option<IdentityResponse>
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct OnDiskNetNode {
-    inst_addr: String,
-    hostname: String,
-    port: u16,
-    peering_state: PeeringState,
+    pub inst_addr: String,
+    pub hostname: String,
+    pub port: u16,
+    pub peering_state: PeeringState,
 }
 
 impl Encodable for NetNodeTable {
@@ -178,6 +180,8 @@ impl NetNodeTable {
         }
     }
 
+    /// Creates a condensed representation of this NetNodeTable suitable
+    /// for storage on disk, without transient fields included.
     pub fn to_disk(&self) -> Vec<OnDiskNetNode> {
         let ref node_map = *self.node_map.read().unwrap();
         let mut nodes = Vec::new();
@@ -189,13 +193,13 @@ impl NetNodeTable {
 
     /// Registers an institution as a node based on their institutional address.
     pub fn register(&mut self, node_addr: InstAddress,
-            hostname: &String, port: u16) {
+            hostname: &String, port: u16, peering_state: PeeringState) {
         let mut node_map = self.node_map.write().unwrap();
         match node_map.get(&node_addr) {
             Some(_) => info!("Already registered {}; \
                         ignorning call to re-register it.", node_addr),
             None => {
-                let node = NetNode::new(node_addr, hostname, port);
+                let node = NetNode::new(node_addr, hostname, port, peering_state);
                 node_map.insert(node_addr, node);
             }
         }
@@ -263,7 +267,7 @@ impl NetNodeTable {
 
         // Second, ensure the node is registered.
         self.register(identreq.from_inst_addr,
-                &identreq.from_hostname, identreq.from_port);
+                &identreq.from_hostname, identreq.from_port, PeeringState::No);
         let mut node_map = self.node_map.write().unwrap();
         let mut node = node_map.get_mut(&identreq.from_inst_addr).unwrap();
 
@@ -338,7 +342,15 @@ impl NetNodeTable {
         // Third, create a request and send to the node.
         let peerreq = PeerRequest::new(node_addr,
             self.our_inst_addr, &our_secret_key);
-        node.send(NetPayload::PeerReq(peerreq))
+        match node.send(NetPayload::PeerReq(peerreq)) {
+            Ok(()) => {
+                // If request was sent successfully,
+                // update peering state accordingly.
+                node.peering_state = PeeringState::PendingTheirApproval;
+                Ok(())
+            },
+            Err(err) => Err(err)
+        }
     }
 
     pub fn handle_peerreq(&mut self,
@@ -360,8 +372,8 @@ impl NetNodeTable {
         let mut node_map = self.node_map.write().unwrap();
         let mut node = node_map.get_mut(&peer_req.from_inst_addr).unwrap();
 
-        // Fourth and finally, set the peering state accordingly.
-        node.peering_state = PeeringState::PeeringRequested;
+        // Fourth and finally, adjust peering state accordingly.
+        node.peering_state = PeeringState::PendingOurApproval;
         Ok(())
     }
 
@@ -377,7 +389,8 @@ impl NetNodeTable {
 }
 
 impl NetNode {
-    pub fn new(inst_addr: InstAddress, hostname: &String, port: u16) -> NetNode {
+    pub fn new(inst_addr: InstAddress, hostname: &String,
+               port: u16, peering_state: PeeringState) -> NetNode {
         NetNode {
             inst_addr: inst_addr,
             hostname: String::from(&hostname[..]),
@@ -385,7 +398,7 @@ impl NetNode {
             socket: Socket::new(),
             conn_state: ConnectionState::NotConnected,
             ident_state: IdentityState::NotConfirmed,
-            peering_state: PeeringState::NotPeering,
+            peering_state: peering_state,
             identreq: None,
             identresp: None,
         }
@@ -396,7 +409,7 @@ impl NetNode {
             inst_addr: self.inst_addr.to_base58(),
             hostname: String::from(&self.hostname[..]),
             port: self.port,
-            peering_state: self.peering_state.clone()
+            peering_state: self.peering_state.clone(),
         }
     }
 
