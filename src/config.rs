@@ -8,12 +8,13 @@ use std::{io, process, convert};
 use std::io::Read;
 use toml;
 
-#[derive(Debug, RustcDecodable)]
+#[derive(Debug, RustcDecodable, Clone)]
 pub struct CertChainConfig {
     pub hostname: String,
     pub log_config_filename: String,
     pub port: u16,
     pub rpc_port: u16,
+    pub data_dir: String,
     pub nodes: Vec<CertChainConfigNode>,
     pub secret_key: String,
     pub compressed_public_key: String,
@@ -43,6 +44,12 @@ impl convert::From<io::Error> for ConfigLoadError {
 impl convert::From<toml::DecodeError> for ConfigLoadError {
     fn from(err: toml::DecodeError) -> ConfigLoadError {
         ConfigLoadError::DecodeError(err)
+    }
+}
+
+impl CertChainConfig {
+    pub fn path_to(&self, file_name: &str) -> String {
+        format!("{}/{}", self.data_dir, file_name)
     }
 }
 

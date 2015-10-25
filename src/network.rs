@@ -81,7 +81,7 @@ enum IdentityState {
     Confirmed
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Serialize, Clone, Debug, PartialEq)]
 enum PeeringState {
     NotPeering,
     PeeringRequested,
@@ -104,6 +104,14 @@ struct NetNode {
     peering_state: PeeringState,
     identreq: Option<IdentityRequest>,
     identresp: Option<IdentityResponse>
+}
+
+#[derive(Serialize)]
+pub struct OnDiskNetNode {
+    inst_addr: String,
+    hostname: String,
+    port: u16,
+    peering_state: PeeringState,
 }
 
 impl Encodable for NetNodeTable {
@@ -168,6 +176,15 @@ impl NetNodeTable {
             our_hostname: String::from(&config.hostname[..]),
             our_port: config.port,
         }
+    }
+
+    pub fn to_disk(&self) -> Vec<OnDiskNetNode> {
+        let ref node_map = *self.node_map.read().unwrap();
+        let mut nodes = Vec::new();
+        for (_, node) in node_map.iter() {
+            nodes.push(node.to_disk());
+        }
+        nodes
     }
 
     /// Registers an institution as a node based on their institutional address.
@@ -371,6 +388,15 @@ impl NetNode {
             peering_state: PeeringState::NotPeering,
             identreq: None,
             identresp: None,
+        }
+    }
+
+    pub fn to_disk(&self) -> OnDiskNetNode {
+        OnDiskNetNode {
+            inst_addr: self.inst_addr.to_base58(),
+            hostname: String::from(&self.hostname[..]),
+            port: self.port,
+            peering_state: self.peering_state.clone()
         }
     }
 

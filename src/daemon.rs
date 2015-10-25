@@ -10,6 +10,9 @@ use fsm::{FSM,FSMState};
 use secp256k1::key::{SecretKey};
 use network::NetNodeTable;
 use rpc;
+use serde_json;
+use std::fs::File;
+use std::io::BufWriter;
 
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
@@ -54,8 +57,9 @@ pub fn run(config: CertChainConfig) -> () {
     // Start the RPC server.
     let fsm_c1 = fsm.clone();
     let node_table_c3 = node_table.clone();
+    let config_c1 = config.clone();
     thread::spawn(move || {
-        rpc::start(&config, fsm_c1, node_table_c3);
+        rpc::start(&config_c1, fsm_c1, node_table_c3);
     });
 
     /*
@@ -125,7 +129,12 @@ pub fn run(config: CertChainConfig) -> () {
                     }
                 },
                 FSMState::SyncNodeTableToDisk => {
-                    panic!("TODO: Sync node table to disk.");
+                    let ref node_table = *node_table.read().unwrap();
+                    let mut writer = BufWriter::new(File::create(
+                            &config.path_to("node_table.dat")).unwrap());
+                    serde_json::to_writer_pretty(&mut writer,
+                                                 &node_table.to_disk()).unwrap();
+                    info!("FSM: sync'ed node table to disk.");
                 }
             },
             None => {

@@ -1,3 +1,6 @@
+#![feature(custom_derive, plugin)]
+#![plugin(serde_macros)]
+
 extern crate log4rs;
 extern crate getopts;
 extern crate hyper;
@@ -11,6 +14,8 @@ extern crate rust_base58;
 extern crate time;
 extern crate rmp_serialize as msgpack;
 extern crate compress;
+extern crate serde;
+extern crate serde_json;
 
 #[macro_use]
 extern crate log;
