@@ -8,46 +8,16 @@
     <div id="cc-secure-links" class="span12">
       <span><a href="{% url 'certchain:overview' %}">Network Overview</a></span>
       <span>-</span>
-      <span><a class="selected" href="{% url 'certchain:diplomas' %}">Certify and Revoke Diplomas</a></span>
+      <span><a href="{% url 'certchain:certify' %}">Certify a Document</a></span>
+      <span>-</span>
+      <span><a class="selected" href="{% url 'certchain:manage_certifications' %}">Manage Certifications</a></span>
     </div>
   </div>
 
   <div class="row">
     <div class="span12">
-      <h2>Certify a New Diploma</h2>
-      <p>Fill out the diploma fields below; once submitted, a certification transaction will be sent out on the network for processing.</p>
-    </div>
-  </div>
-
-  <div class="row">
-    <div class="span12">
-      <div id="cc-new-diploma">
-        <form method="post" action="{% url 'certchain:certify_diploma' %}">
-          {% csrf_token %}
-          <div>
-            <label>Recipient</label>
-            <input name="recipient" type="text"/>
-          </div>
-          <div>
-            <label>Degree</label>
-            <input name="degree" type="text"/>
-          </div>
-          <div>
-            <label>Conferral Date</label>
-            <input name="conferral_date" type="text"/>
-          </div>
-          <input class="cc-btn" type="submit" value="CERTIFY"/>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <br/><br/>
-
-  <div class="row">
-    <div class="span12">
-      <h2>All Diplomas</h2>
-      <p>The list below reflects the current state of all diplomas certified by your institution on the CertChain network.</p>
+      <h2>Manage Certifications</h2>
+      <p>The list below reflects the current state of all documents certified by your institution on the CertChain network. Documents are ordered from most to least recent.</p>
     </div>
   </div>
 
@@ -91,7 +61,7 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="7">Your institution has not certified any diplomas yet.</td>
+          <td colspan="7">Your institution has not issued any certifications yet.</td>
         </tr>
         {% endfor %}
       </table>

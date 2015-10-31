@@ -8,6 +8,7 @@ use network::NetNodeTable;
 use rustc_serialize::json;
 use address::InstAddress;
 use fsm::{FSM, FSMState};
+use std::io::Read;
 
 const RPC_LISTEN : &'static str = "0.0.0.0";
 
@@ -20,7 +21,7 @@ pub fn start(config: &CertChainConfig,
     // TODO: Save the Listening struct returned here
     // and call close() on it when graceful shutdown is supported.
     let _ = rpc_server.handle(
-        move |req: Request, mut res: Response<Fresh>| {
+        move |mut req: Request, mut res: Response<Fresh>| {
             match (req.method.clone(), req.uri.clone()) {
                 (hyper::Get, AbsolutePath(ref path))
                     if path == "/network" => {
@@ -37,6 +38,13 @@ pub fn start(config: &CertChainConfig,
                         && &path[0..17] == "/approve_peerreq/" => {
                     approve_peer_req(res, fsm.clone(),
                             node_table.clone(), &path[17..]);
+                },
+                (hyper::Post, AbsolutePath(ref path))
+                    if path == "/certify" => {
+                    let mut req_body = String::new();
+                    req.read_to_string(&mut req_body).unwrap();
+                    certify(res, fsm.clone(),
+                            node_table.clone(), req_body);
                 },
                 _ => *res.status_mut() = hyper::NotFound
             }
@@ -111,4 +119,12 @@ fn approve_peer_req(res: Response<Fresh>,
     fsm.push_state(FSMState::ApprovePeerRequest(addr));
     fsm.push_state(FSMState::SyncNodeTableToDisk);
     res.send("OK; peer request submitted for approval.".as_bytes()).unwrap();
+}
+
+fn certify(res: Response<Fresh>,
+           fsm: Arc<RwLock<FSM>>,
+           node_table: Arc<RwLock<NetNodeTable>>,
+           document: String) {
+    info!("Document: {}", document);
+    res.send("OK; certification submitted.".as_bytes()).unwrap();
 }

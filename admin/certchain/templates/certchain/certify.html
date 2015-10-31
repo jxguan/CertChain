@@ -1,0 +1,81 @@
+{% extends "auth_base.html" %}
+
+{% load certchain_extras %}
+
+{% block content %}
+<div class="container cc-container">
+  <div class="row">
+    <div id="cc-secure-links" class="span12">
+      <span><a href="{% url 'certchain:overview' %}">Network Overview</a></span>
+      <span>-</span>
+      <span><a class="selected" href="{% url 'certchain:certify' %}">Certify a Document</a></span>
+      <span>-</span>
+      <span><a href="{% url 'certchain:manage_certifications' %}">Manage Certifications</a></span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <h2>Certify a Diploma</h2>
+      <p>Fill out the diploma fields below; once submitted, a certification transaction will be sent out on the network for processing.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <div id="cc-new-diploma">
+        <form method="post" action="{% url 'certchain:certify_diploma' %}">
+          {% csrf_token %}
+          <div>
+            <label>Recipient</label>
+            <input name="recipient" type="text"/>
+          </div>
+          <div>
+            <label>Degree</label>
+            <input name="degree" type="text"/>
+          </div>
+          <div>
+            <label>Conferral Date</label>
+            <input name="conferral_date" type="text"/>
+          </div>
+          <input class="cc-btn" type="submit" value="CERTIFY"/>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <br/><br/>
+
+  <div class="row">
+    <div class="span12">
+      <h2>Certify a Transcript</h2>
+      <p>Fill out the transcript fields below; once submitted, a certification transaction will be sent out on the network for processing.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <div id="cc-new-diploma">
+        <form method="post" action="{% url 'certchain:certify_diploma' %}">
+          {% csrf_token %}
+          <div>
+            <label>Student Name</label>
+            <input name="recipient" type="text"/>
+          </div>
+          <div>
+            <label>GPA</label>
+            <input name="degree" type="text"/>
+          </div>
+          <div>
+            <label>Date</label>
+            <input name="conferral_date" type="text" value="{% now 'm/d/Y' %}"/>
+          </div>
+          <input class="cc-btn" type="submit" value="CERTIFY"/>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+
+

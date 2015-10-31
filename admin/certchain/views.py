@@ -7,7 +7,6 @@ from django.contrib import messages
 from django.core.urlresolvers import reverse
 from django.conf import settings
 from templatetags.certchain_extras import cc_addr_to_name, cc_format_sig_ts
-from models import Transaction
 
 # NOTE: relpath must have leading '/'
 def create_rpc_url(relpath):
@@ -86,35 +85,40 @@ def untrust_institution(request):
   raise Http404
 
 @login_required
-def diplomas(request):
-  try:
-    resp = requests.get(create_rpc_url('/my_txns'))
-  except Exception as ex:
-    messages.error(request, 'Your institution\'s CertChain node \
-      is not available at this time.')
-    return render(request, 'certchain/diplomas.html', {})
+def certify(request):
+  # try:
+  #   resp = requests.get(create_rpc_url('/my_txns'))
+  # except Exception as ex:
+  #   messages.error(request, 'Your institution\'s CertChain node \
+  #     is not available at this time.')
+  #   return render(request, 'certchain/diplomas.html', {})
 
-  txn_doc_map = {}
-  for txn in Transaction.objects.all():
-    txn_doc_map[txn.txn_id] = txn.document
+  # txn_doc_map = {}
+  # for txn in Transaction.objects.all():
+  #   txn_doc_map[txn.txn_id] = txn.document
 
-  txns = resp.json()
-  for txn in txns:
-    txn_id = txn['txn_id']
-    # There should always be a record in the database
-    # with a txn id returned by the peer node, but
-    # being cautious just in case (this way, record will appear,
-    # but with blank document fields).
-    if txn_id in txn_doc_map:
-      txn['document'] = txn_doc_map[txn_id]
-      txn['document_base64'] = base64.b64encode(txn['document'])
+  # txns = resp.json()
+  # for txn in txns:
+  #   txn_id = txn['txn_id']
+  #   # There should always be a record in the database
+  #   # with a txn id returned by the peer node, but
+  #   # being cautious just in case (this way, record will appear,
+  #   # but with blank document fields).
+  #   if txn_id in txn_doc_map:
+  #     txn['document'] = txn_doc_map[txn_id]
+  #     txn['document_base64'] = base64.b64encode(txn['document'])
 
-  # Order txns by most recent to least.
-  txns = sorted(txns, key=lambda txn: txn['signature_ts'], reverse=True)
+  # # Order txns by most recent to least.
+  # txns = sorted(txns, key=lambda txn: txn['signature_ts'], reverse=True)
 
-  return render(request, 'certchain/diplomas.html', {
-      'txns' : txns,
-    })
+  # return render(request, 'certchain/diplomas.html', {
+  #     'txns' : txns,
+  #   })
+  return render(request, 'certchain/certify.html', {})
+
+@login_required
+def manage_certifications(request):
+  return render(request, 'certchain/certifications.html', {})
 
 @login_required
 def certify_diploma(request):
@@ -127,21 +131,17 @@ def certify_diploma(request):
     # Be careful here; remember that changing the way the document
     # is formatted will create different hashes.
     document = json.dumps(payload, sort_keys=True)
-    resp = requests.post(create_rpc_url('/certify_document'),
+    resp = requests.post(create_rpc_url('/certify'),
       data=document)
     if resp.status_code == 200:
       txn_id = resp.text
-      Transaction.objects.create(
-        txn_id=txn_id,
-        document=document
-      )
       messages.success(request,\
         'The diploma has been submitted to the network as transaction ' + txn_id)
     else:
       messages.error(request,\
         'An error occurred while processing your \
         certification request: ' + str(resp.status_code))
-    return redirect(reverse('certchain:diplomas'))
+    return redirect(reverse('certchain:certify'))
   raise Http404
 
 @login_required
