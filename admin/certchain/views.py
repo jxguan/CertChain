@@ -32,6 +32,22 @@ def overview(request):
     return render(request, 'certchain/overview.html', {})
 
 @login_required
+def approve_peer_request(request):
+  if request.method == 'POST':
+    addr = request.POST['requesting_addr']
+    resp = requests.post(create_rpc_url('/approve_peerreq/' + addr))
+    if resp.status_code == 200:
+      messages.success(request,\
+        'Your approval was submitted; it may take a few \
+        seconds for the approval to be reflected below.')
+    else:
+      messages.error(request,\
+        'An error occurred while processing your \
+        peer request approval for ' + addr + '.')
+    return redirect(reverse('certchain:overview'))
+  raise Http404
+
+@login_required
 def trust_institution(request):
   if request.method == 'POST':
     addr = request.POST['addr_to_trust']

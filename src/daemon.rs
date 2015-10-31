@@ -84,6 +84,10 @@ pub fn run(config: CertChainConfig) -> () {
                 NetPayload::PeerReq(peerreq) => {
                     fsm.push_state(FSMState::HandlePeerReq(peerreq));
                     fsm.push_state(FSMState::SyncNodeTableToDisk);
+                },
+                NetPayload::StatusUpdate(status_update) => {
+                    fsm.push_state(FSMState::HandleStatusUpdate(status_update));
+                    fsm.push_state(FSMState::SyncNodeTableToDisk);
                 }
             }
         }
@@ -111,7 +115,7 @@ pub fn run(config: CertChainConfig) -> () {
                         Ok(_) => info!("FSM: processed identresp."),
                         Err(err) => warn!("FSM: unable to process identresp: {}",
                                           err)
-                    }
+                    };
                 },
                 FSMState::RequestPeer(addr) => {
                     match node_table.write().unwrap()
@@ -119,7 +123,7 @@ pub fn run(config: CertChainConfig) -> () {
                         Ok(_) => info!("FSM: requested peer."),
                         Err(err) => warn!("FSM: unable to request peer: {}",
                                           err)
-                        }
+                    };
                 },
                 FSMState::HandlePeerReq(peerreq) => {
                     match node_table.write().unwrap()
@@ -127,7 +131,24 @@ pub fn run(config: CertChainConfig) -> () {
                         Ok(_) => info!("FSM: handled peer request."),
                         Err(err) => warn!("FSM: unable to handle peer req: {}",
                                           err)
-                    }
+                    };
+                },
+                FSMState::ApprovePeerRequest(addr) => {
+                    match node_table.write().unwrap()
+                        .approve_peerreq(addr, &secret_key) {
+                        Ok(_) => info!("FSM: approved peer request."),
+                        Err(err) => warn!("FSM: unable to approve peer \
+                                            request: {}", err)
+                    };
+                },
+                FSMState::HandleStatusUpdate(status_update) => {
+                    panic!("TODO: Handle status update.");
+                    /*match node_table.write().unwrap()
+                        .handle_status_update(status_update) {
+                        Ok(_) => info!("FSM: handled status update."),
+                        Err(err) => warn!("FSM: unable to handle \
+                                          status update: {}", err)
+                    }*/
                 },
                 FSMState::SyncNodeTableToDisk => {
                     let ref node_table = *node_table.read().unwrap();

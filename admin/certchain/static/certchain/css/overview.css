@@ -74,11 +74,13 @@
 .peering-prompt .left-half {
   float: left;
   width: 50%;
+  text-align: right;
 }
 
 .peering-prompt .right-half {
   float: right;
   width: 50%;
+  text-align: left;
 }
 
 .peering-prompt > .options {
@@ -89,4 +91,5 @@
 .peering-prompt .cc-btn {
   font-size: 1.1em;
   width: 100px;
+  margin: 15px 20px;
 }

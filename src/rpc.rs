@@ -32,6 +32,12 @@ pub fn start(config: &CertChainConfig,
                     handle_peer_req(res, fsm.clone(),
                             node_table.clone(), &path[14..]);
                 },
+                (hyper::Post, AbsolutePath(ref path))
+                    if path.len() > 17
+                        && &path[0..17] == "/approve_peerreq/" => {
+                    approve_peer_req(res, fsm.clone(),
+                            node_table.clone(), &path[17..]);
+                },
                 _ => *res.status_mut() = hyper::NotFound
             }
         }
@@ -74,4 +80,35 @@ fn handle_peer_req(res: Response<Fresh>,
     fsm.push_state(FSMState::RequestPeer(addr));
     fsm.push_state(FSMState::SyncNodeTableToDisk);
     res.send("OK; peer request submitted.".as_bytes()).unwrap();
+}
+
+fn approve_peer_req(res: Response<Fresh>,
+                       fsm: Arc<RwLock<FSM>>,
+                       node_table: Arc<RwLock<NetNodeTable>>,
+                       addr_param: &str) {
+    // Convert the address parameter into an InstAddress.
+    let addr = match InstAddress::from_string(addr_param) {
+        Ok(addr) => addr,
+        Err(_) => {
+            res.send("The address provided is not \
+                     valid.".as_bytes()).unwrap();
+            return;
+        }
+    };
+
+    // Ensure that we have confirmed this institution's
+    // identity.
+    let ref node_table = *node_table.read().unwrap();
+    if !node_table.is_confirmed_node(&addr) {
+        res.send("The node whose peer request you attempted \
+                 to approve has not confirmed \
+                 their identity.".as_bytes()).unwrap();
+        return;
+    }
+
+    // Have the FSM eventually approve the peer request.
+    let ref mut fsm = *fsm.write().unwrap();
+    fsm.push_state(FSMState::ApprovePeerRequest(addr));
+    fsm.push_state(FSMState::SyncNodeTableToDisk);
+    res.send("OK; peer request submitted for approval.".as_bytes()).unwrap();
 }

@@ -114,19 +114,22 @@
     </ul>
     {% if node.peering_state == 'PendingOurApproval' %}
     <div class="peering-prompt">
-      <span class="prompt">Do you approve of this institution's peer request?</span>
+      <span class="prompt">Do you approve of this institution's request to peer with you?</span>
       <br/>
       <span class="desc">If you approve, this institution's signature will be required on all of your future certifications and revocations, and vice versa.</span>
       <div class="options">
         <div class="left-half">
-          <button class="cc-btn green">APPROVE</button>
+          <form method="post" action="{% url 'certchain:approve_peer_request' %}">
+            {% csrf_token %}
+            <input type="hidden" name="requesting_addr" value="{{node.inst_addr}}"/>
+            <input class="cc-btn green" type="submit" value="APPROVE"/>
+          </form>
         </div>
         <div class="right-half">
           <button class="cc-btn red">DENY</button>
         </div>
       </div>
       <div style="clear: both"></div>
-      <br/>
     </div>
     {% endif %}
   </div>

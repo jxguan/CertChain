@@ -40,6 +40,7 @@ pub enum NetPayload {
     IdentReq(IdentityRequest),
     IdentResp(IdentityResponse),
     PeerReq(PeerRequest),
+    StatusUpdate(StatusUpdate),
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -69,6 +70,15 @@ pub struct IdentityResponse {
     pub from_signature: RecovSignature,
 }
 
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+pub struct StatusUpdate {
+    pub seqnum: u64,
+    pub to_inst_addr: InstAddress,
+    pub peering_state: PeeringState,
+    pub from_inst_addr: InstAddress,
+    pub from_signature: RecovSignature,
+}
+
 #[derive(Debug, PartialEq)]
 enum ConnectionState {
     NotConnected,
@@ -81,7 +91,8 @@ enum IdentityState {
     Confirmed
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(RustcEncodable, RustcDecodable, Serialize,
+         Deserialize, Clone, Debug, PartialEq)]
 pub enum PeeringState {
     No,
     PendingOurApproval,
@@ -105,7 +116,9 @@ struct NetNode {
     ident_state: IdentityState,
     peering_state: PeeringState,
     identreq: Option<IdentityRequest>,
-    identresp: Option<IdentityResponse>
+    identresp: Option<IdentityResponse>,
+    last_sent_update_seqnum: u64,
+    last_recv_update_seqnum: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -114,6 +127,8 @@ pub struct OnDiskNetNode {
     pub hostname: String,
     pub port: u16,
     pub peering_state: PeeringState,
+    pub last_sent_update_seqnum: u64,
+    pub last_recv_update_seqnum: u64,
 }
 
 impl Encodable for NetNodeTable {
@@ -161,6 +176,10 @@ impl Encodable for NetNode {
                     |s| format!("{:?}", self.ident_state).encode(s)));
             try!(s.emit_struct_field("peering_state", 5,
                     |s| format!("{:?}", self.peering_state).encode(s)));
+            try!(s.emit_struct_field("last_sent_update_seqnum", 6,
+                    |s| format!("{:?}", self.last_sent_update_seqnum).encode(s)));
+            try!(s.emit_struct_field("last_recv_update_seqnum", 7,
+                    |s| format!("{:?}", self.last_recv_update_seqnum).encode(s)));
             Ok(())
         })
     }
@@ -360,7 +379,7 @@ impl NetNodeTable {
             panic!("TODO: Log invalid peer request.")
         }
 
-        // Third, ensure that we have confirmed the node's identity.
+        // Second, ensure that we have confirmed the node's identity.
         if !self.is_confirmed_node(&peer_req.from_inst_addr) {
             return Err(io::Error::new(io::ErrorKind::Other,
                 format!("Ignoring peer request from node {}; their \
@@ -375,6 +394,41 @@ impl NetNodeTable {
         // Fourth and finally, adjust peering state accordingly.
         node.peering_state = PeeringState::PendingOurApproval;
         Ok(())
+    }
+
+    pub fn approve_peerreq(&mut self,
+            inst_addr: InstAddress,
+            our_secret_key: &SecretKey) -> std::io::Result<()> {
+
+        // First, ensure that we have confirmed the node's identity.
+        if !self.is_confirmed_node(&inst_addr) {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                format!("Ignoring approval of peer request for {}; their \
+                         identity has not been confirmed.",
+                         &inst_addr)));
+        }
+
+        // Second, get the node (we can unwrap due to above check).
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&inst_addr).unwrap();
+
+        // Third, ensure that their peering state is PendingOurApproval.
+        if node.peering_state != PeeringState::PendingOurApproval {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                format!("Ignoring approval of peer request for {}; their \
+                        peering state is not pending our approval.",
+                         &inst_addr)));
+        }
+
+        // Fourth and finally, adjust peering state accordingly
+        // and send status update to newly approved peer.
+        node.peering_state = PeeringState::Yes;
+        node.last_sent_update_seqnum += 1;
+        let status_update = StatusUpdate::new(
+            node.last_sent_update_seqnum, node.inst_addr,
+            node.peering_state.clone(),
+            self.our_inst_addr, &our_secret_key);
+        node.send(NetPayload::StatusUpdate(status_update))
     }
 
     pub fn is_confirmed_node(&self, node_addr: &InstAddress) -> bool {
@@ -401,6 +455,8 @@ impl NetNode {
             peering_state: peering_state,
             identreq: None,
             identresp: None,
+            last_sent_update_seqnum: 0,
+            last_recv_update_seqnum: 0,
         }
     }
 
@@ -410,6 +466,8 @@ impl NetNode {
             hostname: String::from(&self.hostname[..]),
             port: self.port,
             peering_state: self.peering_state.clone(),
+            last_sent_update_seqnum: self.last_sent_update_seqnum,
+            last_recv_update_seqnum: self.last_recv_update_seqnum,
         }
     }
 
@@ -610,6 +668,29 @@ impl PeerRequest {
         let expected_msg = &DoubleSha256Hash::hash(&format!("PEERREQ:{},{},{}",
             self.nonce, self.to_inst_addr, self.from_inst_addr).as_bytes()[..]);
         self.from_signature.check_validity(&expected_msg, &self.from_inst_addr)
+    }
+}
+
+impl StatusUpdate {
+    fn new(seqnum: u64,
+           to_inst_addr: InstAddress,
+           current_peering_state: PeeringState,
+           our_inst_addr: InstAddress,
+           our_secret_key: &SecretKey) -> StatusUpdate {
+        let to_hash = format!("STATUSUPDATE:{},{:?},{},{}",
+                              seqnum,
+                              current_peering_state,
+                              to_inst_addr,
+                              our_inst_addr);
+        StatusUpdate {
+            seqnum: seqnum,
+            to_inst_addr: to_inst_addr,
+            peering_state: current_peering_state,
+            from_inst_addr: our_inst_addr,
+            from_signature: RecovSignature::sign(
+                &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
+                &our_secret_key)
+        }
     }
 }
 
