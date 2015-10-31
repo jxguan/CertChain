@@ -1,6 +1,12 @@
 {% extends "auth_base.html" %}
 
 {% load certchain_extras %}
+{% load staticfiles %}
+
+{% block stylesheets %}
+  {{ block.super }}
+  <link href="{% static 'certchain/css/overview.css'%}" rel="stylesheet"/>
+{% endblock stylesheets %}
 
 {% block content %}
 <div class="container cc-container">
@@ -14,25 +20,34 @@
 
   <div class="row">
     <div class="span12">
-      <h2>Network Presence</h2>
-      <p>Other institutions peer with your institution using the information below. </p>
+      <h2>Your Network Presence</h2>
+      <p>Other institutions connect to your institution using the information below. </p>
     </div>
   </div>
 
-  <div class="row">
-    <div class="span12">
-      <strong>Address</strong>: {{ network.our_inst_addr }}
-      <br/>
-      <strong>Hostname</strong>: {{ network.our_hostname }}
-      <br/>
-      <strong>Port</strong>: {{ network.our_port }}
+  <div class="netnode">
+    <div class="row">
+      <div class="span6">
+        <span>{{ network.our_inst_addr }}</span>
+        <label>Address</label>
+      </div>
+      <div class="span4">
+        <span>{{ network.our_hostname }}</span>
+        <label>Hostname</label>
+      </div>
+      <div class="span2">
+        <span>{{ network.our_port }}</span>
+        <label>Port</label>
+      </div>
     </div>
   </div>
 
+  <br/>
+
   <div class="row">
     <div class="span12">
-      <h2>Network Peers</h2>
-      <p>Your institution maintains peering connections with the institutions below. </p>
+      <h2>Network Nodes</h2>
+      <p>Your institution maintains contact with the institutions below.</p>
     </div>
   </div>
 
@@ -49,20 +64,82 @@
     </div>
   </div> -->
 
-  {% for _, peer in network.peer_map.items %}
-  <div class="row">
-    <div class="span12">
-      <strong>Address</strong>: {{ peer.inst_addr }}
-      <br/>
-      <strong>Hostname</strong>: {{ peer.hostname }}
-      <br/>
-      <strong>Port</strong>: {{ peer.port }}
-      <br/>
-      <strong>Connection State</strong>: {{ peer.conn_state }}
-      <br/>
-      <strong>Identity State</strong>: {{ peer.ident_state }}
+  {% for _, node in network.node_map.items %}
+  <div class="netnode">
+    <div class="row">
+      <div class="span6">
+        <span>{{ node.inst_addr }}</span>
+        <label>Address</label>
+      </div>
+      <div class="span4">
+        <span>{{ node.hostname }}</span>
+        <label>Hostname</label>
+      </div>
+      <div class="span2">
+        <span>{{ node.port }}</span>
+        <label>Port</label>
+      </div>
     </div>
   </div>
+  <div class="netnode-states">
+    <ul>
+      <li>
+        {% if node.conn_state == 'Connected' %}
+        <span class="state green">CONNECTION</span>Your institution is connected to this node.
+        {% else %}
+        <span class="state red">CONNECTION</span>Your institution is not connected to this node.
+        {% endif %}
+      </li>
+      <li>
+        {% if node.ident_state == 'Confirmed' %}
+        <span class="state green">IDENTITY</span>This node has proved their identity to you.
+        {% else %}
+        <span class="state red">IDENTITY</span>This node has not proved their identity to you.
+        {% endif %}
+      </li>
+      <li>
+        {% if node.peering_state == 'Yes' %}
+        <span class="state green">PEERING</span>You are peering with this institution.
+        {% endif %}
+        {% if node.peering_state == 'No' %}
+        <span class="state gray">PEERING</span>You are not peering with this institution.
+        {% endif %}
+        {% if node.peering_state == 'PendingTheirApproval' %}
+        <span class="state gray">PEERING</span>The institution has not yet approved your peering request.
+        {% endif %}
+        {% if node.peering_state == 'PendingOurApproval' %}
+        <span class="state yellow">PEERING</span>This institution has requested a peering relationship with you.
+        {% endif %}
+      </li>
+    </ul>
+    {% if node.peering_state == 'PendingOurApproval' %}
+    <div class="peering-prompt">
+      <span class="prompt">Do you approve of this institution's peer request?</span>
+      <br/>
+      <span class="desc">If you approve, this institution's signature will be required on all of your future certifications and revocations, and vice versa.</span>
+      <div class="options">
+        <div class="left-half">
+          <button class="cc-btn green">APPROVE</button>
+        </div>
+        <div class="right-half">
+          <button class="cc-btn red">DENY</button>
+        </div>
+      </div>
+      <div style="clear: both"></div>
+      <br/>
+    </div>
+    {% endif %}
+  </div>
+  
+  <!-- <div class="row">
+    <div class="span12">
+      <strong>Connection State</strong>: {{ node.conn_state }}
+      <br/>
+      <strong>Identity State</strong>: {{ node.ident_state }}
+      <br/>
+      <strong>Peering State</strong>: {{ node.peering_state }}
+    </div>
+  </div> -->
   {% empty %}
   <div class="row">
     <div class="span12">

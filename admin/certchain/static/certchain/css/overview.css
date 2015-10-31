@@ -1,0 +1,92 @@
+.netnode {
+  text-align: center;
+  background-color: #474747;
+  color: white;
+  border-radius: 8px;
+  box-shadow: inset 0px 0px 5px 2px rgba(0,0,0,0.4);
+  padding: 10px 0;
+}
+
+.netnode span {
+  font-size: 1.4em;
+  font-weight: bold;
+}
+
+.netnode-states {
+  width: 80%;
+  margin: 0 auto;
+  padding: 15px 8px 8px 8px;
+  background-color: #F1F1F1;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  box-shadow: inset 0px 0px 3px 1px rgba(0,0,0,0.1);
+}
+
+.netnode-states ul {
+  list-style: none;
+}
+
+.netnode-states ul li {
+  padding: 5px 0;
+}
+
+.state {
+  border: 1px solid #7B7B7B;
+  border-radius: 5px;
+  padding: 1px 5px;
+  margin-right: 8px;
+}
+
+.state.green {
+  background-color: #AFFA8F;
+}
+
+.state.red {
+  background-color: #FCA5A5;
+}
+
+.state.gray {
+  background-color: #8B8B8B;
+  color: white;
+}
+
+.state.yellow {
+  background-color: #FFF776;
+}
+
+.peering-prompt {
+  text-align: center;
+}
+
+.peering-prompt > .prompt {
+  display: inline-block;
+  padding-top: 7px;
+  font-size: 1.4em;
+  font-weight: bold;
+}
+
+.peering-prompt > .desc {
+  display: inline-block;
+  padding-top: 3px;
+  font-size: 1.2em;
+}
+
+.peering-prompt .left-half {
+  float: left;
+  width: 50%;
+}
+
+.peering-prompt .right-half {
+  float: right;
+  width: 50%;
+}
+
+.peering-prompt > .options {
+  display: block;
+  margin-top: 10px;
+}
+
+.peering-prompt .cc-btn {
+  font-size: 1.1em;
+  width: 100px;
+}
