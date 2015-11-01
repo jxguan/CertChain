@@ -65,6 +65,12 @@ pub fn start(config: &CertChainConfig,
                         && &path[0..10] == "/document/" => {
                     handle_document_req(res, &docs_dir, &path[10..]);
                 },
+                (hyper::Post, AbsolutePath(ref path))
+                    if path.len() > 13
+                        && &path[0..13] == "/end_peering/" => {
+                    end_peering(res, fsm.clone(),
+                            node_table.clone(), &path[13..]);
+                },
                 _ => *res.status_mut() = hyper::NotFound
             }
         }
@@ -207,4 +213,29 @@ fn handle_document_req(res: Response<Fresh>,
     let mut doc_text = String::new();
     doc_file.read_to_string(&mut doc_text).unwrap();
     res.send(doc_text.as_bytes()).unwrap();
+}
+
+fn end_peering(res: Response<Fresh>,
+                       fsm: Arc<RwLock<FSM>>,
+                       node_table: Arc<RwLock<NetNodeTable>>,
+                       addr_param: &str) {
+
+    // Convert the address parameter into an InstAddress.
+    let addr = match InstAddress::from_string(addr_param) {
+        Ok(addr) => addr,
+        Err(_) => {
+            res.send("The address provided is not \
+                     valid.".as_bytes()).unwrap();
+            return;
+        }
+    };
+
+    // Downgrade our approval of peering with this addr.
+    let ref mut node_table = *node_table.write().unwrap();
+    node_table.end_peering(addr);
+
+    // Have the FSM eventually sync node table to disk.
+    let ref mut fsm = *fsm.write().unwrap();
+    fsm.push_state(FSMState::SyncNodeTableToDisk);
+    res.send("OK; peering ended.".as_bytes()).unwrap();
 }

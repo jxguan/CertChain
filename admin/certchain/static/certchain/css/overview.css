@@ -36,11 +36,11 @@
   text-align: center;
 }
 
-.netnode-states .start-peering-form {
+.netnode-states .peering-form {
   margin: 0 !important;
 }
 
-.netnode-states .start-peering-form .cc-btn {
+.netnode-states .peering-form .cc-btn {
   font-size: 15px;
 }
 

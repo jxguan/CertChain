@@ -29,10 +29,6 @@
 
   <div class="netnode">
     <div class="row">
-      <div class="span6">
-        <span>{{ network.our_inst_addr }}</span>
-        <label>Address</label>
-      </div>
       <div class="span4">
         <span>{{ network.our_hostname }}</span>
         <label>Hostname</label>
@@ -40,6 +36,10 @@
       <div class="span2">
         <span>{{ network.our_port }}</span>
         <label>Port</label>
+      </div>
+      <div class="span6">
+        <span>{{ network.our_inst_addr }}</span>
+        <label>Address</label>
       </div>
     </div>
   </div>
@@ -69,10 +69,6 @@
   {% for _, node in network.node_map.items %}
   <div class="netnode">
     <div class="row">
-      <div class="span6">
-        <span>{{ node.inst_addr }}</span>
-        <label>Address</label>
-      </div>
       <div class="span4">
         <span>{{ node.hostname }}</span>
         <label>Hostname</label>
@@ -80,6 +76,10 @@
       <div class="span2">
         <span>{{ node.port }}</span>
         <label>Port</label>
+      </div>
+      <div class="span6">
+        <span>{{ node.inst_addr }}</span>
+        <label>Address</label>
       </div>
     </div>
   </div>
@@ -131,7 +131,13 @@
         <td>
           You are peering with this institution.
         </td>
-        <td></td>
+        <td>
+          <form class="peering-form" method="post" action="{% url 'certchain:remove_peer' %}">
+            {% csrf_token %}
+            <input type="hidden" name="addr" value="{{node.inst_addr}}"/>
+            <input class="cc-btn" type="submit" value="END PEERING"/>
+          </form>
+        </td>
         {% endif %}
         {% if node.our_peering_approval == 'NotApproved' %}
         <td>
@@ -141,7 +147,7 @@
           You are not peering with this institution.
         </td>
         <td>
-          <form class="start-peering-form" method="post" action="{% url 'certchain:request_peer' %}">
+          <form class="peering-form" method="post" action="{% url 'certchain:request_peer' %}">
             {% csrf_token %}
             <input type="hidden" name="addr" value="{{node.inst_addr}}"/>
             <input class="cc-btn" type="submit" value="REQUEST PEERING"/>

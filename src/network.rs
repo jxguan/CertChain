@@ -411,6 +411,17 @@ impl NetNodeTable {
         panic!("TODO: Create new block, add AddPeer action, issue sigreqs.")
     }
 
+    pub fn end_peering(&mut self, inst_addr: InstAddress) -> std::io::Result<()> {
+
+        // Get the peer.
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&inst_addr).unwrap();
+
+        // Downgrade peering approval.
+        node.our_peering_approval = PeeringApproval::NotApproved;
+        Ok(())
+    }
+
     pub fn is_confirmed_node(&self, node_addr: &InstAddress) -> bool {
         let node_map = self.node_map.read().unwrap();
         match node_map.get(node_addr) {
