@@ -25,13 +25,17 @@
     <div class="span12">
       <table id="cc-diploma-table" class="table">
         <tr>
-          <th>ID</th>
+          <th>Document ID</th>
+          <th>Document Type</th>
+          <th>Student ID</th>
           <th></th>
           <th></th>
         </tr>
         {% for c in certifications %}
         <tr>
           <td>{{ c | slice:"0:9" }}</td>
+          <td></td>
+          <td></td>
           <td>
             <form method="post" action="{% url 'certchain:revoke_diploma' %}">
               {% csrf_token %}
@@ -39,7 +43,7 @@
               <input class="cc-btn" type="submit" value="REVOKE"/>
             </form>
           </td>
-          <td><a class="cc-btn" href="{% url 'viewer' c %}">VIEW</a></td>
+          <td><a class="cc-btn" href="{% url 'public:document' c %}">VIEW</a></td>
         </tr>
         {% empty %}
         <tr>

@@ -7,11 +7,7 @@ from django.contrib import messages
 from django.core.urlresolvers import reverse
 from django.conf import settings
 from templatetags.certchain_extras import cc_addr_to_name, cc_format_sig_ts
-
-# NOTE: relpath must have leading '/'
-def create_rpc_url(relpath):
-  return 'http://' + settings.INSTITUTION_CERTCHAIN_NODE_HOSTNAME\
-    + ':' + settings.INSTITUTION_CERTCHAIN_NODE_RPC_PORT + relpath
+from certchain.shared import create_rpc_url
 
 def trust_table_sort(key):
   if key == settings.INSTITUTION_CERTCHAIN_ADDRESS:
@@ -160,6 +156,7 @@ def manage_certifications(request):
 @login_required
 def certify_diploma(request):
   if request.method == 'POST':
+    student_id = request.POST['student_id']
     payload = {
       'recipient': request.POST['recipient'],
       'degree': request.POST['degree'],
@@ -168,7 +165,7 @@ def certify_diploma(request):
     # Be careful here; remember that changing the way the document
     # is formatted will create different hashes.
     document = json.dumps(payload, sort_keys=True)
-    resp = requests.post(create_rpc_url('/certify'),
+    resp = requests.post(create_rpc_url('/certify/Diploma/'+student_id),
       data=document)
     if resp.status_code == 200:
       txn_id = resp.text
@@ -200,63 +197,3 @@ def revoke_diploma(request):
         revocation request: ' + str(resp.status_code))
     return redirect(reverse('certchain:diplomas'))
   raise Http404
-
-# No login required for document viewer.
-# TODO: Handle
-#  - bad txn id (CertChain will return blank response)
-#  - bad document (exception will be thrown)
-def viewer(request, docid):
-  try:
-    resp = requests.get(create_rpc_url('/document/' + docid))
-    return render(request, 'certchain/viewer.html', {'doc' : resp.json()})
-  except Exception as ex:
-    messages.error(request, 'Unable to retrieve document at this time.')
-    return redirect(reverse('certchain:manage_certifications'))
-  # context = {
-  #   'txnid': txnid
-  # }
-  # try:
-  #   document = base64.b64decode(docb64)
-  #   context['doc'] = document
-  #   payload = {
-  #     'txn_id': txnid,
-  #     'document': document
-  #   }
-  #   resp = requests.post(create_rpc_url('/diploma_status'),
-  #     data=json.dumps(payload))
-  #   latest_txn_id = None
-  #   if resp.status_code == 200:
-  #     validity = resp.json()
-  #     if validity['status'] == 'QUEUED':
-  #       context['msg_class'] = 'yellow'
-  #       context['msg'] = 'This diploma has just been submitted for \
-  #             certification; its validity status\
-  #             will be available soon.'
-  #     elif validity['status'] == 'CERTIFIED':
-  #       context['latest_txn_id'] = validity['latest_txn_id']
-  #       context['msg_class'] = 'green'
-  #       context['msg'] = 'Certified by ' + cc_addr_to_name(validity['author_addr'])\
-  #         + ' on ' + str(cc_format_sig_ts(validity['latest_txn_ts'])) + '. \
-  #         This diploma is valid and has not been tampered with.'
-  #     elif validity['status'] == 'REVOKED':
-  #       context['latest_txn_id'] = validity['latest_txn_id']
-  #       context['msg_class'] = 'red'
-  #       context['msg'] = 'Revoked by ' + cc_addr_to_name(validity['author_addr'])\
-  #         + ' on ' + str(cc_format_sig_ts(validity['latest_txn_ts'])) + '. \
-  #         This diploma is no longer valid.'
-  #     elif validity['status'] == 'NONEXISTENT':
-  #       context['msg_class'] = 'red'
-  #       context['msg'] = 'This diploma is not valid; it has never been certified.'
-  #     else:
-  #       context['msg_class'] = 'red'
-  #       context['msg'] = 'This diploma has been tampered with and is not valid.'
-  #       context['document_override'] = 'INVALID'
-  #   else:
-  #     context['msg_class'] = 'red'
-  #     context['msg'] = 'A communications error prevented \
-  #       the validation of this diploma at the moment: ' + str(resp.status_code)
-  # except Exception as ex:
-  #   context['msg_class'] = 'red'
-  #   context['msg'] = context['msg'] = 'This diploma has been tampered with and is not valid.'
-  #   context['document_override'] = 'INVALID'
-  # return render(request, 'certchain/viewer.html', context)

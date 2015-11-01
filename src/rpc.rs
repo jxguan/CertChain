@@ -50,11 +50,13 @@ pub fn start(config: &CertChainConfig,
                             node_table.clone(), &path[17..]);
                 },
                 (hyper::Post, AbsolutePath(ref path))
-                    if path == "/certify" => {
+                    if path.len() > 9
+                        && &path[0..9] == "/certify/" => {
+                    let params = &path[9..].split("/").collect::<Vec<&str>>();
                     let mut req_body = String::new();
                     req.read_to_string(&mut req_body).unwrap();
                     certify(res, hashchain.clone(),
-                            &docs_dir, req_body);
+                            &docs_dir, req_body, &params);
                 },
                 (hyper::Get, AbsolutePath(ref path))
                     if path == "/certifications" => {
@@ -152,7 +154,32 @@ fn approve_peer_req(res: Response<Fresh>,
 fn certify(res: Response<Fresh>,
            hashchain: Arc<RwLock<Hashchain>>,
            docs_dir_path: &String,
-           document: String) {
+           document: String,
+           params: &Vec<&str>) {
+
+    // Ensure params are valid.
+    if params.len() != 2 {
+        res.send("Expected <doctype>/<student_id>.".as_bytes()).unwrap();
+        return;
+    }
+
+    // Ensure doctype is valid.
+    let doctype = match params[0] {
+        t @ "Diploma" => t,
+        _ => {
+            res.send("Unexpected doctype.".as_bytes()).unwrap();
+            return;
+        }
+    };
+
+    // Ensure student id is valid.
+    let student_id = match params[1].len() {
+        0 => {
+            res.send("Expected non-empty student ID.".as_bytes()).unwrap();
+            return;
+        },
+        _ => params[1]
+    };
 
     // First, hash the document to obtain its ID.
     let doc_bytes = &document.as_bytes()[..];

@@ -1,6 +1,12 @@
 {% extends "auth_base.html" %}
 
 {% load certchain_extras %}
+{% load staticfiles %}
+
+{% block stylesheets %}
+  {{ block.super }}
+  <link href="{% static 'certchain/css/certify.css'%}" rel="stylesheet"/>
+{% endblock stylesheets %}
 
 {% block content %}
 <div class="container cc-container">
@@ -26,6 +32,10 @@
       <div id="cc-new-diploma">
         <form method="post" action="{% url 'certchain:certify_diploma' %}">
           {% csrf_token %}
+          <div>
+            <label>Student ID</label>
+            <input name="student_id" type="text"/>
+          </div>
           <div>
             <label>Recipient</label>
             <input name="recipient" type="text"/>
@@ -58,6 +68,10 @@
       <div id="cc-new-diploma">
         <form method="post" action="{% url 'certchain:certify_diploma' %}">
           {% csrf_token %}
+          <div>
+            <label>Student ID</label>
+            <input name="student_id" type="text"/>
+          </div>
           <div>
             <label>Student Name</label>
             <input name="recipient" type="text"/>
