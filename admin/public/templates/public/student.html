@@ -10,48 +10,40 @@
 
 {% block content %}
 <div class="container cc-container">
-  <div class="row">
+
+  {% for doc_type, certs in certs_by_type %}
+  <div class="row student-header">
     <div class="span12">
-      <h2>Diplomas</h2>
-      <p>The student with ID {{ student_id }} has received the diplomas listed below.</p>
+      <h2>{{doc_type}}s</h2>
+      <p>The student with ID {{ student_id }} has received the {{doc_type}}s listed below.</p>
     </div>
   </div>
 
-  {% for c in certifications %}
+  {% for cert in certs %}
   <div class="row student-doc">
     <div class="span12">
       <table>
         <tr>
           <td>
-            <span class="type">{{ c.Certify.1 }}</span>
-            <span>Certified __________</span>
-            <span>Revoked __________</span>
+            <span class="type">{{ cert.doc_type }}</span>
+            <span>Certified on {{ cert.cert_timestamp }}</span>
+            {% if cert.rev_timestamp %}
+            <span>Revoked on {{ cert.rev_timestamp }}</span>
+            {% endif %}
           </td>
           <td>
-            <span class="id"><a href="{% url 'public:document' c.Certify.0 %}">{{ c.Certify.0 }}</a></span>
+            <span class="id"><a href="{% url 'public:document' cert.doc_id %}">{{ cert.doc_id }}</a></span>
           </td>
           <td>
-            <a class="cc-btn" href="{% url 'public:document' c.Certify.0 %}">OPEN</a>
+            <a class="cc-btn" href="{% url 'public:document' cert.doc_id %}">OPEN</a>
           </td>
         </tr>
       </table>
     </div>
   </div>
-  {% empty %}
-  <div class="row student-doc">
-    <div class="span12">
-      This student has not been issued any diplomas.
-    </div>
-  </div>
   {% endfor %}
-
-  <br/>
-  <div class="row">
-    <div class="span12">
-      <h2>Transcripts</h2>
-      <p>The student with ID {{ student_id }} has received the transcripts listed below.</p>
-    </div>
-  </div>
+  {% endfor %}
+  
 </div>
 {% endblock content %}
 

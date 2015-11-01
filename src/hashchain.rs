@@ -1,12 +1,14 @@
 use hash::DoubleSha256Hash;
 use serde::ser;
 use std::collections::vec_deque::VecDeque;
+use time;
 
 pub type DocumentId = DoubleSha256Hash;
 
 #[derive(Deserialize, Clone, Debug)]
 pub enum DocumentType {
     Diploma,
+    Transcript
 }
 
 impl ser::Serialize for DocumentType {
@@ -22,13 +24,39 @@ pub enum Action {
     Certify(DocumentId, DocumentType, String),
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DocumentSummary {
+    doc_id: DocumentId,
+    doc_type: DocumentType,
+    student_id: String,
+    cert_timestamp: Option<i64>,
+    rev_timestamp: Option<i64>,
+}
+
 pub struct Block {
+    timestamp: i64,
     actions: Vec<Action>,
 }
 
 pub struct Hashchain {
     finalized_blocks: Vec<Block>,
     queued_blocks: VecDeque<Block>
+}
+
+impl DocumentSummary {
+    fn new(block: &Block, action: Action) -> DocumentSummary {
+        match action {
+            Action::Certify(doc_id, doc_type, student_id) => {
+                DocumentSummary {
+                    doc_id: doc_id,
+                    doc_type: doc_type,
+                    student_id: student_id,
+                    cert_timestamp: Some(block.timestamp),
+                    rev_timestamp: None
+                }
+            }
+        }
+    }
 }
 
 impl Hashchain {
@@ -60,8 +88,8 @@ impl Hashchain {
     }
 
     pub fn get_certifications(&self,
-                optional_student_id: Option<&str>) -> Vec<Action> {
-        let mut certifications = Vec::new();
+                optional_student_id: Option<&str>) -> Vec<DocumentSummary> {
+        let mut summaries = Vec::new();
         for block in self.finalized_blocks.iter() {
             for action in block.actions.iter() {
                 match *action {
@@ -69,21 +97,24 @@ impl Hashchain {
                         match optional_student_id {
                             Some(id) => {
                                 if id == sid {
-                                    certifications.push(action.clone())
+                                    summaries.push(
+                                        DocumentSummary::new(&block, action.clone()))
                                 }
-                            }, None => certifications.push(action.clone())
+                            }, None => summaries.push(
+                                            DocumentSummary::new(&block, action.clone()))
                         };
                     }
                 }
             }
         }
-        certifications
+        summaries
     }
 }
 
 impl Block {
     fn new(actions: Vec<Action>) -> Block {
         Block {
+            timestamp: time::get_time().sec,
             actions: actions
         }
     }

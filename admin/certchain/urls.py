@@ -12,5 +12,6 @@ urlpatterns = patterns('',
   url(r'^trust_institution/$', views.trust_institution, name='trust_institution'),
   url(r'^untrust_institution/$', views.untrust_institution, name='untrust_institution'),
   url(r'^certify_diploma/$', views.certify_diploma, name='certify_diploma'),
+  url(r'^certify_transcript/$', views.certify_transcript, name='certify_transcript'),
   url(r'^revoke_diploma/$', views.revoke_diploma, name='revoke_diploma'),
 )

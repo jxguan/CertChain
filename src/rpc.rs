@@ -173,6 +173,7 @@ fn certify(res: Response<Fresh>,
     // Ensure doctype is valid.
     let doctype = match params[0] {
         "Diploma" => DocumentType::Diploma,
+        "Transcript" => DocumentType::Transcript,
         _ => {
             res.send("Unexpected doctype.".as_bytes()).unwrap();
             return;

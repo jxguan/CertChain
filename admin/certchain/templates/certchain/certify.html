@@ -66,7 +66,7 @@
   <div class="row">
     <div class="span12">
       <div id="cc-new-diploma">
-        <form method="post" action="{% url 'certchain:certify_diploma' %}">
+        <form method="post" action="{% url 'certchain:certify_transcript' %}">
           {% csrf_token %}
           <div>
             <label>Student ID</label>
@@ -78,11 +78,11 @@
           </div>
           <div>
             <label>GPA</label>
-            <input name="degree" type="text"/>
+            <input name="gpa" type="text"/>
           </div>
           <div>
             <label>Date</label>
-            <input name="conferral_date" type="text" value="{% now 'm/d/Y' %}"/>
+            <input name="date" type="text" value="{% now 'm/d/Y' %}"/>
           </div>
           <input class="cc-btn" type="submit" value="CERTIFY"/>
         </form>

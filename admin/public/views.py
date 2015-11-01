@@ -3,6 +3,8 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.core.urlresolvers import reverse
 from certchain.shared import create_rpc_url
+from collections import defaultdict
+import datetime
 
 # No login required for document viewer.
 # TODO: Handle
@@ -67,8 +69,15 @@ def document(request, docid):
 def student(request, student_id):
   try:
     resp = requests.get(create_rpc_url('/certifications_by_student_id/' + student_id))
+    certs_by_type = defaultdict(list)
+    for c in resp.json():
+      if c['cert_timestamp']:
+        c['cert_timestamp'] = datetime.datetime.fromtimestamp(int(c['cert_timestamp']))
+      if c['rev_timestamp']:
+        c['rev_timestamp'] = datetime.datetime.fromtimestamp(int(c['rev_timestamp']))
+      certs_by_type[c['doc_type']].append(c)
     return render(request, 'public/student.html',\
-      {'certifications' : resp.json(),
+      {'certs_by_type' : certs_by_type.iteritems(),
        'student_id': student_id,
       })
   except Exception as ex:

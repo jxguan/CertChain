@@ -179,6 +179,32 @@ def certify_diploma(request):
   raise Http404
 
 @login_required
+def certify_transcript(request):
+  if request.method == 'POST':
+    student_id = request.POST['student_id']
+    payload = {
+      'recipient': request.POST['recipient'],
+      'gpa': request.POST['gpa'],
+      'date': request.POST['date']
+    }
+    # Be careful here; remember that changing the way the document
+    # is formatted will create different hashes.
+    document = json.dumps(payload, sort_keys=True)
+    resp = requests.post(create_rpc_url('/certify/Transcript/'+student_id),
+      data=document)
+    if resp.status_code == 200:
+      txn_id = resp.text
+      messages.success(request,\
+        'The transcript has been submitted to the network as transaction ' + txn_id)
+    else:
+      messages.error(request,\
+        'An error occurred while processing your \
+        certification request: ' + str(resp.status_code))
+    return redirect(reverse('certchain:certify'))
+  raise Http404
+
+
+@login_required
 def revoke_diploma(request):
   if request.method == 'POST':
     txn_id_to_revoke = request.POST['txn_id_to_revoke']

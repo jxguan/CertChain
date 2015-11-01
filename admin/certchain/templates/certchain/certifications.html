@@ -32,9 +32,9 @@
         </tr>
         {% for c in certifications %}
         <tr>
-          <td>{{ c.Certify.1 }}</td>
-          <td><a href="{% url 'public:student' c.Certify.2 %}">{{ c.Certify.2 }}</a></td>
-          <td><a href="{% url 'public:document' c.Certify.0 %}">{{ c.Certify.0 }}</a></td>
+          <td>{{ c.doc_type }}</td>
+          <td><a href="{% url 'public:student' c.student_id %}">{{ c.student_id }}</a></td>
+          <td><a href="{% url 'public:document' c.doc_id %}">{{ c.doc_id }}</a></td>
           <td>
             <form method="post" action="{% url 'certchain:revoke_diploma' %}">
               {% csrf_token %}
