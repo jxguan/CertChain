@@ -31,6 +31,7 @@ pub mod hash;
 pub mod signature;
 pub mod fsm;
 pub mod rpc;
+pub mod hashchain;
 
 use std::thread;
 use std::default::Default;

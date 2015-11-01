@@ -25,39 +25,21 @@
     <div class="span12">
       <table id="cc-diploma-table" class="table">
         <tr>
-          <th>Recipient</th>
-          <th>Degree</th>
-          <th>Conferral Date</th>
-          <th>Status</th>
-          <th>Transaction</th>
-          <th>Signature Timestamp</th>
+          <th>ID</th>
           <th></th>
           <th></th>
         </tr>
-        {% for txn in txns %}
+        {% for c in certifications %}
         <tr>
-          <td>{{ txn.document | cc_extract_recipient }}</td>
-          <td>{{ txn.document | cc_extract_degree }}</td>
-          <td>{{ txn.document | cc_extract_conferral_date }}</td>
-          <td><span class="cc-txn-status {{ txn.status | cc_txn_status_class }}">{{ txn.status }}</span></td>
+          <td>{{ c | slice:"0:9" }}</td>
           <td>
-          {% if txn.revocation_txn_id.strip %}
-          <a href="">{{ txn.revocation_txn_id | slice:"0:9" }}</a>
-          {% else %}
-          <a href="">{{ txn.txn_id | slice:"0:9" }}</a>
-          {% endif %}
-          </td>
-          <td>{{ txn.signature_ts | cc_format_sig_ts }}</td>
-          <td>
-            {% if txn.status == 'CERTIFIED' %}
             <form method="post" action="{% url 'certchain:revoke_diploma' %}">
               {% csrf_token %}
               <input name="txn_id_to_revoke" type="hidden" value="{{ txn.txn_id }}"/>
               <input class="cc-btn" type="submit" value="REVOKE"/>
             </form>
-            {% endif %}
           </td>
-          <td><a class="cc-btn" href="{% url 'viewer' txn.txn_id txn.document_base64 %}">VIEW DIPLOMA</a></td>
+          <td><a class="cc-btn" href="{% url 'viewer' c %}">VIEW DIPLOMA</a></td>
         </tr>
         {% empty %}
         <tr>

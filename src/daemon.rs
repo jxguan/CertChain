@@ -13,6 +13,7 @@ use rpc;
 use serde_json;
 use std::fs::File;
 use std::io::BufWriter;
+use hashchain::Hashchain;
 
 pub fn run(config: CertChainConfig) -> () {
     info!("Starting CertChain daemon.");
@@ -27,6 +28,7 @@ pub fn run(config: CertChainConfig) -> () {
     let fsm = Arc::new(RwLock::new(FSM::new()));
     let node_table = Arc::new(
         RwLock::new(NetNodeTable::new(&config)));
+    let hashchain = Arc::new(RwLock::new(Hashchain::new()));
 
     // Connect to known nodes, as serialized to disk during prior execution.
     // TODO: This should probably only connect to pending/approved peers
@@ -57,10 +59,11 @@ pub fn run(config: CertChainConfig) -> () {
 
     // Start the RPC server.
     let fsm_c1 = fsm.clone();
+    let hashchain_c1 = hashchain.clone();
     let node_table_c3 = node_table.clone();
     let config_c1 = config.clone();
     thread::spawn(move || {
-        rpc::start(&config_c1, fsm_c1, node_table_c3);
+        rpc::start(&config_c1, fsm_c1, hashchain_c1, node_table_c3);
     });
 
     /*
