@@ -1,3 +1,36 @@
-.student-doc span {
+.student-doc {
+}
+
+.student-doc table {
+  margin: 10px;
+  width: 100%;
+  background-color: #E6E6E6;
+  border-radius: 5px;
+  box-shadow: rgba(0, 0, 0, 0.1) 0px 3px 5px 0px inset;
+}
+
+.student-doc table td {
+  padding: 10px;
+}
+
+.student-doc table span {
   display: block;
+  font-size: 1.2em;
+  padding: 2px 3px;
+}
+
+.student-doc .type {
+  font-size: 1.7em;
+  font-weight: bold;
+}
+
+.student-doc .id {
+  font-size: 1.2em;
+  text-align: center;
+}
+
+.student-doc .cc-btn {
+  width: 80px;
+  float: right;
+  margin-right: 20px;
 }

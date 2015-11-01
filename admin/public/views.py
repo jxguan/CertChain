@@ -65,6 +65,13 @@ def document(request, docid):
   # return render(request, 'certchain/viewer.html', context)
 
 def student(request, student_id):
-  return render(request, 'public/student.html',
-    {'student_id' : student_id}
-  )
+  try:
+    resp = requests.get(create_rpc_url('/certifications_by_student_id/' + student_id))
+    return render(request, 'public/student.html',\
+      {'certifications' : resp.json(),
+       'student_id': student_id,
+      })
+  except Exception as ex:
+    messages.error(request, 'Your institution\'s CertChain node \
+      is not available at this time: ' + str(ex))
+    return render(request, 'public/student.html', {'student_id': student_id})

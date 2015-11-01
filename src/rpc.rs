@@ -60,8 +60,14 @@ pub fn start(config: &CertChainConfig,
                             &docs_dir, req_body, &params);
                 },
                 (hyper::Get, AbsolutePath(ref path))
-                    if path == "/certifications" => {
-                    handle_certifications_req(res, hashchain.clone());
+                    if path == "/all_certifications" => {
+                    handle_all_certifications_req(res, hashchain.clone());
+                },
+                (hyper::Get, AbsolutePath(ref path))
+                    if path.len() > 30
+                        && &path[0..30] == "/certifications_by_student_id/" => {
+                    handle_certifications_by_student_id_req(
+                        res, hashchain.clone(), &path[30..]);
                 },
                 (hyper::Get, AbsolutePath(ref path))
                     if path.len() > 10
@@ -218,11 +224,20 @@ fn certify(res: Response<Fresh>,
     res.send("OK; certification submitted.".as_bytes()).unwrap();
 }
 
-fn handle_certifications_req(res: Response<Fresh>,
+fn handle_all_certifications_req(res: Response<Fresh>,
                       hashchain: Arc<RwLock<Hashchain>>) {
     let ref hashchain = *hashchain.read().unwrap();
     let json = serde_json::to_string_pretty(
-        &hashchain.get_certifications()).unwrap();
+        &hashchain.get_certifications(None)).unwrap();
+    res.send(json.as_bytes()).unwrap();
+}
+
+fn handle_certifications_by_student_id_req(res: Response<Fresh>,
+                      hashchain: Arc<RwLock<Hashchain>>,
+                      student_id: &str) {
+    let ref hashchain = *hashchain.read().unwrap();
+    let json = serde_json::to_string_pretty(
+        &hashchain.get_certifications(Some(student_id))).unwrap();
     res.send(json.as_bytes()).unwrap();
 }
 

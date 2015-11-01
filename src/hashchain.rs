@@ -41,13 +41,20 @@ impl Hashchain {
         self.blocks.push(block);
     }
 
-    pub fn get_certifications(&self) -> Vec<Action> {
+    pub fn get_certifications(&self,
+                optional_student_id: Option<&str>) -> Vec<Action> {
         let mut certifications = Vec::new();
         for block in self.blocks.iter() {
             for action in block.actions.iter() {
                 match *action {
-                    Action::Certify(_, _, _) => {
-                        certifications.push(action.clone())
+                    Action::Certify(_, _, ref sid) => {
+                        match optional_student_id {
+                            Some(id) => {
+                                if id == sid {
+                                    certifications.push(action.clone())
+                                }
+                            }, None => certifications.push(action.clone())
+                        };
                     }
                 }
             }

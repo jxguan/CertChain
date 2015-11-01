@@ -145,7 +145,7 @@ def certify(request):
 @login_required
 def manage_certifications(request):
   try:
-    resp = requests.get(create_rpc_url('/certifications'))
+    resp = requests.get(create_rpc_url('/all_certifications'))
     return render(request, 'certchain/certifications.html',\
       {'certifications' : resp.json()})
   except Exception as ex:
