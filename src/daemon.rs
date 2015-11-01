@@ -151,7 +151,12 @@ pub fn run(config: CertChainConfig) -> () {
                 }
             },
             None => {
-                debug!("FSM idling...");
+                debug!("FSM: processing block queue...");
+                {
+                    let mut hashchain = hashchain.write().unwrap();
+                    hashchain.process_queue();
+                }
+                debug!("FSM: idling...");
                 thread::sleep_ms(1000);
             }
         }

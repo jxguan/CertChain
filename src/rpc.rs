@@ -215,11 +215,12 @@ fn certify(res: Response<Fresh>,
     // Third, create a certification action for the document.
     let action = Action::Certify(doc_id, doctype, student_id);
 
-    // Fourth and finally, create a new block containing the action; it will
-    // be appended to the hashchain and await signature requests
-    // from all peers.
+    // Fourth and finally, create a new block containing the action
+    // and submit to the BlockQueue, where it will await signatures.
     let ref mut hashchain = *hashchain.write().unwrap();
-    hashchain.create_block(vec![action]);
+    hashchain.queue_new_block(vec![action]);
+
+    // TODO: Have FSM sync modified hashchain to disk.
 
     res.send("OK; certification submitted.".as_bytes()).unwrap();
 }

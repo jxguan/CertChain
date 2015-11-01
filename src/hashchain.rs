@@ -1,5 +1,6 @@
 use hash::DoubleSha256Hash;
 use serde::ser;
+use std::collections::vec_deque::VecDeque;
 
 pub type DocumentId = DoubleSha256Hash;
 
@@ -26,25 +27,42 @@ pub struct Block {
 }
 
 pub struct Hashchain {
-    blocks: Vec<Block>,
+    finalized_blocks: Vec<Block>,
+    queued_blocks: VecDeque<Block>
 }
 
 impl Hashchain {
     pub fn new() -> Hashchain {
         Hashchain {
-            blocks: Vec::new(),
+            finalized_blocks: Vec::new(),
+            queued_blocks: VecDeque::new(),
         }
     }
 
-    pub fn create_block(&mut self, actions: Vec<Action>) {
+    pub fn queue_new_block(&mut self, actions: Vec<Action>) {
         let block = Block::new(actions);
-        self.blocks.push(block);
+        self.queued_blocks.push_back(block);
+    }
+
+    pub fn process_queue(&mut self) {
+        match self.queued_blocks.pop_front() {
+            Some(block) => {
+                if block.is_valid() {
+                    info!("HCHAIN: Finalizing queued block.");
+                    self.finalized_blocks.push(block);
+                } else {
+                    info!("HCHAIN: Re-queueing block.");
+                    self.queued_blocks.push_front(block);
+                }
+            },
+            None => ()
+        }
     }
 
     pub fn get_certifications(&self,
                 optional_student_id: Option<&str>) -> Vec<Action> {
         let mut certifications = Vec::new();
-        for block in self.blocks.iter() {
+        for block in self.finalized_blocks.iter() {
             for action in block.actions.iter() {
                 match *action {
                     Action::Certify(_, _, ref sid) => {
@@ -68,5 +86,10 @@ impl Block {
         Block {
             actions: actions
         }
+    }
+
+    /// TODO: Fill this in.
+    fn is_valid(&self) -> bool {
+        true
     }
 }
