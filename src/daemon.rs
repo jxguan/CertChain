@@ -41,7 +41,8 @@ pub fn run(config: CertChainConfig) -> () {
         let node_table_c1 = node_table.clone();
         thread::spawn(move || {
             node_table_c1.write().unwrap()
-                .register(node_inst_addr, &p.hostname, p.port, p.peering_state);
+                .register(node_inst_addr, &p.hostname, p.port,
+                          p.our_peering_approval);
             loop {
                 let conn_res = node_table_c1.write()
                         .unwrap().connect(node_inst_addr, Some(&secret_key));
@@ -63,7 +64,7 @@ pub fn run(config: CertChainConfig) -> () {
     let node_table_c3 = node_table.clone();
     let config_c1 = config.clone();
     thread::spawn(move || {
-        rpc::start(&config_c1, fsm_c1, hashchain_c1, node_table_c3);
+        rpc::start(&config_c1, &secret_key, fsm_c1, hashchain_c1, node_table_c3);
     });
 
     /*
@@ -88,10 +89,6 @@ pub fn run(config: CertChainConfig) -> () {
                     fsm.push_state(FSMState::HandlePeerReq(peerreq));
                     fsm.push_state(FSMState::SyncNodeTableToDisk);
                 },
-                NetPayload::StatusUpdate(status_update) => {
-                    fsm.push_state(FSMState::HandleStatusUpdate(status_update));
-                    fsm.push_state(FSMState::SyncNodeTableToDisk);
-                }
             }
         }
     });
@@ -143,15 +140,6 @@ pub fn run(config: CertChainConfig) -> () {
                         Err(err) => warn!("FSM: unable to approve peer \
                                             request: {}", err)
                     };
-                },
-                FSMState::HandleStatusUpdate(status_update) => {
-                    panic!("TODO: Handle status update.");
-                    /*match node_table.write().unwrap()
-                        .handle_status_update(status_update) {
-                        Ok(_) => info!("FSM: handled status update."),
-                        Err(err) => warn!("FSM: unable to handle \
-                                          status update: {}", err)
-                    }*/
                 },
                 FSMState::SyncNodeTableToDisk => {
                     let ref node_table = *node_table.read().unwrap();

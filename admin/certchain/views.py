@@ -47,6 +47,21 @@ def approve_peer_request(request):
   raise Http404
 
 @login_required
+def request_peer(request):
+  if request.method == 'POST':
+    addr = request.POST['addr']
+    resp = requests.post(create_rpc_url('/request_peer/' + addr))
+    if resp.status_code == 200:
+      messages.success(request,\
+        'Your peering request was successfully submitted.')
+    else:
+      messages.error(request,\
+        'An error occurred while processing your \
+        peer request for ' + addr + '.')
+    return redirect(reverse('certchain:overview'))
+  raise Http404
+
+@login_required
 def trust_institution(request):
   if request.method == 'POST':
     addr = request.POST['addr_to_trust']

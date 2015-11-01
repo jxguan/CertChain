@@ -13,10 +13,12 @@ use hash::DoubleSha256Hash;
 use std::fs::File;
 use std::io::{Write, BufWriter};
 use hashchain::{Action, Hashchain};
+use secp256k1::key::{SecretKey};
 
 const RPC_LISTEN : &'static str = "0.0.0.0";
 
 pub fn start(config: &CertChainConfig,
+             our_secret_key: &SecretKey,
              fsm: Arc<RwLock<FSM>>,
              hashchain: Arc<RwLock<Hashchain>>,
              node_table: Arc<RwLock<NetNodeTable>>) {
@@ -26,6 +28,7 @@ pub fn start(config: &CertChainConfig,
     // TODO: Save the Listening struct returned here
     // and call close() on it when graceful shutdown is supported.
     let docs_dir = config.path_to("documents");
+    let our_secret_key = our_secret_key.clone();
     let _ = rpc_server.handle(
         move |mut req: Request, mut res: Response<Fresh>| {
             match (req.method.clone(), req.uri.clone()) {
@@ -33,11 +36,12 @@ pub fn start(config: &CertChainConfig,
                     if path == "/network" => {
                     handle_network_req(res, node_table.clone());
                 },
-                (hyper::Get, AbsolutePath(ref path))
+                (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 14
                         && &path[0..14] == "/request_peer/" => {
-                    handle_peer_req(res, fsm.clone(),
-                            node_table.clone(), &path[14..]);
+                    handle_peer_request(res, fsm.clone(),
+                            node_table.clone(),
+                            our_secret_key.clone(), &path[14..]);
                 },
                 (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 17
@@ -74,10 +78,12 @@ fn handle_network_req(res: Response<Fresh>,
     res.send(pt_json.as_bytes()).unwrap();
 }
 
-fn handle_peer_req(res: Response<Fresh>,
+fn handle_peer_request(res: Response<Fresh>,
                        fsm: Arc<RwLock<FSM>>,
                        node_table: Arc<RwLock<NetNodeTable>>,
+                       our_secret_key: SecretKey,
                        addr_param: &str) {
+
     // Convert the address parameter into an InstAddress.
     let addr = match InstAddress::from_string(addr_param) {
         Ok(addr) => addr,
@@ -90,25 +96,27 @@ fn handle_peer_req(res: Response<Fresh>,
 
     // Ensure that we have confirmed this institution's
     // identity.
-    let ref node_table = *node_table.read().unwrap();
-    if !node_table.is_confirmed_node(&addr) {
-        res.send("The node you specified has not confirmed \
-                 their identity.".as_bytes()).unwrap();
-        return;
-    }
-
-    // Have the FSM eventually send a peer request
-    // to the address.
-    let ref mut fsm = *fsm.write().unwrap();
-    fsm.push_state(FSMState::RequestPeer(addr));
-    fsm.push_state(FSMState::SyncNodeTableToDisk);
-    res.send("OK; peer request submitted.".as_bytes()).unwrap();
+    let ref mut node_table = *node_table.write().unwrap();
+    match node_table.request_peer(addr, &our_secret_key) {
+        Ok(_) => {
+            // Have the FSM eventually sync node table to disk.
+            let ref mut fsm = *fsm.write().unwrap();
+            fsm.push_state(FSMState::SyncNodeTableToDisk);
+            res.send("OK; peer request submitted.".as_bytes()).unwrap();
+        },
+        Err(err) => {
+            res.send(format!("An error prevented your peer request from \
+                     being submitted: {}.", err).as_bytes()).unwrap();
+            return;
+        }
+    };
 }
 
 fn approve_peer_req(res: Response<Fresh>,
                        fsm: Arc<RwLock<FSM>>,
                        node_table: Arc<RwLock<NetNodeTable>>,
                        addr_param: &str) {
+
     // Convert the address parameter into an InstAddress.
     let addr = match InstAddress::from_string(addr_param) {
         Ok(addr) => addr,
@@ -119,9 +127,7 @@ fn approve_peer_req(res: Response<Fresh>,
         }
     };
 
-    // Ensure that we have confirmed this institution's
-    // identity.
-    let ref node_table = *node_table.read().unwrap();
+    let ref node_table = *node_table.write().unwrap();
     if !node_table.is_confirmed_node(&addr) {
         res.send("The node whose peer request you attempted \
                  to approve has not confirmed \
@@ -129,7 +135,8 @@ fn approve_peer_req(res: Response<Fresh>,
         return;
     }
 
-    // Have the FSM eventually approve the peer request.
+    // Have the FSM create a new block adding the peer, with
+    // all current peers + new peer signing off on it.
     let ref mut fsm = *fsm.write().unwrap();
     fsm.push_state(FSMState::ApprovePeerRequest(addr));
     fsm.push_state(FSMState::SyncNodeTableToDisk);

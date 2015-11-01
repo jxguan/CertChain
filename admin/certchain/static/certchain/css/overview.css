@@ -13,6 +13,7 @@
 }
 
 .netnode-states {
+  font-size: 1.2em;
   width: 80%;
   margin: 0 auto;
   padding: 15px 8px 8px 8px;
@@ -22,12 +23,25 @@
   box-shadow: inset 0px 0px 3px 1px rgba(0,0,0,0.1);
 }
 
-.netnode-states ul {
-  list-style: none;
+.netnode-states table {
+  width: 100%;
 }
 
-.netnode-states ul li {
-  padding: 5px 0;
+.netnode-states tr {
+  height: 35px;
+}
+
+.netnode-states td:first-child,
+.netnode-states td:last-child {
+  text-align: center;
+}
+
+.netnode-states .start-peering-form {
+  margin: 0 !important;
+}
+
+.netnode-states .start-peering-form .cc-btn {
+  font-size: 15px;
 }
 
 .state {
@@ -61,14 +75,14 @@
 .peering-prompt > .prompt {
   display: inline-block;
   padding-top: 7px;
-  font-size: 1.4em;
+  font-size: 1.3em;
   font-weight: bold;
 }
 
 .peering-prompt > .desc {
   display: inline-block;
   padding-top: 3px;
-  font-size: 1.2em;
+  font-size: 1em;
 }
 
 .peering-prompt .left-half {
@@ -89,7 +103,7 @@
 }
 
 .peering-prompt .cc-btn {
-  font-size: 1.1em;
+  font-size: 1em;
   width: 100px;
   margin: 15px 20px;
 }

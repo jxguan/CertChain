@@ -40,7 +40,6 @@ pub enum NetPayload {
     IdentReq(IdentityRequest),
     IdentResp(IdentityResponse),
     PeerReq(PeerRequest),
-    StatusUpdate(StatusUpdate),
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -70,15 +69,6 @@ pub struct IdentityResponse {
     pub from_signature: RecovSignature,
 }
 
-#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
-pub struct StatusUpdate {
-    pub seqnum: u64,
-    pub to_inst_addr: InstAddress,
-    pub peering_state: PeeringState,
-    pub from_inst_addr: InstAddress,
-    pub from_signature: RecovSignature,
-}
-
 #[derive(Debug, PartialEq)]
 enum ConnectionState {
     NotConnected,
@@ -93,11 +83,11 @@ enum IdentityState {
 
 #[derive(RustcEncodable, RustcDecodable, Serialize,
          Deserialize, Clone, Debug, PartialEq)]
-pub enum PeeringState {
-    No,
-    PendingOurApproval,
-    PendingTheirApproval,
-    Yes
+pub enum PeeringApproval {
+    NotApproved,
+    AwaitingTheirApproval,
+    AwaitingOurApproval,
+    Approved,
 }
 
 pub struct NetNodeTable {
@@ -114,11 +104,9 @@ struct NetNode {
     socket: Socket,
     conn_state: ConnectionState,
     ident_state: IdentityState,
-    peering_state: PeeringState,
+    our_peering_approval: PeeringApproval,
     identreq: Option<IdentityRequest>,
     identresp: Option<IdentityResponse>,
-    last_sent_update_seqnum: u64,
-    last_recv_update_seqnum: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -126,9 +114,7 @@ pub struct OnDiskNetNode {
     pub inst_addr: String,
     pub hostname: String,
     pub port: u16,
-    pub peering_state: PeeringState,
-    pub last_sent_update_seqnum: u64,
-    pub last_recv_update_seqnum: u64,
+    pub our_peering_approval: PeeringApproval,
 }
 
 impl Encodable for NetNodeTable {
@@ -174,12 +160,8 @@ impl Encodable for NetNode {
                     |s| format!("{:?}", self.conn_state).encode(s)));
             try!(s.emit_struct_field("ident_state", 4,
                     |s| format!("{:?}", self.ident_state).encode(s)));
-            try!(s.emit_struct_field("peering_state", 5,
-                    |s| format!("{:?}", self.peering_state).encode(s)));
-            try!(s.emit_struct_field("last_sent_update_seqnum", 6,
-                    |s| format!("{:?}", self.last_sent_update_seqnum).encode(s)));
-            try!(s.emit_struct_field("last_recv_update_seqnum", 7,
-                    |s| format!("{:?}", self.last_recv_update_seqnum).encode(s)));
+            try!(s.emit_struct_field("our_peering_approval", 5,
+                    |s| format!("{:?}", self.our_peering_approval).encode(s)));
             Ok(())
         })
     }
@@ -212,13 +194,14 @@ impl NetNodeTable {
 
     /// Registers an institution as a node based on their institutional address.
     pub fn register(&mut self, node_addr: InstAddress,
-            hostname: &String, port: u16, peering_state: PeeringState) {
+            hostname: &String, port: u16, our_peering_approval: PeeringApproval) {
         let mut node_map = self.node_map.write().unwrap();
         match node_map.get(&node_addr) {
             Some(_) => info!("Already registered {}; \
                         ignorning call to re-register it.", node_addr),
             None => {
-                let node = NetNode::new(node_addr, hostname, port, peering_state);
+                let node = NetNode::new(node_addr,
+                                        hostname, port, our_peering_approval);
                 node_map.insert(node_addr, node);
             }
         }
@@ -286,7 +269,8 @@ impl NetNodeTable {
 
         // Second, ensure the node is registered.
         self.register(identreq.from_inst_addr,
-                &identreq.from_hostname, identreq.from_port, PeeringState::No);
+                &identreq.from_hostname, identreq.from_port,
+                PeeringApproval::NotApproved);
         let mut node_map = self.node_map.write().unwrap();
         let mut node = node_map.get_mut(&identreq.from_inst_addr).unwrap();
 
@@ -365,7 +349,7 @@ impl NetNodeTable {
             Ok(()) => {
                 // If request was sent successfully,
                 // update peering state accordingly.
-                node.peering_state = PeeringState::PendingTheirApproval;
+                node.our_peering_approval = PeeringApproval::AwaitingTheirApproval;
                 Ok(())
             },
             Err(err) => Err(err)
@@ -374,6 +358,7 @@ impl NetNodeTable {
 
     pub fn handle_peerreq(&mut self,
             peer_req: PeerRequest) -> std::io::Result<()> {
+
         // First, determine if the contents of this request are valid.
         if let Err(_) = peer_req.check_validity(&self.our_inst_addr) {
             panic!("TODO: Log invalid peer request.")
@@ -392,7 +377,7 @@ impl NetNodeTable {
         let mut node = node_map.get_mut(&peer_req.from_inst_addr).unwrap();
 
         // Fourth and finally, adjust peering state accordingly.
-        node.peering_state = PeeringState::PendingOurApproval;
+        node.our_peering_approval = PeeringApproval::AwaitingOurApproval;
         Ok(())
     }
 
@@ -412,23 +397,18 @@ impl NetNodeTable {
         let mut node_map = self.node_map.write().unwrap();
         let mut node = node_map.get_mut(&inst_addr).unwrap();
 
-        // Third, ensure that their peering state is PendingOurApproval.
-        if node.peering_state != PeeringState::PendingOurApproval {
+        // Third, ensure that this node is actually awaiting approval
+        // of a peering relationship.
+        if node.our_peering_approval != PeeringApproval::AwaitingOurApproval {
             return Err(io::Error::new(io::ErrorKind::Other,
                 format!("Ignoring approval of peer request for {}; their \
                         peering state is not pending our approval.",
                          &inst_addr)));
         }
 
-        // Fourth and finally, adjust peering state accordingly
-        // and send status update to newly approved peer.
-        node.peering_state = PeeringState::Yes;
-        node.last_sent_update_seqnum += 1;
-        let status_update = StatusUpdate::new(
-            node.last_sent_update_seqnum, node.inst_addr,
-            node.peering_state.clone(),
-            self.our_inst_addr, &our_secret_key);
-        node.send(NetPayload::StatusUpdate(status_update))
+        // Fourth and finally, adjust peering state accordingly.
+        node.our_peering_approval = PeeringApproval::Approved;
+        panic!("TODO: Create new block, add AddPeer action, issue sigreqs.")
     }
 
     pub fn is_confirmed_node(&self, node_addr: &InstAddress) -> bool {
@@ -444,7 +424,7 @@ impl NetNodeTable {
 
 impl NetNode {
     pub fn new(inst_addr: InstAddress, hostname: &String,
-               port: u16, peering_state: PeeringState) -> NetNode {
+               port: u16, our_peering_approval: PeeringApproval) -> NetNode {
         NetNode {
             inst_addr: inst_addr,
             hostname: String::from(&hostname[..]),
@@ -452,11 +432,9 @@ impl NetNode {
             socket: Socket::new(),
             conn_state: ConnectionState::NotConnected,
             ident_state: IdentityState::NotConfirmed,
-            peering_state: peering_state,
+            our_peering_approval: our_peering_approval,
             identreq: None,
             identresp: None,
-            last_sent_update_seqnum: 0,
-            last_recv_update_seqnum: 0,
         }
     }
 
@@ -465,9 +443,7 @@ impl NetNode {
             inst_addr: self.inst_addr.to_base58(),
             hostname: String::from(&self.hostname[..]),
             port: self.port,
-            peering_state: self.peering_state.clone(),
-            last_sent_update_seqnum: self.last_sent_update_seqnum,
-            last_recv_update_seqnum: self.last_recv_update_seqnum,
+            our_peering_approval: self.our_peering_approval.clone(),
         }
     }
 
@@ -668,29 +644,6 @@ impl PeerRequest {
         let expected_msg = &DoubleSha256Hash::hash(&format!("PEERREQ:{},{},{}",
             self.nonce, self.to_inst_addr, self.from_inst_addr).as_bytes()[..]);
         self.from_signature.check_validity(&expected_msg, &self.from_inst_addr)
-    }
-}
-
-impl StatusUpdate {
-    fn new(seqnum: u64,
-           to_inst_addr: InstAddress,
-           current_peering_state: PeeringState,
-           our_inst_addr: InstAddress,
-           our_secret_key: &SecretKey) -> StatusUpdate {
-        let to_hash = format!("STATUSUPDATE:{},{:?},{},{}",
-                              seqnum,
-                              current_peering_state,
-                              to_inst_addr,
-                              our_inst_addr);
-        StatusUpdate {
-            seqnum: seqnum,
-            to_inst_addr: to_inst_addr,
-            peering_state: current_peering_state,
-            from_inst_addr: our_inst_addr,
-            from_signature: RecovSignature::sign(
-                &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
-                &our_secret_key)
-        }
     }
 }
 

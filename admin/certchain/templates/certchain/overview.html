@@ -84,37 +84,91 @@
     </div>
   </div>
   <div class="netnode-states">
-    <ul>
-      <li>
+    <table>
+      <tr>
         {% if node.conn_state == 'Connected' %}
-        <span class="state green">CONNECTION</span>Your institution is connected to this node.
+        <td>
+          <span class="state green">CONNECTION</span>
+        </td>
+        <td>
+          Your institution is connected to this node.
+        </td>
+        <td></td>
         {% else %}
-        <span class="state red">CONNECTION</span>Your institution is not connected to this node.
+        <td>
+          <span class="state red">CONNECTION</span>
+        </td>
+        <td>
+          Your institution is not connected to this node.
+        </td>
+        <td></td>
         {% endif %}
-      </li>
-      <li>
+      </tr>
+      <tr>
         {% if node.ident_state == 'Confirmed' %}
-        <span class="state green">IDENTITY</span>This node has proved their identity to you.
+        <td>
+          <span class="state green">IDENTITY</span>
+        </td>
+        <td>
+          This node has proved their identity to you.
+        </td>
+        <td></td>
         {% else %}
-        <span class="state red">IDENTITY</span>This node has not proved their identity to you.
+        <td>
+          <span class="state red">IDENTITY</span>
+        </td>
+        <td>
+          This node has not proved their identity to you.
+        </td>
+        <td></td>
         {% endif %}
-      </li>
-      <li>
-        {% if node.peering_state == 'Yes' %}
-        <span class="state green">PEERING</span>You are peering with this institution.
+      </tr>
+      <tr>
+        {% if node.our_peering_approval == 'Approved' %}
+        <td>
+          <span class="state green">PEERING</span>
+        </td>
+        <td>
+          You are peering with this institution.
+        </td>
+        <td></td>
         {% endif %}
-        {% if node.peering_state == 'No' %}
-        <span class="state gray">PEERING</span>You are not peering with this institution.
+        {% if node.our_peering_approval == 'NotApproved' %}
+        <td>
+          <span class="state gray">PEERING</span>
+        </td>
+        <td>
+          You are not peering with this institution.
+        </td>
+        <td>
+          <form class="start-peering-form" method="post" action="{% url 'certchain:request_peer' %}">
+            {% csrf_token %}
+            <input type="hidden" name="addr" value="{{node.inst_addr}}"/>
+            <input class="cc-btn" type="submit" value="REQUEST PEERING"/>
+          </form>
+        </td>
         {% endif %}
-        {% if node.peering_state == 'PendingTheirApproval' %}
-        <span class="state gray">PEERING</span>The institution has not yet approved your peering request.
+        {% if node.our_peering_approval == 'AwaitingTheirApproval' %}
+        <td>
+          <span class="state yellow">PEERING</span>
+        </td>
+        <td>
+          This institution has not yet approved your peering request.
+        </td>
+        <td></td>
         {% endif %}
-        {% if node.peering_state == 'PendingOurApproval' %}
-        <span class="state yellow">PEERING</span>This institution has requested a peering relationship with you.
+        {% if node.our_peering_approval == 'AwaitingOurApproval' %}
+        <td>
+          <span class="state yellow">PEERING</span>
+        </td>
+        <td>
+          This institution has requested a peering relationship with you.
+        </td>
+        <td></td>
         {% endif %}
-      </li>
-    </ul>
-    {% if node.peering_state == 'PendingOurApproval' %}
+      </tr>
+    </table>
+    {% if node.our_peering_approval == 'AwaitingOurApproval' %}
     <div class="peering-prompt">
       <span class="prompt">Do you approve of this institution's request to peer with you?</span>
       <br/>
