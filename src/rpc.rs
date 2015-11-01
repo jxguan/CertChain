@@ -12,8 +12,9 @@ use std::io::Read;
 use hash::DoubleSha256Hash;
 use std::fs::File;
 use std::io::{Write, BufWriter};
-use hashchain::{Action, Hashchain};
+use hashchain::{DocumentType, Action, Hashchain};
 use secp256k1::key::{SecretKey};
+use serde_json;
 
 const RPC_LISTEN : &'static str = "0.0.0.0";
 
@@ -165,7 +166,7 @@ fn certify(res: Response<Fresh>,
 
     // Ensure doctype is valid.
     let doctype = match params[0] {
-        t @ "Diploma" => t,
+        "Diploma" => DocumentType::Diploma,
         _ => {
             res.send("Unexpected doctype.".as_bytes()).unwrap();
             return;
@@ -178,7 +179,7 @@ fn certify(res: Response<Fresh>,
             res.send("Expected non-empty student ID.".as_bytes()).unwrap();
             return;
         },
-        _ => params[1]
+        _ => String::from(params[1])
     };
 
     // First, hash the document to obtain its ID.
@@ -206,7 +207,7 @@ fn certify(res: Response<Fresh>,
     };
 
     // Third, create a certification action for the document.
-    let action = Action::Certify(doc_id);
+    let action = Action::Certify(doc_id, doctype, student_id);
 
     // Fourth and finally, create a new block containing the action; it will
     // be appended to the hashchain and await signature requests
@@ -220,8 +221,9 @@ fn certify(res: Response<Fresh>,
 fn handle_certifications_req(res: Response<Fresh>,
                       hashchain: Arc<RwLock<Hashchain>>) {
     let ref hashchain = *hashchain.read().unwrap();
-    let pt_json = format!("{}", json::as_pretty_json(&hashchain.get_ids()));
-    res.send(pt_json.as_bytes()).unwrap();
+    let json = serde_json::to_string_pretty(
+        &hashchain.get_certifications()).unwrap();
+    res.send(json.as_bytes()).unwrap();
 }
 
 fn handle_document_req(res: Response<Fresh>,

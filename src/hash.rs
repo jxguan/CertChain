@@ -1,8 +1,9 @@
 use crypto::sha2::Sha256;
 use crypto::digest::Digest;
 use std::ops::{Index, Range, RangeFull};
-use std::fmt::{Debug, Formatter};
-use std::io::{Write, Result, Read};
+use std::fmt::{Debug, Display, Formatter};
+use std::io::{Write, Read};
+use serde::ser;
 
 /*
  * Credit to Andrew Poelstra for the following implementations
@@ -50,7 +51,7 @@ impl MerkleRoot for Vec<Transaction> {
     }
 }*/
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Deserialize, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct DoubleSha256Hash([u8; 32]);
 
 impl DoubleSha256Hash {
@@ -77,21 +78,27 @@ impl DoubleSha256Hash {
         }
         DoubleSha256Hash(buf)
     }
-
-    pub fn serialize<W: Write>(&self, mut writer: W) -> Result<()> {
-        writer.write(&self.0).unwrap();
-        Ok(())
-    }
-
-    pub fn deserialize<R: Read>(mut reader: R)
-            -> Result<DoubleSha256Hash> {
-        let DoubleSha256Hash(mut buf) = DoubleSha256Hash::blank();
-        try!(reader.read(&mut buf));
-        Ok(DoubleSha256Hash(buf))
-    }
 }
 
 impl Debug for DoubleSha256Hash {
+    fn fmt(&self, f: &mut Formatter) -> ::std::fmt::Result {
+        let &DoubleSha256Hash(data) = self;
+        for b in data.iter() {
+            try!(write!(f, "{:02x}", b));
+        }
+        Ok(())
+    }
+}
+
+impl ser::Serialize for DoubleSha256Hash {
+    fn serialize<S: ser::Serializer>(&self, s: &mut S)
+        -> Result<(), S::Error> {
+        s.visit_str(&format!("{}", self)[..]);
+        Ok(())
+    }
+}
+
+impl Display for DoubleSha256Hash {
     fn fmt(&self, f: &mut Formatter) -> ::std::fmt::Result {
         let &DoubleSha256Hash(data) = self;
         for b in data.iter() {

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% load certchain_extras %}
+{% load staticfiles %}
+
+{% block stylesheets %}
+  {{ block.super }}
+  <link href="{% static 'public/css/student.css'%}" rel="stylesheet"/>
+{% endblock stylesheets %}
+
+{% block content %}
+<div class="container cc-container">
+  <div class="row">
+    <div class="span12">
+      <h2>Diplomas</h2>
+      <p>The student with ID {{ student_id }} has received the diplomas listed below.</p>
+    </div>
+  </div>
+
+  <div class="row student-doc">
+    <div class="span4">
+      <span>Diploma</span>
+      <span>Certified May 5, 2015</span>
+      <span>Revoked Jan 1, 2016</span>
+    </div>
+    <div class="span5">
+      <span>a23423aafs</span>
+    </div>
+    <div class="span3">
+      <span class="cc-btn">VIEW</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <h2>Transcripts</h2>
+      <p>The student with ID {{ student_id }} has received the diplomas listed below.</p>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+
+

@@ -64,5 +64,7 @@ def document(request, docid):
   #   context['document_override'] = 'INVALID'
   # return render(request, 'certchain/viewer.html', context)
 
-def student(request, studentid):
-  pass
+def student(request, student_id):
+  return render(request, 'public/student.html',
+    {'student_id' : student_id}
+  )
