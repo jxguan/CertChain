@@ -132,7 +132,7 @@
           You are peering with this institution.
         </td>
         <td>
-          <form class="peering-form" method="post" action="{% url 'certchain:remove_peer' %}">
+          <form class="peering-form" method="post" action="{% url 'certchain:end_peering' %}">
             {% csrf_token %}
             <input type="hidden" name="addr" value="{{node.inst_addr}}"/>
             <input class="cc-btn" type="submit" value="END PEERING"/>
@@ -161,7 +161,13 @@
         <td>
           This institution has not yet approved your peering request.
         </td>
-        <td></td>
+        <td>
+          <form class="peering-form" method="post" action="{% url 'certchain:end_peering' %}">
+            {% csrf_token %}
+            <input type="hidden" name="addr" value="{{node.inst_addr}}"/>
+            <input class="cc-btn" type="submit" value="CANCEL REQUEST"/>
+          </form>
+        </td>
         {% endif %}
         {% if node.our_peering_approval == 'AwaitingOurApproval' %}
         <td>
@@ -188,7 +194,11 @@
           </form>
         </div>
         <div class="right-half">
-          <button class="cc-btn red">DENY</button>
+          <form method="post" action="{% url 'certchain:end_peering' %}">
+            {% csrf_token %}
+            <input type="hidden" name="addr" value="{{node.inst_addr}}"/>
+            <input class="cc-btn red" type="submit" value="DENY"/>
+          </form>
         </div>
       </div>
       <div style="clear: both"></div>

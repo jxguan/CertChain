@@ -62,7 +62,7 @@ def request_peer(request):
   raise Http404
 
 @login_required
-def remove_peer(request):
+def end_peering(request):
   if request.method == 'POST':
     addr = request.POST['addr']
     resp = requests.post(create_rpc_url('/end_peering/' + addr))
