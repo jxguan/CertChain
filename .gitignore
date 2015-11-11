@@ -4,3 +4,4 @@ data_dirs
 *.swp
 *.pyc
 *.sqlite3
+admin/venv

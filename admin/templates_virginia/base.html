@@ -8,7 +8,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" href="https://sfs.virginia.edu/sites/sfs.virginia.edu/themes/financial_services/favicon.ico">
 
-    <link href='//fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600,700,400italic' rel='stylesheet' type='text/css'>
+   <!-- MQUINN: Localizing font files for now, in order to demo application when not connected to the Internet. -->
+    <!-- <link href='//fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600,700,400italic' rel='stylesheet' type='text/css'> -->
+    <style>
+      @font-face {
+        font-family: 'Source Sans Pro';
+        font-style: normal;
+        font-weight: 300;
+        src: local('Source Sans Pro Light'), local('SourceSansPro-Light'), url({% static 'fonts/toadOcfmlt9b38dHJxOBGMw1o1eFRj7wYC6JbISqOjY.ttf' %}) format('truetype');
+      }
+      @font-face {
+        font-family: 'Source Sans Pro';
+        font-style: normal;
+        font-weight: 400;
+        src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url({% static 'fonts/ODelI1aHBYDBqgeIAH2zlNzbP97U9sKh0jjxbPbfOKg.ttf' %}) format('truetype');
+      }
+      @font-face {
+        font-family: 'Source Sans Pro';
+        font-style: normal;
+        font-weight: 600;
+        src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url({% static 'fonts/toadOcfmlt9b38dHJxOBGNNE-IuDiR70wI4zXaKqWCM.ttf' %}) format('truetype');
+      }
+      @font-face {
+        font-family: 'Source Sans Pro';
+        font-style: normal;
+        font-weight: 700;
+        src: local('Source Sans Pro Bold'), local('SourceSansPro-Bold'), url({% static 'fonts/toadOcfmlt9b38dHJxOBGLsbIrGiHa6JIepkyt5c0A0.ttf' %}) format('truetype');
+      }
+      @font-face {
+        font-family: 'Source Sans Pro';
+        font-style: italic;
+        font-weight: 400;
+        src: local('Source Sans Pro Italic'), local('SourceSansPro-It'), url({% static 'fonts/M2Jd71oPJhLKp0zdtTvoM0DauxaEVho0aInXGvhmB4k.ttf' %}) format('truetype');
+      }
+    </style>
+
     {% block stylesheets %}
       <link href="{% static 'css/su-identity/su-identity.css' %}" rel="stylesheet">
       <link href="{% static 'css/lib/bootstrap.css' %}" rel="stylesheet">
@@ -35,7 +69,7 @@
     
         <!-- Brandbar snippet start -->
         <div id="brandbar" class="cc-uva-brandbar">
-          <div class="container"> <a href=""> <img id="stf-brand" src="https://bwac.arizona.edu/sites/default/files/UVA2.png" width="153" height="22" alt="University of Virginia"> </a> </div>
+          <div class="container"> <a href=""> <img id="stf-brand" src="{% static 'images/uva_logo.png' %}" width="153" height="22" alt="University of Virginia"> </a> </div>
           <!-- .container end --> 
         </div>
         <!-- #brandbar end --> 
@@ -48,7 +82,7 @@
               <div class="row">
                 <div class="span6">
                   <div id="wordmark">
-                      <img src="http://accessuva.virginia.edu/sites/accessuva.virginia.edu/files/uva-logo.png" alt="UVA wordmark" width="180" height="40" />
+                      <img src="{% static 'images/uva_logo2.png' %}" alt="UVA wordmark" width="180" height="40" />
                   </div>
                   <div id="site"><!-- class="two-lines" or class="show-parent" -->
                     <div id="name">
@@ -99,7 +133,7 @@
         <div class="row">
           <div id="bottom-logo" class="span2">
             <a href="">
-              <img src="http://accessuva.virginia.edu/sites/accessuva.virginia.edu/files/uva-logo.png" alt="University of Virginia" width="140"/>
+              <img src="{% static 'images/uva_logo2.png' %}" alt="University of Virginia" width="140"/>
             </a>
           </div>
           <!-- #bottom-logo end -->
