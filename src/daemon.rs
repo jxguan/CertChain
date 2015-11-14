@@ -149,12 +149,24 @@ pub fn run(config: CertChainConfig) -> () {
                                                  &node_table.to_disk()).unwrap();
                     info!("FSM: sync'ed node table to disk.");
                 }
+                FSMState::SyncHashchainToDisk => {
+                    let ref hashchain = *hashchain.read().unwrap();
+                    let mut writer = BufWriter::new(File::create(
+                            &config.path_to("hashchain.dat")).unwrap());
+                    serde_json::to_writer_pretty(&mut writer,
+                                                 &hashchain).unwrap();
+                    info!("FSM: sync'ed hashchain to disk.");
+                }
             },
             None => {
                 debug!("FSM: processing block queue...");
                 {
                     let mut hashchain = hashchain.write().unwrap();
-                    hashchain.process_queue();
+                    let blocks_processed = hashchain.process_queue();
+                    if blocks_processed {
+                        fsm.write().unwrap().push_state(
+                            FSMState::SyncHashchainToDisk);
+                    }
                 }
                 debug!("FSM: idling...");
                 thread::sleep_ms(1000);

@@ -56,7 +56,7 @@ pub fn start(config: &CertChainConfig,
                     let params = &path[9..].split("/").collect::<Vec<&str>>();
                     let mut req_body = String::new();
                     req.read_to_string(&mut req_body).unwrap();
-                    certify(res, hashchain.clone(),
+                    certify(res, fsm.clone(), hashchain.clone(),
                             &docs_dir, req_body, &params);
                 },
                 (hyper::Get, AbsolutePath(ref path))
@@ -128,9 +128,9 @@ fn handle_peer_request(res: Response<Fresh>,
 }
 
 fn approve_peer_req(res: Response<Fresh>,
-                       fsm: Arc<RwLock<FSM>>,
-                       node_table: Arc<RwLock<NetNodeTable>>,
-                       addr_param: &str) {
+                    fsm: Arc<RwLock<FSM>>,
+                    node_table: Arc<RwLock<NetNodeTable>>,
+                    addr_param: &str) {
 
     // Convert the address parameter into an InstAddress.
     let addr = match InstAddress::from_string(addr_param) {
@@ -155,10 +155,12 @@ fn approve_peer_req(res: Response<Fresh>,
     let ref mut fsm = *fsm.write().unwrap();
     fsm.push_state(FSMState::ApprovePeerRequest(addr));
     fsm.push_state(FSMState::SyncNodeTableToDisk);
+    fsm.push_state(FSMState::SyncHashchainToDisk);
     res.send("OK; peer request submitted for approval.".as_bytes()).unwrap();
 }
 
 fn certify(res: Response<Fresh>,
+           fsm: Arc<RwLock<FSM>>,
            hashchain: Arc<RwLock<Hashchain>>,
            docs_dir_path: &String,
            document: String,
@@ -221,7 +223,9 @@ fn certify(res: Response<Fresh>,
     let ref mut hashchain = *hashchain.write().unwrap();
     hashchain.queue_new_block(vec![action]);
 
-    // TODO: Have FSM sync modified hashchain to disk.
+    // Sync the newly modified hashchain to disk.
+    let ref mut fsm = *fsm.write().unwrap();
+    fsm.push_state(FSMState::SyncHashchainToDisk);
 
     res.send("OK; certification submitted.".as_bytes()).unwrap();
 }

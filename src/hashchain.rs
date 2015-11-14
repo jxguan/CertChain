@@ -3,6 +3,8 @@ use address::InstAddress;
 use serde::ser;
 use std::collections::vec_deque::VecDeque;
 use time;
+use std::sync::{Arc, RwLock};
+use fsm::FSM;
 
 pub type DocumentId = DoubleSha256Hash;
 
@@ -35,14 +37,16 @@ pub struct DocumentSummary {
     rev_timestamp: Option<i64>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Block {
     timestamp: i64,
     actions: Vec<Action>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Hashchain {
     finalized_blocks: Vec<Block>,
-    queued_blocks: VecDeque<Block>
+    queued_blocks: VecDeque<Block>,
 }
 
 impl DocumentSummary {
@@ -78,19 +82,22 @@ impl Hashchain {
         self.queued_blocks.push_back(block);
     }
 
-    pub fn process_queue(&mut self) {
+    pub fn process_queue(&mut self) -> bool {
+        let mut blocks_processed = false;
         match self.queued_blocks.pop_front() {
             Some(block) => {
                 if block.is_valid() {
                     info!("HCHAIN: Finalizing queued block.");
                     self.finalized_blocks.push(block);
+                    blocks_processed = true;
                 } else {
                     info!("HCHAIN: Re-queueing block.");
                     self.queued_blocks.push_front(block);
                 }
             },
             None => ()
-        }
+        };
+        blocks_processed
     }
 
     pub fn get_certifications(&self,

@@ -13,6 +13,7 @@ pub enum FSMState {
     HandlePeerReq(PeerRequest),
     ApprovePeerRequest(InstAddress),
     SyncNodeTableToDisk,
+    SyncHashchainToDisk
 }
 
 impl FSM {
