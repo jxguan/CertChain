@@ -14,7 +14,8 @@ use std::hash::{Hash};
 const ADDRESS_LEN_BYTES: usize = 25;
 const MAINNET_ADDRESS_VERSION_PREFIX: u8 = 88; // "c" in Base58
 
-#[derive(RustcEncodable, RustcDecodable, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Serialize, Deserialize,
+         RustcEncodable, RustcDecodable, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct InstAddress {
     data: [u8; ADDRESS_LEN_BYTES],
 }

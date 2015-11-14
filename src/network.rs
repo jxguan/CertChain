@@ -21,6 +21,7 @@ use rand::Rng;
 use compress::checksum::adler;
 use std::collections::HashMap;
 use msgpack;
+use hashchain::{Hashchain, Action};
 
 const MAINNET_MSG_MAGIC: u32 = 0x48FFABCD;
 
@@ -383,7 +384,8 @@ impl NetNodeTable {
 
     pub fn approve_peerreq(&mut self,
             inst_addr: InstAddress,
-            our_secret_key: &SecretKey) -> std::io::Result<()> {
+            our_secret_key: &SecretKey,
+            hashchain: Arc<RwLock<Hashchain>>) -> std::io::Result<()> {
 
         // First, ensure that we have confirmed the node's identity.
         if !self.is_confirmed_node(&inst_addr) {
@@ -406,9 +408,16 @@ impl NetNodeTable {
                          &inst_addr)));
         }
 
-        // Fourth and finally, adjust peering state accordingly.
+        // Fourth, adjust peering state accordingly.
         node.our_peering_approval = PeeringApproval::Approved;
-        panic!("TODO: Create new block, add AddPeer action, issue sigreqs.")
+
+        // Finally, create a new block containing the action and
+        // submit to the block queue, where it will await signatures.
+        let action = Action::AddPeer(node.inst_addr,
+                                     node.hostname.clone(), node.port);
+        let ref mut hashchain = *hashchain.write().unwrap();
+        hashchain.queue_new_block(vec![action]);
+        Ok(())
     }
 
     pub fn end_peering(&mut self, inst_addr: InstAddress) -> std::io::Result<()> {

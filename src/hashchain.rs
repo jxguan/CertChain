@@ -1,4 +1,5 @@
 use hash::DoubleSha256Hash;
+use address::InstAddress;
 use serde::ser;
 use std::collections::vec_deque::VecDeque;
 use time;
@@ -22,6 +23,7 @@ impl ser::Serialize for DocumentType {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Action {
     Certify(DocumentId, DocumentType, String),
+    AddPeer(InstAddress, String, u16)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -54,6 +56,10 @@ impl DocumentSummary {
                     cert_timestamp: Some(block.timestamp),
                     rev_timestamp: None
                 }
+            },
+            Action::AddPeer(_, _, _) => {
+                panic!("Cannot create DocumentSummary from AddPeer;
+                        action; calling code needs to prevent this.")
             }
         }
     }
@@ -103,6 +109,9 @@ impl Hashchain {
                             }, None => summaries.push(
                                             DocumentSummary::new(&block, action.clone()))
                         };
+                    },
+                    Action::AddPeer(_, _, _) => {
+                        continue;
                     }
                 }
             }

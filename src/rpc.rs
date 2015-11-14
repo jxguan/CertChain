@@ -217,7 +217,7 @@ fn certify(res: Response<Fresh>,
     let action = Action::Certify(doc_id, doctype, student_id);
 
     // Fourth and finally, create a new block containing the action
-    // and submit to the BlockQueue, where it will await signatures.
+    // and submit to the block queue, where it will await signatures.
     let ref mut hashchain = *hashchain.write().unwrap();
     hashchain.queue_new_block(vec![action]);
 
