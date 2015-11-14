@@ -100,6 +100,9 @@ pub fn run(config: CertChainConfig) -> () {
                     fsm.push_state(FSMState::HandlePeerReq(peerreq));
                     fsm.push_state(FSMState::SyncNodeTableToDisk);
                 },
+                NetPayload::SigReq(sigreq) => {
+                    panic!("TODO: Handle reception of SignatureRequest.")
+                }
             }
         }
     });

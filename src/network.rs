@@ -21,7 +21,7 @@ use rand::Rng;
 use compress::checksum::adler;
 use std::collections::HashMap;
 use msgpack;
-use hashchain::{Hashchain, Action};
+use hashchain::{Hashchain, Action, Block};
 
 const MAINNET_MSG_MAGIC: u32 = 0x48FFABCD;
 
@@ -41,6 +41,7 @@ pub enum NetPayload {
     IdentReq(IdentityRequest),
     IdentResp(IdentityResponse),
     PeerReq(PeerRequest),
+    SigReq(SignatureRequest),
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -54,6 +55,13 @@ pub struct IdentityRequest {
     pub from_port: u16,
     pub from_signature: RecovSignature,
 }
+
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+pub struct SignatureRequest {
+    pub to_inst_addr: InstAddress,
+    pub block: Block,
+}
+
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
 pub struct PeerRequest {

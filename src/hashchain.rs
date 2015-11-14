@@ -1,6 +1,7 @@
 use hash::DoubleSha256Hash;
 use address::InstAddress;
 use serde::{ser, de};
+use std::collections::HashSet;
 use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
@@ -8,7 +9,7 @@ use fsm::FSM;
 
 pub type DocumentId = DoubleSha256Hash;
 
-#[derive(Clone, Debug)]
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
 pub enum DocumentType {
     Diploma,
     Transcript
@@ -45,7 +46,7 @@ impl de::Visitor for DocumentTypeVisitor {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
 pub enum Action {
     Certify(DocumentId, DocumentType, String),
     AddPeer(InstAddress, String, u16)
@@ -60,7 +61,7 @@ pub struct DocumentSummary {
     rev_timestamp: Option<i64>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
 pub struct Block {
     timestamp: i64,
     actions: Vec<Action>,
@@ -101,8 +102,55 @@ impl Hashchain {
     }
 
     pub fn queue_new_block(&mut self, actions: Vec<Action>) {
+
         let block = Block::new(actions);
+        let signoff_peers = self.get_signoff_peers(&block);
         self.queued_blocks.push_back(block);
+
+        // Broadcast signature requests to all existing peers.
+        for peer_addr in signoff_peers {
+            panic!("TODO: Create SignatureRequest for peer when queueing block.");
+        }
+    }
+
+    /// Determines the peers whose signatures are required for new_block
+    /// to be added to the hashchain. This includes existing peers and peers
+    /// being added in new_block, and excludes peers being removed in
+    /// new_block.
+    fn get_signoff_peers(&self, new_block: &Block) -> HashSet<InstAddress> {
+
+        // Existing peers must sign off on new_block.
+        let mut peers = HashSet::new();
+        for block in self.finalized_blocks.iter() {
+            for action in block.actions.iter() {
+                match *action {
+                    Action::AddPeer(inst_addr, _, _) => {
+                        peers.insert(inst_addr);
+                    },
+                    Action::Certify(_, _, _) => (),
+                    /*
+                     * TODO: When adding RemovePeer to this
+                     * statement, remove from peer set.
+                     */
+                }
+            }
+        }
+
+        // New peers must sign off on new block, but
+        // removed peers do not.
+        for action in new_block.actions.iter() {
+            match *action {
+                Action::AddPeer(inst_addr, _, _) => {
+                    peers.insert(inst_addr);
+                },
+                Action::Certify(_, _, _) => (),
+                /*
+                 * TODO: When adding RemovePeer to this
+                 * statement, remove from peer set.
+                 */
+            }
+        }
+        peers
     }
 
     pub fn process_queue(&mut self) -> bool {

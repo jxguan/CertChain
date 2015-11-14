@@ -53,7 +53,7 @@ impl MerkleRoot for Vec<Transaction> {
     }
 }*/
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(RustcEncodable, RustcDecodable, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct DoubleSha256Hash([u8; 32]);
 
 impl DoubleSha256Hash {
@@ -77,7 +77,6 @@ impl DoubleSha256Hash {
             Ok(v) => v,
             Err(_) => return Err(ValidityErr::DoubleSha256HashExpected)
         };
-        info!("Hash vec: {:?}", hash_vec);
 
         if hash_vec.len() != 32 {
             return Err(ValidityErr::DoubleSha256HashExpected);
