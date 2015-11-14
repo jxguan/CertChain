@@ -3,7 +3,9 @@ use crypto::digest::Digest;
 use std::ops::{Index, Range, RangeFull};
 use std::fmt::{Debug, Display, Formatter};
 use std::io::{Write, Read};
-use serde::ser;
+use serde::{ser, de};
+use common::ValidityErr;
+use rustc_serialize::hex::FromHex;
 
 /*
  * Credit to Andrew Poelstra for the following implementations
@@ -51,7 +53,7 @@ impl MerkleRoot for Vec<Transaction> {
     }
 }*/
 
-#[derive(Deserialize, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq)]
 pub struct DoubleSha256Hash([u8; 32]);
 
 impl DoubleSha256Hash {
@@ -68,6 +70,25 @@ impl DoubleSha256Hash {
         sha256.input(&buf);
         sha256.result(&mut buf);
         DoubleSha256Hash(buf)
+    }
+
+    pub fn from_string(hash_str: &str) -> Result<DoubleSha256Hash, ValidityErr> {
+        let hash_vec = match hash_str.from_hex() {
+            Ok(v) => v,
+            Err(_) => return Err(ValidityErr::DoubleSha256HashExpected)
+        };
+        info!("Hash vec: {:?}", hash_vec);
+
+        if hash_vec.len() != 32 {
+            return Err(ValidityErr::DoubleSha256HashExpected);
+        }
+
+        let mut hash_arr = [0u8; 32];
+        for i in 0..hash_vec.len() {
+            hash_arr[i] = hash_vec[i];
+        }
+
+        Ok(DoubleSha256Hash(hash_arr))
     }
 
     pub fn from_slice(slice: &[u8]) -> DoubleSha256Hash {
@@ -93,8 +114,30 @@ impl Debug for DoubleSha256Hash {
 impl ser::Serialize for DoubleSha256Hash {
     fn serialize<S: ser::Serializer>(&self, s: &mut S)
         -> Result<(), S::Error> {
-        s.visit_str(&format!("{}", self)[..]);
-        Ok(())
+        s.visit_str(&format!("{}", self)[..])
+    }
+}
+
+impl de::Deserialize for DoubleSha256Hash {
+    fn deserialize<D: de::Deserializer>(d: &mut D)
+            -> Result<DoubleSha256Hash, D::Error> {
+        d.visit_str(DoubleSha256HashVisitor)
+    }
+}
+
+struct DoubleSha256HashVisitor;
+
+impl de::Visitor for DoubleSha256HashVisitor {
+    type Value = DoubleSha256Hash;
+
+    fn visit_str<E: de::Error>(&mut self, value: &str)
+            -> Result<DoubleSha256Hash, E> {
+        match DoubleSha256Hash::from_string(value) {
+            Ok(hash) => Ok(hash),
+            Err(err) => Err(de::Error::syntax(&format!(
+                        "The visited string {} could not be deserialized \
+                         into a DoubleSha256Hash.", value)[..]))
+        }
     }
 }
 

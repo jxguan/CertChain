@@ -28,7 +28,18 @@ pub fn run(config: CertChainConfig) -> () {
     let fsm = Arc::new(RwLock::new(FSM::new()));
     let node_table = Arc::new(
         RwLock::new(NetNodeTable::new(&config)));
-    let hashchain = Arc::new(RwLock::new(Hashchain::new()));
+
+    // Read the hashchain from disk or start new chain if none found.
+    let hashchain = match File::open(&config.path_to("hashchain.dat")) {
+        Ok(file) => {
+            let raw: Hashchain = serde_json::from_reader(file).unwrap();
+            Arc::new(RwLock::new(raw))
+        },
+        Err(_) => {
+            info!("Unable to open hashchain file; starting new chain.");
+            Arc::new(RwLock::new(Hashchain::new()))
+        }
+    };
 
     // Connect to known nodes, as serialized to disk during prior execution.
     // TODO: This should probably only connect to pending/approved peers

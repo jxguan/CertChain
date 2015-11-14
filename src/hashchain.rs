@@ -1,6 +1,6 @@
 use hash::DoubleSha256Hash;
 use address::InstAddress;
-use serde::ser;
+use serde::{ser, de};
 use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
@@ -8,7 +8,7 @@ use fsm::FSM;
 
 pub type DocumentId = DoubleSha256Hash;
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum DocumentType {
     Diploma,
     Transcript
@@ -17,8 +17,31 @@ pub enum DocumentType {
 impl ser::Serialize for DocumentType {
     fn serialize<S: ser::Serializer>(&self, s: &mut S)
         -> Result<(), S::Error> {
-        s.visit_str(&format!("{:?}", self)[..]);
-        Ok(())
+        s.visit_str(&format!("{:?}", self)[..])
+    }
+}
+
+impl de::Deserialize for DocumentType {
+    fn deserialize<D: de::Deserializer>(d: &mut D)
+            -> Result<DocumentType, D::Error> {
+        d.visit_str(DocumentTypeVisitor)
+    }
+}
+
+struct DocumentTypeVisitor;
+
+impl de::Visitor for DocumentTypeVisitor {
+    type Value = DocumentType;
+
+    fn visit_str<E: de::Error>(&mut self, value: &str)
+            -> Result<DocumentType, E> {
+        match value {
+            "Diploma" => Ok(DocumentType::Diploma),
+            "Transcript" => Ok(DocumentType::Transcript),
+            _ => Err(de::Error::syntax(&format!(
+                        "The visited string {} could not be deserialized \
+                        into a DocumentType.", value)[..]))
+        }
     }
 }
 

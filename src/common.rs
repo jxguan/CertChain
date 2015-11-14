@@ -14,4 +14,5 @@ pub enum ValidityErr {
     Secp256k1MessageInvalidErr,
     Secp256k1PubkeyRecoveryErr,
     NonceDoesntMatch,
+    DoubleSha256HashExpected
 }

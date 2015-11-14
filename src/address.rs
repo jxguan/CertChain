@@ -10,12 +10,13 @@ use std::fmt::{Debug, Display, Formatter};
 use rustc_serialize::{Encodable};
 use common::ValidityErr;
 use std::hash::{Hash};
+use serde::ser;
+use serde::de;
 
 const ADDRESS_LEN_BYTES: usize = 25;
 const MAINNET_ADDRESS_VERSION_PREFIX: u8 = 88; // "c" in Base58
 
-#[derive(Serialize, Deserialize,
-         RustcEncodable, RustcDecodable, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(RustcEncodable, RustcDecodable, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct InstAddress {
     data: [u8; ADDRESS_LEN_BYTES],
 }
@@ -88,6 +89,35 @@ impl InstAddress {
         match addr.check_validity() {
             Ok(_) => Ok(addr),
             Err(err) => Err(err)
+        }
+    }
+}
+
+impl ser::Serialize for InstAddress {
+    fn serialize<S: ser::Serializer>(&self, s: &mut S)
+            -> Result<(), S::Error> {
+        s.visit_str(&self.to_base58()[..])
+    }
+}
+
+impl de::Deserialize for InstAddress {
+    fn deserialize<D: de::Deserializer>(d: &mut D)
+            -> Result<InstAddress, D::Error> {
+        d.visit_str(InstAddressVisitor)
+    }
+}
+
+struct InstAddressVisitor;
+
+impl de::Visitor for InstAddressVisitor {
+    type Value = InstAddress;
+
+    fn visit_str<E: de::Error>(&mut self, value: &str) -> Result<InstAddress, E> {
+        match InstAddress::from_string(value) {
+            Ok(addr) => Ok(addr),
+            Err(err) => Err(de::Error::syntax(&format!(
+                        "The visited string {} could not be deserialized \
+                         into an InstAddress.", value)[..]))
         }
     }
 }
