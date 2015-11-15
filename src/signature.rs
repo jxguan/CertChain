@@ -113,7 +113,7 @@ impl de::Visitor for RecovSignatureVisitor {
             -> Result<RecovSignature, E> {
         match RecovSignature::from_string(value) {
             Ok(sig) => Ok(sig),
-            Err(err) => Err(de::Error::syntax(&format!(
+            Err(_) => Err(de::Error::syntax(&format!(
                         "The visited string {} could not be deserialized \
                          into a RecovSignature.", value)[..]))
         }

@@ -115,7 +115,7 @@ impl de::Visitor for InstAddressVisitor {
     fn visit_str<E: de::Error>(&mut self, value: &str) -> Result<InstAddress, E> {
         match InstAddress::from_string(value) {
             Ok(addr) => Ok(addr),
-            Err(err) => Err(de::Error::syntax(&format!(
+            Err(_) => Err(de::Error::syntax(&format!(
                         "The visited string {} could not be deserialized \
                          into an InstAddress.", value)[..]))
         }

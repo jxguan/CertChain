@@ -21,7 +21,7 @@ use rand::Rng;
 use compress::checksum::adler;
 use std::collections::HashMap;
 use msgpack;
-use hashchain::{Hashchain, Action, Block};
+use hashchain::{Action, Block};
 use fsm::{FSM, FSMState};
 
 const MAINNET_MSG_MAGIC: u32 = 0x48FFABCD;
@@ -429,8 +429,8 @@ impl NetNodeTable {
                  * and we queue a new block in our own chain to add them
                  * as our peer.
                  */
-                info!("Received sigreq from node that we requested to peer
-                       with; upgrading to Approved and adding them to our
+                info!("Received sigreq from node that we requested to peer \
+                       with; upgrading to Approved and adding them to our \
                        own chain.");
                 node.our_peering_approval = PeeringApproval::Approved;
                 let ref mut fsm = *fsm.write().unwrap();
@@ -482,7 +482,6 @@ impl NetNodeTable {
 
     pub fn approve_peerreq(&mut self,
             inst_addr: InstAddress,
-            our_secret_key: &SecretKey,
             fsm: Arc<RwLock<FSM>>) -> std::io::Result<()> {
 
         // First, ensure that we have confirmed the node's identity.

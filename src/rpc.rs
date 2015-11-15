@@ -56,7 +56,7 @@ pub fn start(config: &CertChainConfig,
                     let params = &path[9..].split("/").collect::<Vec<&str>>();
                     let mut req_body = String::new();
                     req.read_to_string(&mut req_body).unwrap();
-                    certify(res, fsm.clone(), hashchain.clone(),
+                    certify(res, fsm.clone(),
                             &docs_dir, req_body, &params);
                 },
                 (hyper::Get, AbsolutePath(ref path))
@@ -159,7 +159,6 @@ fn approve_peer_req(res: Response<Fresh>,
 
 fn certify(res: Response<Fresh>,
            fsm: Arc<RwLock<FSM>>,
-           hashchain: Arc<RwLock<Hashchain>>,
            docs_dir_path: &String,
            document: String,
            params: &Vec<&str>) {
@@ -248,7 +247,7 @@ fn handle_document_req(res: Response<Fresh>,
     let file_path = format!("{}/{}.txt", docs_dir_path, doc_id_param);
     let mut doc_file = match File::open(&file_path) {
         Ok(file) => file,
-        Err(err) => {
+        Err(_) => {
             res.send(format!("Unable to open file: {}", file_path)
                      .as_bytes()).unwrap();
             return;
@@ -277,7 +276,7 @@ fn end_peering(res: Response<Fresh>,
 
     // Downgrade our approval of peering with this addr.
     let ref mut node_table = *node_table.write().unwrap();
-    node_table.end_peering(addr);
+    node_table.end_peering(addr).unwrap();
 
     // Have the FSM eventually sync node table to disk.
     let ref mut fsm = *fsm.write().unwrap();

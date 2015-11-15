@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
-use fsm::FSM;
 use network::{NetNodeTable, SignatureRequest};
 use signature::RecovSignature;
 use secp256k1::key::SecretKey;

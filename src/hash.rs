@@ -2,7 +2,7 @@ use crypto::sha2::Sha256;
 use crypto::digest::Digest;
 use std::ops::{Index, Range, RangeFull};
 use std::fmt::{Debug, Display, Formatter};
-use std::io::{Write, Read};
+use std::io::{Write};
 use serde::{ser, de};
 use common::ValidityErr;
 use rustc_serialize::hex::FromHex;
@@ -133,7 +133,7 @@ impl de::Visitor for DoubleSha256HashVisitor {
             -> Result<DoubleSha256Hash, E> {
         match DoubleSha256Hash::from_string(value) {
             Ok(hash) => Ok(hash),
-            Err(err) => Err(de::Error::syntax(&format!(
+            Err(_) => Err(de::Error::syntax(&format!(
                         "The visited string {} could not be deserialized \
                          into a DoubleSha256Hash.", value)[..]))
         }

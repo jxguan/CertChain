@@ -149,7 +149,7 @@ pub fn run(config: CertChainConfig) -> () {
                 },
                 FSMState::ApprovePeerRequest(addr) => {
                     match node_table.write().unwrap()
-                        .approve_peerreq(addr, &secret_key, fsm.clone()) {
+                        .approve_peerreq(addr, fsm.clone()) {
                         Ok(_) => info!("FSM: approved peer request."),
                         Err(err) => warn!("FSM: unable to approve peer \
                                             request: {}", err)
