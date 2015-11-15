@@ -191,6 +191,10 @@ impl NetNodeTable {
         }
     }
 
+    pub fn get_our_inst_addr(&self) -> InstAddress {
+        self.our_inst_addr
+    }
+
     /// Creates a condensed representation of this NetNodeTable suitable
     /// for storage on disk, without transient fields included.
     pub fn to_disk(&self) -> Vec<OnDiskNetNode> {
@@ -385,17 +389,70 @@ impl NetNodeTable {
         node.send(NetPayload::SigReq(sigreq))
     }
 
-    pub fn handle_sigreq(&mut self, sigreq: SignatureRequest)
+    pub fn handle_sigreq(&mut self, sigreq: SignatureRequest,
+                         fsm: Arc<RwLock<FSM>>)
             -> std::io::Result<()> {
 
-        // First, determine if this sigreq is addressed to us.
+        // Determine if this sigreq is addressed to us.
         if sigreq.to_inst_addr != self.our_inst_addr {
             return Err(io::Error::new(io::ErrorKind::Other,
                     format!("Ignoring sigreq addressed to {}; this
                     is not us.", sigreq.to_inst_addr)))
         }
 
-        panic!("TODO: Check if authoring addr is our peer / pending peer.");
+        // Ensure that we have confirmed the authoring node's
+        // identity.
+        if !self.is_confirmed_node(&sigreq.block.author) {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                format!("Ignoring sigreq from {}; their identity
+                         has not been confirmed.",
+                         &sigreq.block.author)));
+        }
+
+        // Ensure that the authoring node's block signature is valid.
+        panic!("TODO: Verify author's signature on block.");
+
+        // Get the node (we can unwrap due to above check).
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&sigreq.block.author).unwrap();
+
+        // Ensure that peering has been approved with the authoring
+        // institution.
+        match node.our_peering_approval {
+            PeeringApproval::Approved => (),
+            PeeringApproval::AwaitingTheirApproval => {
+                /*
+                 * If we receive a sigreq from a peer who we requested
+                 * to peer with (i.e., we are awaiting their approval),
+                 * we know that they now consider us to be their peer.
+                 * Therefore, we upgrade our approval to Approved,
+                 * and we queue a new block in our own chain to add them
+                 * as our peer.
+                 */
+                info!("Received sigreq from node that we requested to peer
+                       with; upgrading to Approved and adding them to our
+                       own chain.");
+                node.our_peering_approval = PeeringApproval::Approved;
+                let ref mut fsm = *fsm.write().unwrap();
+                fsm.push_state(FSMState::SyncNodeTableToDisk);
+
+                // Finally, have the FSM queue a new block containing the action
+                // and sync the queued block to disk.
+                let action = Action::AddPeer(node.inst_addr,
+                                             node.hostname.clone(), node.port);
+                fsm.push_state(FSMState::QueueNewBlock(vec![action]));
+                fsm.push_state(FSMState::SyncHashchainToDisk);
+            },
+            PeeringApproval::AwaitingOurApproval
+                | PeeringApproval::NotApproved => {
+                return Err(io::Error::new(io::ErrorKind::Other,
+                    format!("Ignoring sigreq from {}; we have not approved
+                             a peering relationship with them.",
+                             &sigreq.block.author)));
+            }
+        }
+
+        panic!("TODO: Lazy load the peer's replica and check block's validity.");
     }
 
     pub fn handle_peerreq(&mut self,

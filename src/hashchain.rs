@@ -7,6 +7,9 @@ use time;
 use std::sync::{Arc, RwLock};
 use fsm::FSM;
 use network::{NetNodeTable, SignatureRequest};
+use signature::RecovSignature;
+use secp256k1::key::SecretKey;
+use common::ValidityErr;
 
 pub type DocumentId = DoubleSha256Hash;
 
@@ -65,7 +68,9 @@ pub struct DocumentSummary {
 #[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
 pub struct Block {
     timestamp: i64,
+    pub author: InstAddress,
     actions: Vec<Action>,
+    author_signature: RecovSignature
 }
 
 #[derive(Serialize, Deserialize)]
@@ -103,9 +108,12 @@ impl Hashchain {
     }
 
     pub fn queue_new_block(&mut self, actions: Vec<Action>,
-                           node_table: Arc<RwLock<NetNodeTable>>) {
+                           node_table: Arc<RwLock<NetNodeTable>>,
+                           our_secret_key: &SecretKey) {
 
-        let block = Block::new(actions);
+        let block = Block::new(node_table.read().unwrap()
+                               .get_our_inst_addr(), actions,
+                               &our_secret_key);
 
         // Broadcast signature requests to all signoff peers.
         let signoff_peers = self.get_signoff_peers(&block);
@@ -213,12 +221,33 @@ impl Hashchain {
 }
 
 impl Block {
-    fn new(actions: Vec<Action>) -> Block {
+    fn new(our_inst_addr: InstAddress,
+           actions: Vec<Action>,
+           our_secret_key: &SecretKey) -> Block {
+        /*
+         * TODO: Continue to add to this as fields to Block are added.
+         */
+        let ts = time::get_time().sec;
+        let to_hash = format!("BLOCK:{},{}", ts, our_inst_addr);
         Block {
-            timestamp: time::get_time().sec,
-            actions: actions
+            timestamp: ts,
+            author: our_inst_addr,
+            actions: actions,
+            author_signature: RecovSignature::sign(
+                &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
+                &our_secret_key)
         }
     }
+
+    /*
+     * TODO: Continue to add to this as fields to Block are added.
+     */
+    pub fn is_authors_signature_valid(&self) -> Result<(), ValidityErr> {
+        let expected_msg = &DoubleSha256Hash::hash(
+            &format!("BLOCK:{},{}", self.timestamp, self.author).as_bytes()[..]);
+        self.author_signature.check_validity(&expected_msg, &self.author)
+    }
+
 
     /// TODO: Fill this in.
     fn is_valid(&self) -> bool {

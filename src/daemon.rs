@@ -156,7 +156,8 @@ pub fn run(config: CertChainConfig) -> () {
                     };
                 },
                 FSMState::HandleSigReq(sigreq) => {
-                    match node_table.write().unwrap().handle_sigreq(sigreq) {
+                    match node_table.write().unwrap()
+                            .handle_sigreq(sigreq, fsm.clone()) {
                         Ok(_) => info!("FSM: handled sigreq."),
                         Err(err) => warn!("FSM: unable to handle sigreq: {}",
                                           err)
@@ -164,7 +165,8 @@ pub fn run(config: CertChainConfig) -> () {
                 },
                 FSMState::QueueNewBlock(actions) => {
                     let ref mut hashchain = *hashchain.write().unwrap();
-                    hashchain.queue_new_block(actions, node_table.clone());
+                    hashchain.queue_new_block(actions, node_table.clone(),
+                                              &secret_key);
                 }
                 FSMState::SyncNodeTableToDisk => {
                     let ref node_table = *node_table.read().unwrap();
