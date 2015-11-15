@@ -1,7 +1,7 @@
 use hash::DoubleSha256Hash;
 use address::InstAddress;
 use serde::{ser, de};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
@@ -9,44 +9,41 @@ use network::{NetNodeTable, SignatureRequest};
 use signature::RecovSignature;
 use secp256k1::key::SecretKey;
 use common::ValidityErr;
+use serde::ser::Serialize;
 
 pub type DocumentId = DoubleSha256Hash;
+
+#[derive(Serialize, Deserialize)]
+pub struct Hashchain {
+    chain: HashMap<DoubleSha256Hash, ChainNode>,
+    head_node: Option<ChainNode>,
+    tail_node: Option<ChainNode>,
+    queued_blocks: VecDeque<Block>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ChainNode {
+    block: Block,
+    next_block: Option<DoubleSha256Hash>
+}
+
+#[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
+pub struct Block {
+    pub header: BlockHeader,
+    actions: Vec<Action>,
+    author_signature: RecovSignature
+}
+
+#[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
+pub struct BlockHeader {
+    timestamp: i64,
+    pub author: InstAddress,
+}
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
 pub enum DocumentType {
     Diploma,
     Transcript
-}
-
-impl ser::Serialize for DocumentType {
-    fn serialize<S: ser::Serializer>(&self, s: &mut S)
-        -> Result<(), S::Error> {
-        s.visit_str(&format!("{:?}", self)[..])
-    }
-}
-
-impl de::Deserialize for DocumentType {
-    fn deserialize<D: de::Deserializer>(d: &mut D)
-            -> Result<DocumentType, D::Error> {
-        d.visit_str(DocumentTypeVisitor)
-    }
-}
-
-struct DocumentTypeVisitor;
-
-impl de::Visitor for DocumentTypeVisitor {
-    type Value = DocumentType;
-
-    fn visit_str<E: de::Error>(&mut self, value: &str)
-            -> Result<DocumentType, E> {
-        match value {
-            "Diploma" => Ok(DocumentType::Diploma),
-            "Transcript" => Ok(DocumentType::Transcript),
-            _ => Err(de::Error::syntax(&format!(
-                        "The visited string {} could not be deserialized \
-                        into a DocumentType.", value)[..]))
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -64,44 +61,12 @@ pub struct DocumentSummary {
     rev_timestamp: Option<i64>,
 }
 
-#[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
-pub struct Block {
-    timestamp: i64,
-    pub author: InstAddress,
-    actions: Vec<Action>,
-    author_signature: RecovSignature
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Hashchain {
-    finalized_blocks: Vec<Block>,
-    queued_blocks: VecDeque<Block>,
-}
-
-impl DocumentSummary {
-    fn new(block: &Block, action: Action) -> DocumentSummary {
-        match action {
-            Action::Certify(doc_id, doc_type, student_id) => {
-                DocumentSummary {
-                    doc_id: doc_id,
-                    doc_type: doc_type,
-                    student_id: student_id,
-                    cert_timestamp: Some(block.timestamp),
-                    rev_timestamp: None
-                }
-            },
-            Action::AddPeer(_, _, _) => {
-                panic!("Cannot create DocumentSummary from AddPeer;
-                        action; calling code needs to prevent this.")
-            }
-        }
-    }
-}
-
 impl Hashchain {
     pub fn new() -> Hashchain {
         Hashchain {
-            finalized_blocks: Vec::new(),
+            chain: HashMap::new(),
+            head_node: None,
+            tail_node: None,
             queued_blocks: VecDeque::new(),
         }
     }
@@ -143,8 +108,8 @@ impl Hashchain {
 
         // Existing peers must sign off on new_block.
         let mut peers = HashSet::new();
-        for block in self.finalized_blocks.iter() {
-            for action in block.actions.iter() {
+        for (_, chain_node) in self.chain.iter() {
+            for action in chain_node.block.actions.iter() {
                 match *action {
                     Action::AddPeer(inst_addr, _, _) => {
                         peers.insert(inst_addr);
@@ -181,7 +146,8 @@ impl Hashchain {
             Some(block) => {
                 if block.is_valid() {
                     info!("HCHAIN: Finalizing queued block.");
-                    self.finalized_blocks.push(block);
+                    self.chain.insert(block.header.hash(),
+                        ChainNode::new(block));
                     blocks_processed = true;
                 } else {
                     info!("HCHAIN: Re-queueing block.");
@@ -196,18 +162,18 @@ impl Hashchain {
     pub fn get_certifications(&self,
                 optional_student_id: Option<&str>) -> Vec<DocumentSummary> {
         let mut summaries = Vec::new();
-        for block in self.finalized_blocks.iter() {
-            for action in block.actions.iter() {
+        for (_, chain_node) in self.chain.iter() {
+            for action in chain_node.block.actions.iter() {
                 match *action {
                     Action::Certify(_, _, ref sid) => {
                         match optional_student_id {
                             Some(id) => {
                                 if id == sid {
                                     summaries.push(
-                                        DocumentSummary::new(&block, action.clone()))
+                                        DocumentSummary::new(&chain_node.block, action.clone()))
                                 }
                             }, None => summaries.push(
-                                            DocumentSummary::new(&block, action.clone()))
+                                            DocumentSummary::new(&chain_node.block, action.clone()))
                         };
                     },
                     Action::AddPeer(_, _, _) => {
@@ -220,37 +186,114 @@ impl Hashchain {
     }
 }
 
+impl ChainNode {
+    fn new(block: Block) -> ChainNode {
+        ChainNode {
+            block: block,
+            next_block: None
+        }
+    }
+}
+
 impl Block {
     fn new(our_inst_addr: InstAddress,
            actions: Vec<Action>,
            our_secret_key: &SecretKey) -> Block {
-        /*
-         * TODO: Continue to add to this as fields to Block are added.
-         */
-        let ts = time::get_time().sec;
-        let to_hash = format!("BLOCK:{},{}", ts, our_inst_addr);
+        let header = BlockHeader::new(our_inst_addr);
+        let header_hash = header.hash();
         Block {
-            timestamp: ts,
-            author: our_inst_addr,
+            header: header,
             actions: actions,
             author_signature: RecovSignature::sign(
-                &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
-                &our_secret_key)
+                &header_hash, &our_secret_key)
         }
     }
 
-    /*
-     * TODO: Continue to add to this as fields to Block are added.
-     */
     pub fn is_authors_signature_valid(&self) -> Result<(), ValidityErr> {
-        let expected_msg = &DoubleSha256Hash::hash(
-            &format!("BLOCK:{},{}", self.timestamp, self.author).as_bytes()[..]);
-        self.author_signature.check_validity(&expected_msg, &self.author)
+        let expected_msg = self.header.hash();
+        self.author_signature.check_validity(&expected_msg, &self.header.author)
     }
 
 
     /// TODO: Fill this in.
     fn is_valid(&self) -> bool {
         true
+    }
+}
+
+impl BlockHeader {
+    pub fn new(our_inst_addr: InstAddress) -> BlockHeader {
+        BlockHeader {
+            timestamp: time::get_time().sec,
+            author: our_inst_addr,
+        }
+    }
+
+    pub fn hash(&self) -> DoubleSha256Hash {
+        /*
+         * IMPORTANT: We opt to hash a custom string representation
+         * of the block header because we want to be able to reproduce
+         * this block header hash in client-side JS. If we depend on rustc
+         * serialization, on MsgPack, or on Serde, we will not be able to
+         * reproduce this nearly as easily, especially as those libraries
+         * change.
+         * TODO: Keep this in mind, and continue to add fields of BlockHeader
+         * to this hash as they are added during development.
+         */
+        let to_hash = format!("BLOCKHEADER:{},{}", self.timestamp,
+                              self.author);
+        DoubleSha256Hash::hash(&to_hash.as_bytes()[..])
+    }
+}
+
+impl DocumentSummary {
+    fn new(block: &Block, action: Action) -> DocumentSummary {
+        match action {
+            Action::Certify(doc_id, doc_type, student_id) => {
+                DocumentSummary {
+                    doc_id: doc_id,
+                    doc_type: doc_type,
+                    student_id: student_id,
+                    cert_timestamp: Some(block.header.timestamp),
+                    rev_timestamp: None
+                }
+            },
+            Action::AddPeer(_, _, _) => {
+                panic!("Cannot create DocumentSummary from AddPeer;
+                        action; calling code needs to prevent this.")
+            }
+        }
+    }
+}
+
+impl ser::Serialize for DocumentType {
+    fn serialize<S: ser::Serializer>(&self, s: &mut S)
+        -> Result<(), S::Error> {
+        s.visit_str(&format!("{:?}", self)[..])
+    }
+}
+
+impl de::Deserialize for DocumentType {
+    fn deserialize<D: de::Deserializer>(d: &mut D)
+            -> Result<DocumentType, D::Error> {
+
+        struct DocumentTypeVisitor;
+
+        impl de::Visitor for DocumentTypeVisitor {
+            type Value = DocumentType;
+
+            fn visit_str<E: de::Error>(&mut self, value: &str)
+                    -> Result<DocumentType, E> {
+                match value {
+                    "Diploma" => Ok(DocumentType::Diploma),
+                    "Transcript" => Ok(DocumentType::Transcript),
+                    _ => Err(de::Error::syntax(&format!(
+                                "The visited string {} could not be deserialized \
+                                into a DocumentType.", value)[..]))
+                }
+            }
+        }
+
+        d.visit_str(DocumentTypeVisitor)
     }
 }

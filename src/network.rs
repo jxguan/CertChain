@@ -405,16 +405,16 @@ impl NetNodeTable {
 
         // Ensure that we have confirmed the authoring node's
         // identity.
-        if !self.is_confirmed_node(&sigreq.block.author) {
+        if !self.is_confirmed_node(&sigreq.block.header.author) {
             return Err(io::Error::new(io::ErrorKind::Other,
                 format!("Ignoring sigreq from {}; their identity
                          has not been confirmed.",
-                         &sigreq.block.author)));
+                         &sigreq.block.header.author)));
         }
 
         // Get the node (we can unwrap due to above check).
         let mut node_map = self.node_map.write().unwrap();
-        let mut node = node_map.get_mut(&sigreq.block.author).unwrap();
+        let mut node = node_map.get_mut(&sigreq.block.header.author).unwrap();
 
         // Ensure that peering has been approved with the authoring
         // institution.
@@ -448,7 +448,7 @@ impl NetNodeTable {
                 return Err(io::Error::new(io::ErrorKind::Other,
                     format!("Ignoring sigreq from {}; we have not approved
                              a peering relationship with them.",
-                             &sigreq.block.author)));
+                             &sigreq.block.header.author)));
             }
         }
 
@@ -670,7 +670,8 @@ impl SignatureRequest {
         // Check signature validity.
         let expected_msg = &DoubleSha256Hash::hash(
             &format!("SIGREQ:{}", self.nonce).as_bytes()[..]);
-        self.from_signature.check_validity(&expected_msg, &self.block.author)
+        self.from_signature.check_validity(&expected_msg,
+                                           &self.block.header.author)
     }
 }
 
