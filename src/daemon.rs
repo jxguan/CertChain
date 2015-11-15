@@ -101,7 +101,7 @@ pub fn run(config: CertChainConfig) -> () {
                     fsm.push_state(FSMState::SyncNodeTableToDisk);
                 },
                 NetPayload::SigReq(sigreq) => {
-                    panic!("TODO: Handle reception of SignatureRequest.")
+                    fsm.push_state(FSMState::HandleSigReq(sigreq));
                 }
             }
         }
@@ -154,6 +154,13 @@ pub fn run(config: CertChainConfig) -> () {
                         Err(err) => warn!("FSM: unable to approve peer \
                                             request: {}", err)
                     };
+                },
+                FSMState::HandleSigReq(sigreq) => {
+                    match node_table.write().unwrap().handle_sigreq(sigreq) {
+                        Ok(_) => info!("FSM: handled sigreq."),
+                        Err(err) => warn!("FSM: unable to handle sigreq: {}",
+                                          err)
+                    }
                 },
                 FSMState::QueueNewBlock(actions) => {
                     let ref mut hashchain = *hashchain.write().unwrap();

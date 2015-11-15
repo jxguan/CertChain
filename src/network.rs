@@ -385,6 +385,19 @@ impl NetNodeTable {
         node.send(NetPayload::SigReq(sigreq))
     }
 
+    pub fn handle_sigreq(&mut self, sigreq: SignatureRequest)
+            -> std::io::Result<()> {
+
+        // First, determine if this sigreq is addressed to us.
+        if sigreq.to_inst_addr != self.our_inst_addr {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                    format!("Ignoring sigreq addressed to {}; this
+                    is not us.", sigreq.to_inst_addr)))
+        }
+
+        panic!("TODO: Check if authoring addr is our peer / pending peer.");
+    }
+
     pub fn handle_peerreq(&mut self,
             peer_req: PeerRequest) -> std::io::Result<()> {
 
