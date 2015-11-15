@@ -59,8 +59,10 @@ pub struct IdentityRequest {
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
 pub struct SignatureRequest {
+    pub nonce: u64,
     pub to_inst_addr: InstAddress,
     pub block: Block,
+    pub from_signature: RecovSignature,
 }
 
 
@@ -393,11 +395,12 @@ impl NetNodeTable {
                          fsm: Arc<RwLock<FSM>>)
             -> std::io::Result<()> {
 
-        // Determine if this sigreq is addressed to us.
-        if sigreq.to_inst_addr != self.our_inst_addr {
+        // First, determine if the contents of this request are valid.
+        // IMPORTANT: This does NOT validate the block within the request;
+        // it only validates the request itself.
+        if let Err(_) = sigreq.check_validity(&self.our_inst_addr) {
             return Err(io::Error::new(io::ErrorKind::Other,
-                    format!("Ignoring sigreq addressed to {}; this
-                    is not us.", sigreq.to_inst_addr)))
+                format!("Received invalid sigreq; ignoring.")));
         }
 
         // Ensure that we have confirmed the authoring node's
@@ -408,9 +411,6 @@ impl NetNodeTable {
                          has not been confirmed.",
                          &sigreq.block.author)));
         }
-
-        // Ensure that the authoring node's block signature is valid.
-        panic!("TODO: Verify author's signature on block.");
 
         // Get the node (we can unwrap due to above check).
         let mut node_map = self.node_map.write().unwrap();
@@ -636,11 +636,42 @@ impl Display for NetNode {
 
 impl SignatureRequest {
     pub fn new(to_inst_addr: InstAddress,
-               block: Block) -> SignatureRequest {
+               block: Block, our_secret_key: &SecretKey) -> SignatureRequest {
+        let mut crypto_rng = OsRng::new().unwrap();
+        let nonce = crypto_rng.gen::<u64>();
+        /*
+         * TODO: This signature needs to tie in the block as well;
+         * when block header is added, add the hash of the header to the sig.
+         */
+        let to_hash = format!("SIGREQ:{}", nonce);
         SignatureRequest {
+            nonce: nonce,
             to_inst_addr: to_inst_addr,
-            block: block
+            block: block,
+            from_signature: RecovSignature::sign(
+                &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
+                &our_secret_key)
         }
+    }
+
+    /// It's important to note that this method does NOT validate
+    /// the block within the signature request. It only validates
+    /// the request itself (and ensures that it is signed by the
+    /// same node that authored the block within).
+    pub fn check_validity(&self, our_addr: &InstAddress)
+            -> Result<(), ValidityErr> {
+        // Check individual fields.
+        if let Err(_) = self.to_inst_addr.check_validity() {
+            return Err(ValidityErr::ToInstAddrInvalid);
+        }
+        if self.to_inst_addr != *our_addr {
+            return Err(ValidityErr::ToInstAddrDoesntMatchOurs);
+        }
+
+        // Check signature validity.
+        let expected_msg = &DoubleSha256Hash::hash(
+            &format!("SIGREQ:{}", self.nonce).as_bytes()[..]);
+        self.from_signature.check_validity(&expected_msg, &self.block.author)
     }
 }
 

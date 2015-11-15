@@ -118,7 +118,8 @@ impl Hashchain {
         // Broadcast signature requests to all signoff peers.
         let signoff_peers = self.get_signoff_peers(&block);
         for peer_addr in signoff_peers {
-            let sigreq = SignatureRequest::new(peer_addr, block.clone());
+            let sigreq = SignatureRequest::new(peer_addr, block.clone(),
+                                               &our_secret_key);
             match node_table.write().unwrap().send_sigreq(sigreq) {
                 Ok(()) => info!("Siqreq sent to {}", peer_addr),
                 Err(err) => {
