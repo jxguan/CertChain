@@ -1,6 +1,7 @@
 use std::collections::{LinkedList};
 use network::{IdentityRequest, IdentityResponse, PeerRequest};
 use address::InstAddress;
+use hashchain::Action;
 
 pub struct FSM {
     states: LinkedList<FSMState>,
@@ -12,6 +13,7 @@ pub enum FSMState {
     RequestPeer(InstAddress),
     HandlePeerReq(PeerRequest),
     ApprovePeerRequest(InstAddress),
+    QueueNewBlock(Vec<Action>),
     SyncNodeTableToDisk,
     SyncHashchainToDisk
 }

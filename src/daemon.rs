@@ -79,7 +79,7 @@ pub fn run(config: CertChainConfig) -> () {
     });
 
     /*
-     * The payload rx channel is monitored on a separate thread;
+     * Monitor the payload rx channel on a separate thread;
      * any valid messages received on the channel are translated
      * into one or more states for the FSM to transition to.
      */
@@ -149,12 +149,16 @@ pub fn run(config: CertChainConfig) -> () {
                 },
                 FSMState::ApprovePeerRequest(addr) => {
                     match node_table.write().unwrap()
-                        .approve_peerreq(addr, &secret_key, hashchain.clone()) {
+                        .approve_peerreq(addr, &secret_key, fsm.clone()) {
                         Ok(_) => info!("FSM: approved peer request."),
                         Err(err) => warn!("FSM: unable to approve peer \
                                             request: {}", err)
                     };
                 },
+                FSMState::QueueNewBlock(actions) => {
+                    let ref mut hashchain = *hashchain.write().unwrap();
+                    hashchain.queue_new_block(actions, node_table.clone());
+                }
                 FSMState::SyncNodeTableToDisk => {
                     let ref node_table = *node_table.read().unwrap();
                     let mut writer = BufWriter::new(File::create(

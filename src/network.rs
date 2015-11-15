@@ -22,6 +22,7 @@ use compress::checksum::adler;
 use std::collections::HashMap;
 use msgpack;
 use hashchain::{Hashchain, Action, Block};
+use fsm::{FSM, FSMState};
 
 const MAINNET_MSG_MAGIC: u32 = 0x48FFABCD;
 
@@ -365,6 +366,25 @@ impl NetNodeTable {
         }
     }
 
+    pub fn send_sigreq(&mut self, sigreq: SignatureRequest)
+            -> std::io::Result<()> {
+
+        // First, ensure that the provided address maps to a node
+        // whose identity has been confirmed.
+        if !self.is_confirmed_node(&sigreq.to_inst_addr) {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                format!("Will not send sigreq to node {}; their \
+                         identity has not been confirmed.", &sigreq.to_inst_addr)));
+        }
+
+        // Second, get the node (we can unwrap due to above check).
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&sigreq.to_inst_addr).unwrap();
+
+        // Third, create a request and send to the node.
+        node.send(NetPayload::SigReq(sigreq))
+    }
+
     pub fn handle_peerreq(&mut self,
             peer_req: PeerRequest) -> std::io::Result<()> {
 
@@ -393,7 +413,7 @@ impl NetNodeTable {
     pub fn approve_peerreq(&mut self,
             inst_addr: InstAddress,
             our_secret_key: &SecretKey,
-            hashchain: Arc<RwLock<Hashchain>>) -> std::io::Result<()> {
+            fsm: Arc<RwLock<FSM>>) -> std::io::Result<()> {
 
         // First, ensure that we have confirmed the node's identity.
         if !self.is_confirmed_node(&inst_addr) {
@@ -418,13 +438,15 @@ impl NetNodeTable {
 
         // Fourth, adjust peering state accordingly.
         node.our_peering_approval = PeeringApproval::Approved;
+        let ref mut fsm = *fsm.write().unwrap();
+        fsm.push_state(FSMState::SyncNodeTableToDisk);
 
-        // Finally, create a new block containing the action and
-        // submit to the block queue, where it will await signatures.
+        // Finally, have the FSM queue a new block containing the action
+        // and sync the queued block to disk.
         let action = Action::AddPeer(node.inst_addr,
                                      node.hostname.clone(), node.port);
-        let ref mut hashchain = *hashchain.write().unwrap();
-        hashchain.queue_new_block(vec![action]);
+        fsm.push_state(FSMState::QueueNewBlock(vec![action]));
+        fsm.push_state(FSMState::SyncHashchainToDisk);
         Ok(())
     }
 
@@ -539,6 +561,16 @@ impl Display for NetNode {
         try!(write!(f, "NetNode[{}, {}:{}]", self.inst_addr,
                     self.hostname, self.port));
         Ok(())
+    }
+}
+
+impl SignatureRequest {
+    pub fn new(to_inst_addr: InstAddress,
+               block: Block) -> SignatureRequest {
+        SignatureRequest {
+            to_inst_addr: to_inst_addr,
+            block: block
+        }
     }
 }
 

@@ -6,6 +6,7 @@ use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
 use fsm::FSM;
+use network::{NetNodeTable, SignatureRequest};
 
 pub type DocumentId = DoubleSha256Hash;
 
@@ -101,16 +102,29 @@ impl Hashchain {
         }
     }
 
-    pub fn queue_new_block(&mut self, actions: Vec<Action>) {
+    pub fn queue_new_block(&mut self, actions: Vec<Action>,
+                           node_table: Arc<RwLock<NetNodeTable>>) {
 
         let block = Block::new(actions);
-        let signoff_peers = self.get_signoff_peers(&block);
-        self.queued_blocks.push_back(block);
 
-        // Broadcast signature requests to all existing peers.
+        // Broadcast signature requests to all signoff peers.
+        let signoff_peers = self.get_signoff_peers(&block);
         for peer_addr in signoff_peers {
-            panic!("TODO: Create SignatureRequest for peer when queueing block.");
+            let sigreq = SignatureRequest::new(peer_addr, block.clone());
+            match node_table.write().unwrap().send_sigreq(sigreq) {
+                Ok(()) => info!("Siqreq sent to {}", peer_addr),
+                Err(err) => {
+                    error!("The following error prevented a sigreq \
+                          from being sent to a signoff peer; the block
+                          will not be queued: {}", err);
+                    return;
+                }
+            }
         }
+
+        // Only queue block when all signature requests have
+        // been successfully sent.
+        self.queued_blocks.push_back(block);
     }
 
     /// Determines the peers whose signatures are required for new_block

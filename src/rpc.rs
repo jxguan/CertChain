@@ -154,8 +154,6 @@ fn approve_peer_req(res: Response<Fresh>,
     // all current peers + new peer signing off on it.
     let ref mut fsm = *fsm.write().unwrap();
     fsm.push_state(FSMState::ApprovePeerRequest(addr));
-    fsm.push_state(FSMState::SyncNodeTableToDisk);
-    fsm.push_state(FSMState::SyncHashchainToDisk);
     res.send("OK; peer request submitted for approval.".as_bytes()).unwrap();
 }
 
@@ -218,13 +216,10 @@ fn certify(res: Response<Fresh>,
     // Third, create a certification action for the document.
     let action = Action::Certify(doc_id, doctype, student_id);
 
-    // Fourth and finally, create a new block containing the action
-    // and submit to the block queue, where it will await signatures.
-    let ref mut hashchain = *hashchain.write().unwrap();
-    hashchain.queue_new_block(vec![action]);
-
-    // Sync the newly modified hashchain to disk.
+    // Have the FSM queue a new block and sync the queued
+    // block to disk.
     let ref mut fsm = *fsm.write().unwrap();
+    fsm.push_state(FSMState::QueueNewBlock(vec![action]));
     fsm.push_state(FSMState::SyncHashchainToDisk);
 
     res.send("OK; certification submitted.".as_bytes()).unwrap();
