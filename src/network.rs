@@ -21,8 +21,10 @@ use rand::Rng;
 use compress::checksum::adler;
 use std::collections::HashMap;
 use msgpack;
-use hashchain::{Action, Block};
+use hashchain::{Hashchain, Action, Block};
 use fsm::{FSM, FSMState};
+use std::fs::File;
+use serde_json;
 
 const MAINNET_MSG_MAGIC: u32 = 0x48FFABCD;
 
@@ -107,6 +109,7 @@ pub struct NetNodeTable {
     our_inst_addr: InstAddress,
     our_hostname: String,
     our_port: u16,
+    replica_dir: String,
 }
 
 struct NetNode {
@@ -119,6 +122,7 @@ struct NetNode {
     our_peering_approval: PeeringApproval,
     identreq: Option<IdentityRequest>,
     identresp: Option<IdentityResponse>,
+    hc_replica: Option<Arc<RwLock<Hashchain>>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -190,6 +194,7 @@ impl NetNodeTable {
             our_inst_addr: inst_addr,
             our_hostname: String::from(&config.hostname[..]),
             our_port: config.port,
+            replica_dir: String::from(&config.path_to("replicas")[..]),
         }
     }
 
@@ -209,8 +214,11 @@ impl NetNodeTable {
     }
 
     /// Registers an institution as a node based on their institutional address.
-    pub fn register(&mut self, node_addr: InstAddress,
-            hostname: &String, port: u16, our_peering_approval: PeeringApproval) {
+    pub fn register(&mut self,
+                    node_addr: InstAddress,
+                    hostname: &String,
+                    port: u16,
+                    our_peering_approval: PeeringApproval) {
         let mut node_map = self.node_map.write().unwrap();
         match node_map.get(&node_addr) {
             Some(_) => info!("Already registered {}; \
@@ -452,6 +460,7 @@ impl NetNodeTable {
             }
         }
 
+        let hc_replica = node.lazy_load_replica(&self.replica_dir);
         panic!("TODO: Lazy load the peer's replica and check block's validity.");
     }
 
@@ -554,7 +563,36 @@ impl NetNode {
             our_peering_approval: our_peering_approval,
             identreq: None,
             identresp: None,
+            hc_replica: None,
         }
+    }
+
+    /// Replicas of other institutions' hashchains are loaded lazily;
+    /// if no hashchain replica file is found for an institution,
+    /// a new hashchain is used.
+    fn lazy_load_replica(&mut self,
+                         replica_dir: &String) -> Arc<RwLock<Hashchain>> {
+        let hc_replica = match self.hc_replica {
+            Some(ref replica) => replica.clone(),
+            None => {
+                let replica_path = format!("{}/{}.dat",
+                                           replica_dir, self.inst_addr);
+                match File::open(&replica_path) {
+                    Ok(file) => {
+                        let raw: Hashchain =
+                            serde_json::from_reader(file).unwrap();
+                        Arc::new(RwLock::new(raw))
+                    },
+                    Err(_) => {
+                        info!("Unable to open replica file {}; starting \
+                               new chain.", replica_path);
+                        Arc::new(RwLock::new(Hashchain::new()))
+                    }
+                }
+            }
+        };
+        self.hc_replica = Some(hc_replica.clone());
+        hc_replica
     }
 
     pub fn to_disk(&self) -> OnDiskNetNode {
