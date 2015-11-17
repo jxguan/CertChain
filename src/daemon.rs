@@ -171,8 +171,9 @@ pub fn run(config: CertChainConfig) -> () {
                 },
                 FSMState::QueueNewBlock(actions) => {
                     let ref mut hashchain = *hashchain.write().unwrap();
-                    hashchain.queue_new_block(actions, node_table.clone(),
-                                              &secret_key);
+                    hashchain.queue_new_block(
+                        node_table.read().unwrap().get_our_inst_addr(),
+                        actions, &secret_key);
                 }
                 FSMState::SyncNodeTableToDisk => {
                     let ref node_table = *node_table.read().unwrap();
@@ -195,7 +196,8 @@ pub fn run(config: CertChainConfig) -> () {
                 debug!("FSM: processing block queue...");
                 {
                     let mut hashchain = hashchain.write().unwrap();
-                    let blocks_processed = hashchain.process_queue();
+                    let blocks_processed = hashchain.process_queue(
+                            node_table.clone(), &secret_key);
                     if blocks_processed {
                         fsm.write().unwrap().push_state(
                             FSMState::SyncHashchainToDisk);

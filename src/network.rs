@@ -398,7 +398,8 @@ impl NetNodeTable {
         if !self.is_confirmed_node(&sigreq.to_inst_addr) {
             return Err(io::Error::new(io::ErrorKind::Other,
                 format!("Will not send sigreq to node {}; their \
-                         identity has not been confirmed.", &sigreq.to_inst_addr)));
+                         identity has not been confirmed.",
+                         &sigreq.to_inst_addr)));
         }
 
         // Second, get the node (we can unwrap due to above check).

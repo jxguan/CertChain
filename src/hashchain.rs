@@ -18,6 +18,7 @@ pub struct Hashchain {
     chain: HashMap<DoubleSha256Hash, ChainNode>,
     head_node: Option<DoubleSha256Hash>,
     tail_node: Option<DoubleSha256Hash>,
+    processing_block: Option<Block>,
     queued_blocks: VecDeque<Block>,
 }
 
@@ -75,6 +76,7 @@ impl Hashchain {
             chain: HashMap::new(),
             head_node: None,
             tail_node: None,
+            processing_block: None,
             queued_blocks: VecDeque::new(),
         }
     }
@@ -106,35 +108,19 @@ impl Hashchain {
         }
     }
 
-    pub fn queue_new_block(&mut self, actions: Vec<Action>,
-                           node_table: Arc<RwLock<NetNodeTable>>,
+    /// Queues a new block for signing, but importantly, signature
+    /// requests are not sent by this method. When the FSM transitions
+    /// to process the queue, signatures will be sent once all prior
+    /// queued blocks have been signed and finalized.
+    pub fn queue_new_block(&mut self,
+                           our_inst_addr: InstAddress,
+                           actions: Vec<Action>,
                            our_secret_key: &SecretKey) {
-
-        let block = Block::new(node_table.read().unwrap()
-                               .get_our_inst_addr(),
-                               self.tail_node,
-                               actions,
-                               &our_secret_key);
-
-        // Broadcast signature requests to all signoff peers.
-        let signoff_peers = self.get_signoff_peers(&block);
-        for peer_addr in signoff_peers {
-            let sigreq = SignatureRequest::new(peer_addr, block.clone(),
-                                               &our_secret_key);
-            match node_table.write().unwrap().send_sigreq(sigreq) {
-                Ok(()) => info!("Siqreq sent to {}", peer_addr),
-                Err(err) => {
-                    error!("The following error prevented a sigreq \
-                          from being sent to a signoff peer; the block
-                          will not be queued: {}", err);
-                    return;
-                }
-            }
-        }
-
-        // Only queue block when all signature requests have
-        // been successfully sent.
-        self.queued_blocks.push_back(block);
+        self.queued_blocks.push_back(
+            Block::new(our_inst_addr,
+                       self.tail_node,
+                       actions,
+                       &our_secret_key));
     }
 
     /// Determines the peers whose signatures are required for new_block
@@ -177,23 +163,74 @@ impl Hashchain {
         peers
     }
 
-    pub fn process_queue(&mut self) -> bool {
-        let mut blocks_processed = false;
-        match self.queued_blocks.pop_front() {
-            Some(block) => {
+    /// At any given time, at most one block is processing.
+    /// Blocks are processed once they are reached in the queue.
+    /// This implies that at any given time, signature requests
+    /// are in flight or awaiting receipt for the processing block only;
+    /// to leave the processing state, and thus process other blocks in
+    /// the queue, we either need all required signatures, or
+    /// processing of the block must be aborted.
+    /// Returns true if hashchain state was modified (and thus
+    /// disk sync required), false otherwise.
+    pub fn process_queue(&mut self,
+                         node_table: Arc<RwLock<NetNodeTable>>,
+                         our_secret_key: &SecretKey) -> bool {
+
+        let mut processed_block = false;
+        match self.processing_block {
+            None => {
+                // Start processing the next queued block if one exists,
+                // otherwise, simply return.
+                let block_to_process = match self.queued_blocks.pop_front() {
+                    Some(b) => {
+                        info!("Elevating block {} from queue for processing.",
+                              b.header.hash());
+                        b
+                    },
+                    None => {
+                        debug!("HCHAIN: No queued blocks; nothing to process.");
+                        return false
+                    }
+                };
+
+                // Broadcast signature requests to all signoff peers.
+                let signoff_peers = self.get_signoff_peers(
+                        &block_to_process);
+                for peer_addr in signoff_peers {
+                    let sigreq = SignatureRequest::new(peer_addr,
+                            block_to_process.clone(), &our_secret_key);
+                    match node_table.write().unwrap().send_sigreq(sigreq) {
+                        Ok(()) => info!("Siqreq sent to {}", peer_addr),
+                        Err(_) => {
+                            panic!("TODO: What to do if sigreq can't be sent
+                                    to a peer? - need to set flag somewhere
+                                    so admin can remove peer if necessary.");
+                        }
+                    }
+                }
+                self.processing_block = Some(block_to_process);
+
+                // Hashchain state modified, sync to disk.
+                return true;
+            },
+            Some(ref block) => {
                 if block.is_valid() {
                     info!("HCHAIN: Finalizing queued block.");
                     self.chain.insert(block.header.hash(),
-                        ChainNode::new(block));
-                    blocks_processed = true;
+                        ChainNode::new(block.clone()));
+                    processed_block = true;
                 } else {
-                    info!("HCHAIN: Re-queueing block.");
-                    self.queued_blocks.push_front(block);
+                    info!("HCHAIN: Block is not yet valid.");
                 }
-            },
-            None => ()
+            }
         };
-        blocks_processed
+
+        // We do this here rather than within the match stmt because
+        // we cannot modify self.processing_block when it is borrowed.
+        if processed_block {
+            self.processing_block = None;
+        }
+        processed_block
     }
 
     pub fn get_certifications(&self,
@@ -257,7 +294,7 @@ impl Block {
 
     /// TODO: Fill this in.
     fn is_valid(&self) -> bool {
-        true
+        false
     }
 }
 
