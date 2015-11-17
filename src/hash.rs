@@ -98,6 +98,10 @@ impl DoubleSha256Hash {
         }
         DoubleSha256Hash(buf)
     }
+
+    pub fn genesis_block_parent_hash() -> DoubleSha256Hash {
+        DoubleSha256Hash::from_slice(&[0u8; 32][..])
+    }
 }
 
 impl Debug for DoubleSha256Hash {

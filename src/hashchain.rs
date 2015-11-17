@@ -16,8 +16,8 @@ pub type DocumentId = DoubleSha256Hash;
 #[derive(Serialize, Deserialize)]
 pub struct Hashchain {
     chain: HashMap<DoubleSha256Hash, ChainNode>,
-    head_node: Option<ChainNode>,
-    tail_node: Option<ChainNode>,
+    head_node: Option<DoubleSha256Hash>,
+    tail_node: Option<DoubleSha256Hash>,
     queued_blocks: VecDeque<Block>,
 }
 
@@ -37,6 +37,7 @@ pub struct Block {
 #[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
 pub struct BlockHeader {
     timestamp: i64,
+    pub parent: DoubleSha256Hash,
     pub author: InstAddress,
 }
 
@@ -61,6 +62,13 @@ pub struct DocumentSummary {
     rev_timestamp: Option<i64>,
 }
 
+pub enum AppendErr {
+    MissingBlocksSince(DoubleSha256Hash),
+    BlockAlreadyInChain,
+    BlockParentAlreadyClaimed,
+    ChainStateCorrupted,
+}
+
 impl Hashchain {
     pub fn new() -> Hashchain {
         Hashchain {
@@ -71,12 +79,41 @@ impl Hashchain {
         }
     }
 
+    /// Determines if the provided block can be appended to the hashchain.
+    pub fn is_block_eligible_for_append(
+            &self, block: Block) -> Result<(), AppendErr> {
+
+        // Is this block already present in the chain?
+        if self.chain.contains_key(&block.header.hash()) {
+            return Err(AppendErr::BlockAlreadyInChain)
+        }
+
+        if block.header.parent == DoubleSha256Hash::genesis_block_parent_hash() {
+            if self.head_node == None
+                && self.tail_node == None
+                && self.chain.len() == 0 {
+                Ok(())
+            } else {
+                Err(AppendErr::ChainStateCorrupted)
+            }
+            // TODO: Move the following lines to the actual append method.
+            //let chain_node = ChainNode::new(block);
+            //self.head_node = Some(chain_node.block.header.hash());
+            //self.tail_node = Some(chain_node.block.header.hash());
+            //self.chain.insert(chain_node.block.header.hash(), chain_node);
+        } else {
+            panic!("TODO: Handle non-genesis block.");
+        }
+    }
+
     pub fn queue_new_block(&mut self, actions: Vec<Action>,
                            node_table: Arc<RwLock<NetNodeTable>>,
                            our_secret_key: &SecretKey) {
 
         let block = Block::new(node_table.read().unwrap()
-                               .get_our_inst_addr(), actions,
+                               .get_our_inst_addr(),
+                               self.tail_node,
+                               actions,
                                &our_secret_key);
 
         // Broadcast signature requests to all signoff peers.
@@ -170,10 +207,12 @@ impl Hashchain {
                             Some(id) => {
                                 if id == sid {
                                     summaries.push(
-                                        DocumentSummary::new(&chain_node.block, action.clone()))
+                                        DocumentSummary::new(&chain_node.block,
+                                                             action.clone()))
                                 }
                             }, None => summaries.push(
-                                            DocumentSummary::new(&chain_node.block, action.clone()))
+                                            DocumentSummary::new(&chain_node
+                                                        .block, action.clone()))
                         };
                     },
                     Action::AddPeer(_, _, _) => {
@@ -197,9 +236,10 @@ impl ChainNode {
 
 impl Block {
     fn new(our_inst_addr: InstAddress,
+           parent: Option<DoubleSha256Hash>,
            actions: Vec<Action>,
            our_secret_key: &SecretKey) -> Block {
-        let header = BlockHeader::new(our_inst_addr);
+        let header = BlockHeader::new(parent, our_inst_addr);
         let header_hash = header.hash();
         Block {
             header: header,
@@ -222,9 +262,15 @@ impl Block {
 }
 
 impl BlockHeader {
-    pub fn new(our_inst_addr: InstAddress) -> BlockHeader {
+    pub fn new(parent: Option<DoubleSha256Hash>,
+               our_inst_addr: InstAddress) -> BlockHeader {
+        let parent_hash = match parent {
+            None => DoubleSha256Hash::genesis_block_parent_hash(),
+            Some(h) => h,
+        };
         BlockHeader {
             timestamp: time::get_time().sec,
+            parent: parent_hash,
             author: our_inst_addr,
         }
     }
@@ -240,7 +286,9 @@ impl BlockHeader {
          * TODO: Keep this in mind, and continue to add fields of BlockHeader
          * to this hash as they are added during development.
          */
-        let to_hash = format!("BLOCKHEADER:{},{}", self.timestamp,
+        let to_hash = format!("BLOCKHEADER:{},{},{}",
+                              self.timestamp,
+                              self.parent,
                               self.author);
         DoubleSha256Hash::hash(&to_hash.as_bytes()[..])
     }

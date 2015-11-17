@@ -21,7 +21,7 @@ use rand::Rng;
 use compress::checksum::adler;
 use std::collections::HashMap;
 use msgpack;
-use hashchain::{Hashchain, Action, Block};
+use hashchain::{Hashchain, Action, Block, AppendErr};
 use fsm::{FSM, FSMState};
 use std::fs::File;
 use serde_json;
@@ -460,8 +460,30 @@ impl NetNodeTable {
             }
         }
 
-        let hc_replica = node.lazy_load_replica(&self.replica_dir);
-        panic!("TODO: Lazy load the peer's replica and check block's validity.");
+        /*
+         * TODO
+         * Before attempting insert into hashchain, play the actions
+         * against past actions to determine if actions are
+         * valid (and validate integrity of block's signatures, etc.).
+         */
+
+        let ref hc_replica = node.lazy_load_replica(&self.replica_dir);
+        match hc_replica.read().unwrap()
+                .is_block_eligible_for_append(sigreq.block) {
+            Ok(_) => {
+                panic!("TODO: Send signature of block header.")
+            },
+            Err(AppendErr::BlockAlreadyInChain) =>
+                panic!("TODO: Handle case where block is already in replica; \
+                        (should just ignore and make a log entry)."),
+            Err(AppendErr::MissingBlocksSince(_)) =>
+                panic!("TODO: Handle case where we are missing replica blocks."),
+            Err(AppendErr::BlockParentAlreadyClaimed) =>
+                panic!("TODO: Handle case where block parent is already claimed."),
+            Err(AppendErr::ChainStateCorrupted) =>
+                panic!("TODO: Handle corrupted chain state.")
+        };
+        Ok(())
     }
 
     pub fn handle_peerreq(&mut self,
