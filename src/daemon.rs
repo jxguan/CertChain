@@ -102,6 +102,9 @@ pub fn run(config: CertChainConfig) -> () {
                 },
                 NetPayload::SigReq(sigreq) => {
                     fsm.push_state(FSMState::HandleSigReq(sigreq));
+                },
+                NetPayload::SigResp(sigresp) => {
+                    fsm.push_state(FSMState::HandleSigResp(sigresp));
                 }
             }
         }
@@ -157,11 +160,14 @@ pub fn run(config: CertChainConfig) -> () {
                 },
                 FSMState::HandleSigReq(sigreq) => {
                     match node_table.write().unwrap()
-                            .handle_sigreq(sigreq, fsm.clone()) {
+                            .handle_sigreq(sigreq, fsm.clone(), &secret_key) {
                         Ok(_) => info!("FSM: handled sigreq."),
                         Err(err) => warn!("FSM: unable to handle sigreq: {}",
                                           err)
                     }
+                },
+                FSMState::HandleSigResp(sigresp) => {
+                    panic!("TODO: Handle signature response.");
                 },
                 FSMState::QueueNewBlock(actions) => {
                     let ref mut hashchain = *hashchain.write().unwrap();

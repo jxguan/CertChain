@@ -81,7 +81,7 @@ impl Hashchain {
 
     /// Determines if the provided block can be appended to the hashchain.
     pub fn is_block_eligible_for_append(
-            &self, block: Block) -> Result<(), AppendErr> {
+            &self, block: &Block) -> Result<(), AppendErr> {
 
         // Is this block already present in the chain?
         if self.chain.contains_key(&block.header.hash()) {

@@ -45,6 +45,7 @@ pub enum NetPayload {
     IdentResp(IdentityResponse),
     PeerReq(PeerRequest),
     SigReq(SignatureRequest),
+    SigResp(SignatureResponse),
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -67,6 +68,15 @@ pub struct SignatureRequest {
     pub from_signature: RecovSignature,
 }
 
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+pub struct SignatureResponse {
+    pub nonce: u64,
+    pub to_inst_addr: InstAddress,
+    pub from_inst_addr: InstAddress,
+    pub block_header_hash: DoubleSha256Hash,
+    pub block_header_hash_signature: RecovSignature,
+    pub from_signature: RecovSignature,
+}
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
 pub struct PeerRequest {
@@ -399,8 +409,10 @@ impl NetNodeTable {
         node.send(NetPayload::SigReq(sigreq))
     }
 
-    pub fn handle_sigreq(&mut self, sigreq: SignatureRequest,
-                         fsm: Arc<RwLock<FSM>>)
+    pub fn handle_sigreq(&mut self,
+                         sigreq: SignatureRequest,
+                         fsm: Arc<RwLock<FSM>>,
+                         our_secret_key: &SecretKey)
             -> std::io::Result<()> {
 
         // First, determine if the contents of this request are valid.
@@ -469,9 +481,14 @@ impl NetNodeTable {
 
         let ref hc_replica = node.lazy_load_replica(&self.replica_dir);
         match hc_replica.read().unwrap()
-                .is_block_eligible_for_append(sigreq.block) {
+                .is_block_eligible_for_append(&sigreq.block) {
             Ok(_) => {
-                panic!("TODO: Send signature of block header.")
+                info!("Signing block {} as requested by {} and sending over \
+                      network.", &sigreq.block.header.hash(), node.inst_addr);
+                let sigresp = SignatureResponse::new(
+                    sigreq.nonce, node.inst_addr, self.our_inst_addr,
+                    sigreq.block.header.hash(), &our_secret_key);
+                return node.send(NetPayload::SigResp(sigresp))
             },
             Err(AppendErr::BlockAlreadyInChain) =>
                 panic!("TODO: Handle case where block is already in replica; \
@@ -483,7 +500,6 @@ impl NetNodeTable {
             Err(AppendErr::ChainStateCorrupted) =>
                 panic!("TODO: Handle corrupted chain state.")
         };
-        Ok(())
     }
 
     pub fn handle_peerreq(&mut self,
@@ -732,6 +748,34 @@ impl SignatureRequest {
             &format!("SIGREQ:{}", self.nonce).as_bytes()[..]);
         self.from_signature.check_validity(&expected_msg,
                                            &self.block.header.author)
+    }
+}
+
+impl SignatureResponse {
+    fn new(request_nonce: u64,
+           to_inst_addr: InstAddress,
+           our_inst_addr: InstAddress,
+           block_header_hash: DoubleSha256Hash,
+           our_secret_key: &SecretKey) -> SignatureResponse {
+        let block_sig = RecovSignature::sign(&block_header_hash, &our_secret_key);
+        let resp_sig_hash = format!("SIGRESP:{},{},{},{},{}",
+                request_nonce, to_inst_addr,
+                our_inst_addr, block_header_hash, block_sig);
+        SignatureResponse {
+            nonce: request_nonce,
+            to_inst_addr: to_inst_addr,
+            from_inst_addr: our_inst_addr,
+            block_header_hash: block_header_hash,
+            block_header_hash_signature: block_sig,
+            from_signature: RecovSignature::sign(
+                &DoubleSha256Hash::hash(&resp_sig_hash.as_bytes()[..]),
+                &our_secret_key)
+        }
+    }
+
+    fn check_validity(&self, sigreq: &SignatureRequest)
+            -> Result<(), ValidityErr> {
+        panic!("TODO: Implement check_validity for SignatureResponse.");
     }
 }
 

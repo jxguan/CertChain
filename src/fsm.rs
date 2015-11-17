@@ -1,6 +1,6 @@
 use std::collections::{LinkedList};
 use network::{IdentityRequest, IdentityResponse, PeerRequest,
-              SignatureRequest};
+              SignatureRequest, SignatureResponse};
 use address::InstAddress;
 use hashchain::Action;
 
@@ -16,6 +16,7 @@ pub enum FSMState {
     ApprovePeerRequest(InstAddress),
     QueueNewBlock(Vec<Action>),
     HandleSigReq(SignatureRequest),
+    HandleSigResp(SignatureResponse),
     SyncNodeTableToDisk,
     SyncHashchainToDisk
 }
