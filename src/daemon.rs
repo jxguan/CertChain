@@ -198,7 +198,7 @@ pub fn run(config: CertChainConfig) -> () {
                     // we want to recover our own chain.
                     // TODO: Keep this in mind.
                     let ref mut node_table = *node_table.write().unwrap();
-                    match node_table.handle_block_manifest(mf) {
+                    match node_table.handle_block_manifest(mf, fsm.clone()) {
                         Ok(_) => info!("FSM: handled block manifest."),
                         Err(err) => warn!("FSM: unable to handle block \
                                            manifeset: {}", err)
@@ -219,6 +219,10 @@ pub fn run(config: CertChainConfig) -> () {
                     serde_json::to_writer_pretty(&mut writer,
                                                  &hashchain).unwrap();
                     info!("FSM: sync'ed hashchain to disk.");
+                },
+                FSMState::SyncReplicaToDisk(inst_addr) => {
+                    let ref node_table = *node_table.read().unwrap();
+                    node_table.write_replica_to_disk(&inst_addr);
                 }
             },
             None => {

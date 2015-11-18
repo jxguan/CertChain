@@ -201,6 +201,7 @@ impl Encodable for NetNode {
 }
 
 impl NetNodeTable {
+
     pub fn new(config: &CertChainConfig) -> NetNodeTable {
         let inst_pubkey = key::compressed_public_key_from_string(
                 &config.compressed_public_key).unwrap();
@@ -641,7 +642,8 @@ impl NetNodeTable {
     /// we just care that 1) the block is authored by one of our peers,
     /// and 2) that the block is valid and has not been manipulated.
     pub fn handle_block_manifest(&mut self,
-                                 mf: BlockManifest) -> std::io::Result<()> {
+                                 mf: BlockManifest,
+                                 fsm: Arc<RwLock<FSM>>) -> std::io::Result<()> {
         // Ensure that we have confirmed the authoring node's
         // identity.
         if !self.is_confirmed_node(&mf.block.header.author) {
@@ -665,7 +667,10 @@ impl NetNodeTable {
                 match res {
                     Ok(_) => {
                         hc_replica.write().unwrap().append_block(mf.block);
-                        panic!("TODO: Sync replica to disk.");
+                        let ref mut fsm = *fsm.write().unwrap();
+                        fsm.push_state(
+                            FSMState::SyncReplicaToDisk(node.inst_addr));
+                        Ok(())
                     },
                     Err(AppendErr::MissingBlocksSince(_)) =>
                         panic!("TODO: Peer's replica is missing blocks; \
@@ -710,6 +715,21 @@ impl NetNodeTable {
                 p.ident_state == IdentityState::Confirmed
             }
             None => false
+        }
+    }
+
+    pub fn write_replica_to_disk(&self, node_addr: &InstAddress)
+            -> std::io::Result<()> {
+        let node_map = self.node_map.read().unwrap();
+        match node_map.get(node_addr) {
+            Some(node) => {
+                node.write_replica_to_disk(&self.replica_dir);
+                Ok(())
+            },
+            None => Err(io::Error::new(io::ErrorKind::Other,
+                    format!("Node {} is not registered, \
+                            can't write replica to disk.",
+                    node_addr))),
         }
     }
 }
@@ -772,6 +792,13 @@ impl NetNode {
         };
         self.hc_replica = Some(hc_replica.clone());
         hc_replica
+    }
+
+    fn write_replica_to_disk(&self, replica_dir: &String) {
+        let replica_path = format!("{}/{}.dat", replica_dir, self.inst_addr);
+        let mut writer = BufWriter::new(File::create(&replica_path).unwrap());
+        let ref replica = *self.hc_replica.as_ref().unwrap().read().unwrap();
+        serde_json::to_writer_pretty(&mut writer, replica).unwrap();
     }
 
     pub fn to_disk(&self) -> OnDiskNetNode {

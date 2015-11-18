@@ -147,10 +147,17 @@ impl Hashchain {
                 let block_header_hash = block.header.hash();
                 self.chain.insert(block_header_hash.clone(),
                     ChainNode::new(block.clone()));
-                if self.head_node == None {
-                    self.head_node = Some(block_header_hash.clone());
-                }
                 self.tail_node = Some(block_header_hash.clone());
+                if self.head_node == None {
+                    // If this is the first block, adjust the chain head.
+                    self.head_node = Some(block_header_hash.clone());
+                } else {
+                    // Otherwise, get the parent and set its next_block;
+                    // we can unwrap here because we know parent exists.
+                    let ref mut parent = self.chain.get_mut(
+                        &block.header.parent).unwrap();
+                    parent.next_block = Some(block_header_hash.clone());
+                }
                 info!("Block successfully appended to chain.");
             },
             Err(err) => {

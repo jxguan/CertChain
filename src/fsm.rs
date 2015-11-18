@@ -21,7 +21,8 @@ pub enum FSMState {
     AddSignatureToProcessingBlock(InstAddress, RecovSignature),
     HandleBlockManifest(BlockManifest),
     SyncNodeTableToDisk,
-    SyncHashchainToDisk
+    SyncHashchainToDisk,
+    SyncReplicaToDisk(InstAddress),
 }
 
 impl FSM {
