@@ -102,13 +102,30 @@ impl Hashchain {
             } else {
                 Err(AppendErr::ChainStateCorrupted)
             }
-            // TODO: Move the following lines to the actual append method.
-            //let chain_node = ChainNode::new(block);
-            //self.head_node = Some(chain_node.block.header.hash());
-            //self.tail_node = Some(chain_node.block.header.hash());
-            //self.chain.insert(chain_node.block.header.hash(), chain_node);
         } else {
             panic!("TODO: Handle non-genesis block.");
+        }
+    }
+
+    fn append_block(&mut self, block: Block) {
+
+        // Make absolutely sure that this block is eligible
+        // to be appended to the chain.
+        match self.is_block_eligible_for_append(&block) {
+            Ok(_) => {
+                let block_header_hash = block.header.hash();
+                self.chain.insert(block_header_hash.clone(),
+                    ChainNode::new(block.clone()));
+                if self.head_node == None {
+                    self.head_node = Some(block_header_hash.clone());
+                }
+                self.tail_node = Some(block_header_hash.clone());
+                info!("Block successfully appended to chain.");
+            },
+            Err(err) => {
+                panic!("Failed to append block; this should \
+                        never happen; reason is: {:?}", err);
+            }
         }
     }
 
@@ -181,70 +198,53 @@ impl Hashchain {
                          node_table: Arc<RwLock<NetNodeTable>>,
                          our_secret_key: &SecretKey) -> bool {
 
-        let mut processed_block = false;
-        match self.processing_block {
-            None => {
-                // Start processing the next queued block if one exists,
-                // otherwise, simply return.
-                let block_to_process = match self.queued_blocks.pop_front() {
-                    Some(b) => {
-                        info!("Elevating block {} from queue for processing.",
-                              b.header.hash());
-                        b
-                    },
-                    None => {
-                        debug!("HCHAIN: No queued blocks; nothing to process.");
-                        return false
-                    }
-                };
-
-                // Broadcast signature requests to all signoff peers.
-                for peer_addr in &block_to_process.signoff_peers {
-                    let sigreq = SignatureRequest::new(peer_addr.clone(),
-                            block_to_process.clone(), &our_secret_key);
-                    match node_table.write().unwrap().send_sigreq(sigreq) {
-                        Ok(()) => info!("Siqreq sent to {}", peer_addr),
-                        Err(_) => {
-                            panic!("TODO: What to do if sigreq can't be sent
-                                    to a peer? - need to set flag somewhere
-                                    so admin can remove peer if necessary.");
-                        }
-                    }
+        if self.processing_block.is_none() {
+            // Start processing the next queued block if one exists,
+            // otherwise, simply return.
+            let block_to_process = match self.queued_blocks.pop_front() {
+                Some(b) => {
+                    info!("Elevating block {} from queue for processing.",
+                          b.header.hash());
+                    b
+                },
+                None => {
+                    debug!("HCHAIN: No queued blocks; nothing to process.");
+                    return false
                 }
-                self.processing_block = Some(block_to_process);
+            };
 
-                // Hashchain state modified, sync to disk.
-                return true;
-            },
-            Some(ref block) => {
-                if block.has_all_required_signatures() {
-                    info!("HCHAIN: All required signatures for processing \
-                           block received; adding to chain...");
-                    match self.is_block_eligible_for_append(block) {
-                        Ok(_) => {
-                            self.chain.insert(block.header.hash(),
-                                ChainNode::new(block.clone()));
-                            info!("HCHAIN: Block successfully appended to chain.");
-                        },
-                        Err(err) => {
-                            panic!("HCHAIN: Failed to append block; this should
-                                    never happen; reason is: {:?}", err);
-                        }
+            // Broadcast signature requests to all signoff peers.
+            for peer_addr in &block_to_process.signoff_peers {
+                let sigreq = SignatureRequest::new(peer_addr.clone(),
+                        block_to_process.clone(), &our_secret_key);
+                match node_table.write().unwrap().send_sigreq(sigreq) {
+                    Ok(()) => info!("Siqreq sent to {}", peer_addr),
+                    Err(_) => {
+                        panic!("TODO: What to do if sigreq can't be sent
+                                to a peer? - need to set flag somewhere
+                                so admin can remove peer if necessary.");
                     }
-                    processed_block = true;
-                } else {
-                    info!("HCHAIN: Block is not yet valid: {:?}",
-                          block.signoff_signatures);
                 }
             }
-        };
+            self.processing_block = Some(block_to_process);
 
-        // We do this here rather than within the match stmt because
-        // we cannot modify self.processing_block when it is borrowed.
-        if processed_block {
-            self.processing_block = None;
+            // Hashchain state modified, sync to disk.
+            return true;
+        } else {
+            if self.processing_block.as_ref().unwrap()
+                    .has_all_required_signatures() {
+                info!("HCHAIN: All required signatures for processing \
+                       block received; adding to chain...");
+                let block = self.processing_block.as_ref().unwrap().clone();
+                self.append_block(block);
+                self.processing_block = None;
+                return true;
+            } else {
+                info!("HCHAIN: Block is not yet valid: {:?}",
+                      self.processing_block.as_ref().unwrap().signoff_signatures);
+                return false;
+            }
         }
-        processed_block
     }
 
     /// Use this method to add a signature received from a peer to
