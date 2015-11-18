@@ -8,6 +8,7 @@ pub enum ValidityErr {
     ToHostNameDoesntMatchOurs,
     ToPortDoesntMatchOurs,
     FromInstAddrInvalid,
+    FromInstAddrDoesntMatchRequest,
     UnableToRecoverFromAddrPubkey,
     RecoveredFromAddrInvalid,
     RecoveredFromAddrDoesntMatch,
@@ -16,4 +17,5 @@ pub enum ValidityErr {
     NonceDoesntMatch,
     DoubleSha256HashExpected,
     RecovSignatureExpected,
+    SignedBlockHeaderHashDoesntMatchRequest,
 }

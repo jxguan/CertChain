@@ -3,6 +3,7 @@ use network::{IdentityRequest, IdentityResponse, PeerRequest,
               SignatureRequest, SignatureResponse};
 use address::InstAddress;
 use hashchain::Action;
+use signature::RecovSignature;
 
 pub struct FSM {
     states: LinkedList<FSMState>,
@@ -17,6 +18,7 @@ pub enum FSMState {
     QueueNewBlock(Vec<Action>),
     HandleSigReq(SignatureRequest),
     HandleSigResp(SignatureResponse),
+    AddSignatureToProcessingBlock(InstAddress, RecovSignature),
     SyncNodeTableToDisk,
     SyncHashchainToDisk
 }

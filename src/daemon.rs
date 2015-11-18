@@ -167,13 +167,25 @@ pub fn run(config: CertChainConfig) -> () {
                     }
                 },
                 FSMState::HandleSigResp(sigresp) => {
-                    panic!("TODO: Handle signature response.");
+                    match node_table.write().unwrap()
+                            .handle_sigresp(sigresp, fsm.clone()) {
+                        Ok(_) => info!("FSM: handled sigresp."),
+                        Err(err) => warn!("FSM: unable to handle sigresp: {}",
+                                          err)
+                    }
                 },
                 FSMState::QueueNewBlock(actions) => {
                     let ref mut hashchain = *hashchain.write().unwrap();
                     hashchain.queue_new_block(
                         node_table.read().unwrap().get_our_inst_addr(),
                         actions, &secret_key);
+                    info!("FSM: queued new block.");
+                },
+                FSMState::AddSignatureToProcessingBlock(peer_addr, peer_sig) => {
+                    let ref mut hashchain = *hashchain.write().unwrap();
+                    hashchain.submit_processing_block_signature(
+                        peer_addr, peer_sig);
+                    info!("FSM: added signature to processing block.");
                 }
                 FSMState::SyncNodeTableToDisk => {
                     let ref node_table = *node_table.read().unwrap();

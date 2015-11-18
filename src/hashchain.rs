@@ -1,7 +1,7 @@
 use hash::DoubleSha256Hash;
 use address::InstAddress;
 use serde::{ser, de};
-use std::collections::{HashSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
@@ -32,6 +32,8 @@ pub struct ChainNode {
 pub struct Block {
     pub header: BlockHeader,
     actions: Vec<Action>,
+    signoff_peers: BTreeSet<InstAddress>,
+    signoff_signatures: HashMap<InstAddress, RecovSignature>,
     author_signature: RecovSignature
 }
 
@@ -40,6 +42,7 @@ pub struct BlockHeader {
     timestamp: i64,
     pub parent: DoubleSha256Hash,
     pub author: InstAddress,
+    signoff_peers_hash: DoubleSha256Hash,
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -63,6 +66,7 @@ pub struct DocumentSummary {
     rev_timestamp: Option<i64>,
 }
 
+#[derive(Debug)]
 pub enum AppendErr {
     MissingBlocksSince(DoubleSha256Hash),
     BlockAlreadyInChain,
@@ -116,21 +120,22 @@ impl Hashchain {
                            our_inst_addr: InstAddress,
                            actions: Vec<Action>,
                            our_secret_key: &SecretKey) {
+        let signoff_peers = self.get_signoff_peers(&actions);
         self.queued_blocks.push_back(
             Block::new(our_inst_addr,
                        self.tail_node,
+                       signoff_peers,
                        actions,
                        &our_secret_key));
     }
 
-    /// Determines the peers whose signatures are required for new_block
-    /// to be added to the hashchain. This includes existing peers and peers
-    /// being added in new_block, and excludes peers being removed in
-    /// new_block.
-    fn get_signoff_peers(&self, new_block: &Block) -> HashSet<InstAddress> {
+    /// Determines the peers whose signatures are required for a set of block
+    /// actions to be added to the hashchain. This includes existing peers and peers
+    /// being added in 'actions', and excludes peers being removed in 'actions'.
+    fn get_signoff_peers(&self, actions: &Vec<Action>) -> BTreeSet<InstAddress> {
 
         // Existing peers must sign off on new_block.
-        let mut peers = HashSet::new();
+        let mut peers = BTreeSet::new();
         for (_, chain_node) in self.chain.iter() {
             for action in chain_node.block.actions.iter() {
                 match *action {
@@ -148,7 +153,7 @@ impl Hashchain {
 
         // New peers must sign off on new block, but
         // removed peers do not.
-        for action in new_block.actions.iter() {
+        for action in actions.iter() {
             match *action {
                 Action::AddPeer(inst_addr, _, _) => {
                     peers.insert(inst_addr);
@@ -194,10 +199,8 @@ impl Hashchain {
                 };
 
                 // Broadcast signature requests to all signoff peers.
-                let signoff_peers = self.get_signoff_peers(
-                        &block_to_process);
-                for peer_addr in signoff_peers {
-                    let sigreq = SignatureRequest::new(peer_addr,
+                for peer_addr in &block_to_process.signoff_peers {
+                    let sigreq = SignatureRequest::new(peer_addr.clone(),
                             block_to_process.clone(), &our_secret_key);
                     match node_table.write().unwrap().send_sigreq(sigreq) {
                         Ok(()) => info!("Siqreq sent to {}", peer_addr),
@@ -214,13 +217,24 @@ impl Hashchain {
                 return true;
             },
             Some(ref block) => {
-                if block.is_valid() {
-                    info!("HCHAIN: Finalizing queued block.");
-                    self.chain.insert(block.header.hash(),
-                        ChainNode::new(block.clone()));
+                if block.has_all_required_signatures() {
+                    info!("HCHAIN: All required signatures for processing \
+                           block received; adding to chain...");
+                    match self.is_block_eligible_for_append(block) {
+                        Ok(_) => {
+                            self.chain.insert(block.header.hash(),
+                                ChainNode::new(block.clone()));
+                            info!("HCHAIN: Block successfully appended to chain.");
+                        },
+                        Err(err) => {
+                            panic!("HCHAIN: Failed to append block; this should
+                                    never happen; reason is: {:?}", err);
+                        }
+                    }
                     processed_block = true;
                 } else {
-                    info!("HCHAIN: Block is not yet valid.");
+                    info!("HCHAIN: Block is not yet valid: {:?}",
+                          block.signoff_signatures);
                 }
             }
         };
@@ -231,6 +245,36 @@ impl Hashchain {
             self.processing_block = None;
         }
         processed_block
+    }
+
+    /// Use this method to add a signature received from a peer to
+    /// the block being processed.
+    pub fn submit_processing_block_signature(&mut self,
+                                             sig_author: InstAddress,
+                                             signature: RecovSignature) {
+        // If no block is being processed, don't continue.
+        if self.processing_block.is_none() {
+            warn!("Ignoring submitted peer signature for block; no \
+                   block is being processed right now. It's possible
+                   that the block was aborted.");
+            return
+        }
+
+        // Before attaching the signature to the block,
+        // ensure that the signature is valid for the block
+        // being processed and the provided author's address.
+        let ref mut block = self.processing_block.as_mut().unwrap();
+        match signature.check_validity(
+                &block.header.hash(),
+                &sig_author) {
+            Ok(_) => {
+                block.signoff_signatures
+                        .insert(sig_author, signature);
+            }, Err(_) => {
+                panic!("When submitting a block signature, the sig was found
+                        to be invalid. Understand why this occurred.");
+            }
+        }
     }
 
     pub fn get_certifications(&self,
@@ -274,13 +318,16 @@ impl ChainNode {
 impl Block {
     fn new(our_inst_addr: InstAddress,
            parent: Option<DoubleSha256Hash>,
+           signoff_peers: BTreeSet<InstAddress>,
            actions: Vec<Action>,
            our_secret_key: &SecretKey) -> Block {
-        let header = BlockHeader::new(parent, our_inst_addr);
+        let header = BlockHeader::new(parent, our_inst_addr, &signoff_peers);
         let header_hash = header.hash();
         Block {
             header: header,
             actions: actions,
+            signoff_peers: signoff_peers,
+            signoff_signatures: HashMap::new(),
             author_signature: RecovSignature::sign(
                 &header_hash, &our_secret_key)
         }
@@ -292,23 +339,50 @@ impl Block {
     }
 
 
-    /// TODO: Fill this in.
-    fn is_valid(&self) -> bool {
-        false
+    fn has_all_required_signatures(&self) -> bool {
+        for peer_addr in &self.signoff_peers {
+            match self.signoff_signatures.get(&peer_addr) {
+                None => return false,
+                Some(peer_sig) => {
+                    // If peer's signature is invalid, panic; this
+                    // should never occur.
+                    if peer_sig.check_validity(
+                        &self.header.hash(), &peer_addr).is_err() {
+                        panic!("Peer's signature is invalid during \
+                                required signature check; this should
+                                never happen, understand why.");
+                    }
+                }
+            }
+        }
+        true
     }
 }
 
 impl BlockHeader {
     pub fn new(parent: Option<DoubleSha256Hash>,
-               our_inst_addr: InstAddress) -> BlockHeader {
+               our_inst_addr: InstAddress,
+               signoff_peers: &BTreeSet<InstAddress>) -> BlockHeader {
         let parent_hash = match parent {
             None => DoubleSha256Hash::genesis_block_parent_hash(),
             Some(h) => h,
         };
+
+        // Create a string containing each peer's address;
+        // because we are using BTreeSet, iteration will occur
+        // lexicographically, which is important because we want
+        // client-side JS to be able to easily reconstruct this hash.
+        let mut to_hash = String::from("|");
+        for peer_addr in signoff_peers.iter() {
+            to_hash = to_hash + &peer_addr.to_base58();
+        }
+        to_hash = to_hash + "|";
+
         BlockHeader {
             timestamp: time::get_time().sec,
             parent: parent_hash,
             author: our_inst_addr,
+            signoff_peers_hash: DoubleSha256Hash::hash(&to_hash.as_bytes()[..])
         }
     }
 

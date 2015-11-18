@@ -132,6 +132,7 @@ struct NetNode {
     our_peering_approval: PeeringApproval,
     identreq: Option<IdentityRequest>,
     identresp: Option<IdentityResponse>,
+    awaiting_sigreq: Option<SignatureRequest>,
     hc_replica: Option<Arc<RwLock<Hashchain>>>,
 }
 
@@ -406,7 +407,13 @@ impl NetNodeTable {
         let mut node_map = self.node_map.write().unwrap();
         let mut node = node_map.get_mut(&sigreq.to_inst_addr).unwrap();
 
-        // Third, create a request and send to the node.
+        // Third, create a request and send to the node. We store the
+        // sigreq on the node for later reference upon receipt of the
+        // signature response. Note that we don't care about overwrites here;
+        // only one signature request is ever valid for a given node due
+        // to the fact that we only process (issue signature requests)
+        // for one block at a time.
+        node.awaiting_sigreq = Some(sigreq.clone());
         node.send(NetPayload::SigReq(sigreq))
     }
 
@@ -501,6 +508,49 @@ impl NetNodeTable {
             Err(AppendErr::ChainStateCorrupted) =>
                 panic!("TODO: Handle corrupted chain state.")
         };
+    }
+
+    pub fn handle_sigresp(&mut self,
+                          sigresp: SignatureResponse,
+                          fsm: Arc<RwLock<FSM>>)
+            -> std::io::Result<()> {
+
+        // Ensure that we have confirmed the authoring node's
+        // identity.
+        if !self.is_confirmed_node(&sigresp.from_inst_addr) {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                format!("Ignoring sigresp from {}; their identity
+                         has not been confirmed.",
+                         &sigresp.from_inst_addr)));
+        }
+
+        // Get the node (we can unwrap due to above check);
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&sigresp.from_inst_addr).unwrap();
+
+        // Next, get the most recent sigreq we've sent to this node.
+        match node.awaiting_sigreq {
+            Some(ref sigreq) => {
+                // Check the validity of the response against the sigreq.
+                if let Err(err) = sigresp.check_validity(sigreq,
+                                                        &self.our_inst_addr) {
+                    panic!("TODO: Log invalid sigresp: {:?}", err)
+                }
+            },
+            None => {
+                warn!("Ignoring sigresp from {}; we never \
+                       sent out a sigreq for this institution.",
+                       &sigresp.from_inst_addr);
+                return Ok(())
+            }
+        };
+
+        node.awaiting_sigreq = None;
+        let ref mut fsm = *fsm.write().unwrap();
+        fsm.push_state(FSMState::AddSignatureToProcessingBlock(
+                sigresp.from_inst_addr, sigresp.block_header_hash_signature));
+        fsm.push_state(FSMState::SyncHashchainToDisk);
+        Ok(())
     }
 
     pub fn handle_peerreq(&mut self,
@@ -602,6 +652,7 @@ impl NetNode {
             our_peering_approval: our_peering_approval,
             identreq: None,
             identresp: None,
+            awaiting_sigreq: None,
             hc_replica: None,
         }
     }
@@ -774,9 +825,39 @@ impl SignatureResponse {
         }
     }
 
-    fn check_validity(&self, sigreq: &SignatureRequest)
-            -> Result<(), ValidityErr> {
-        panic!("TODO: Implement check_validity for SignatureResponse.");
+    fn check_validity(&self, sigreq: &SignatureRequest,
+                      our_inst_addr: &InstAddress) -> Result<(), ValidityErr> {
+        // Check individual fields.
+        if self.nonce != sigreq.nonce {
+            return Err(ValidityErr::NonceDoesntMatch);
+        }
+        if let Err(_) = self.to_inst_addr.check_validity() {
+            return Err(ValidityErr::ToInstAddrInvalid);
+        }
+        if self.to_inst_addr != *our_inst_addr {
+            return Err(ValidityErr::ToInstAddrDoesntMatchOurs);
+        }
+        if let Err(_) = self.from_inst_addr.check_validity() {
+            return Err(ValidityErr::FromInstAddrInvalid);
+        }
+        if self.from_inst_addr != sigreq.to_inst_addr {
+            return Err(ValidityErr::FromInstAddrDoesntMatchRequest);
+        }
+        if self.block_header_hash != sigreq.block.header.hash() {
+            return Err(ValidityErr::SignedBlockHeaderHashDoesntMatchRequest);
+        }
+
+        // Check validity of message signature.
+        let expected_msg = &DoubleSha256Hash::hash(&format!(
+                "SIGRESP:{},{},{},{},{}", self.nonce, self.to_inst_addr,
+                self.from_inst_addr, self.block_header_hash,
+                self.block_header_hash_signature).as_bytes()[..]);
+        try!(self.from_signature.check_validity(&expected_msg,
+                                                &self.from_inst_addr));
+
+        // Check validity of block header signature.
+        self.block_header_hash_signature.check_validity(&self.block_header_hash,
+                                           &self.from_inst_addr)
     }
 }
 
