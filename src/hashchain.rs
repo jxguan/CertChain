@@ -94,16 +94,47 @@ impl Hashchain {
             return Err(AppendErr::BlockAlreadyInChain)
         }
 
+        // Is this the genesis block?
         if block.header.parent == DoubleSha256Hash::genesis_block_parent_hash() {
             if self.head_node == None
                 && self.tail_node == None
                 && self.chain.len() == 0 {
-                Ok(())
+                return Ok(())
             } else {
-                Err(AppendErr::ChainStateCorrupted)
+                return Err(AppendErr::ChainStateCorrupted)
             }
-        } else {
-            panic!("TODO: Handle non-genesis block.");
+        }
+
+        match self.tail_node {
+            None => {
+                // If we have nothing in the replica chain and the peer
+                // is sending us a non-genesis block, we have to sync
+                // our replica up starting from the genesis hash (000000...).
+                return Err(AppendErr::MissingBlocksSince(
+                        DoubleSha256Hash::genesis_block_parent_hash()))
+            },
+            Some(tail_hash) => {
+                match self.chain.get(&block.header.parent) {
+                    None => {
+                        // If we don't have the block's parent, we must
+                        // be missing blocks issued since our recorded tail.
+                        return Err(AppendErr::MissingBlocksSince(tail_hash));
+                    },
+                    Some(parent_block_node) => {
+                        // Is the parent already claimed?
+                        if parent_block_node.next_block.is_some() {
+                            return Err(AppendErr::BlockParentAlreadyClaimed);
+                        }
+                        // If the parent's not already claimed, it should
+                        // be the tail of our append-only hashchain. Do a
+                        // sanity check to be sure.
+                        if tail_hash != parent_block_node.block.header.hash() {
+                            return Err(AppendErr::ChainStateCorrupted)
+                        }
+                        return Ok(())
+                    }
+                }
+            }
         }
     }
 
