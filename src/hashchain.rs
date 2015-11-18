@@ -125,7 +125,7 @@ impl Hashchain {
                         if parent_block_node.next_block.is_some() {
                             return Err(AppendErr::BlockParentAlreadyClaimed);
                         }
-                        // If the parent's not already claimed, it should
+                        // If the parent is not already claimed, it should
                         // be the tail of our append-only hashchain. Do a
                         // sanity check to be sure.
                         if tail_hash != parent_block_node.block.header.hash() {
@@ -138,7 +138,7 @@ impl Hashchain {
         }
     }
 
-    fn append_block(&mut self, block: Block) {
+    pub fn append_block(&mut self, block: Block) {
 
         // Make absolutely sure that this block is eligible
         // to be appended to the chain.

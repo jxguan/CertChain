@@ -190,8 +190,19 @@ pub fn run(config: CertChainConfig) -> () {
                         peer_addr, peer_sig);
                     info!("FSM: added signature to processing block.");
                 },
-                FSMState::HandleBlockManifest(_) => {
-                    panic!("TOOO: Received block manifest, handle it.");
+                FSMState::HandleBlockManifest(mf) => {
+                    // At this time, we are only concerned about block
+                    // manifests for other nodes, not ourself. However,
+                    // there is a legitimate use case for handling
+                    // block manifests containing our own blocks if
+                    // we want to recover our own chain.
+                    // TODO: Keep this in mind.
+                    let ref mut node_table = *node_table.write().unwrap();
+                    match node_table.handle_block_manifest(mf) {
+                        Ok(_) => info!("FSM: handled block manifest."),
+                        Err(err) => warn!("FSM: unable to handle block \
+                                           manifeset: {}", err)
+                    }
                 },
                 FSMState::SyncNodeTableToDisk => {
                     let ref node_table = *node_table.read().unwrap();

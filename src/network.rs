@@ -637,6 +637,61 @@ impl NetNodeTable {
         }
     }
 
+    /// When handling block manifests, we don't care who the sender is,
+    /// we just care that 1) the block is authored by one of our peers,
+    /// and 2) that the block is valid and has not been manipulated.
+    pub fn handle_block_manifest(&mut self,
+                                 mf: BlockManifest) -> std::io::Result<()> {
+        // Ensure that we have confirmed the authoring node's
+        // identity.
+        if !self.is_confirmed_node(&mf.block.header.author) {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                format!("Ignoring block manifest with block authored by \
+                         {}; their identity has not been confirmed.",
+                         &mf.block.header.author)));
+        }
+
+        // Get the node (we can unwrap due to above check).
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&mf.block.header.author).unwrap();
+
+        // Ensure that peering has been approved with the authoring
+        // institution.
+        let ref hc_replica = node.lazy_load_replica(&self.replica_dir);
+        match node.our_peering_approval {
+            PeeringApproval::Approved => {
+                let res = hc_replica.read().unwrap()
+                        .is_block_eligible_for_append(&mf.block);
+                match res {
+                    Ok(_) => {
+                        hc_replica.write().unwrap().append_block(mf.block);
+                        panic!("TODO: Sync replica to disk.");
+                    },
+                    Err(AppendErr::MissingBlocksSince(_)) =>
+                        panic!("TODO: Peer's replica is missing blocks; \
+                                sync up with them."),
+                    Err(AppendErr::BlockAlreadyInChain) => {
+                        info!("Ignoring block in manifest; already in chain.");
+                        Ok(())
+                    },
+                    Err(AppendErr::BlockParentAlreadyClaimed) => {
+                        panic!("TODO: Peer has equivocated; set flag and \
+                                stop processing replica updates.");
+                    },
+                    Err(AppendErr::ChainStateCorrupted) =>
+                        panic!("TODO: Peer's replica is corrupted; determine \
+                                 why.")
+                }
+            },
+            _ => {
+                info!("Ignoring block manifest with block authored by \
+                       {}; we have not approved a peering relationship \
+                       with them.", &mf.block.header.author);
+                Ok(())
+            }
+        }
+    }
+
     pub fn end_peering(&mut self, inst_addr: InstAddress) -> std::io::Result<()> {
 
         // Get the peer.
