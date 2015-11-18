@@ -5,7 +5,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
-use network::{NetNodeTable, SignatureRequest};
+use network::{NetNodeTable, SignatureRequest, BlockManifest};
 use signature::RecovSignature;
 use secp256k1::key::SecretKey;
 use common::ValidityErr;
@@ -265,10 +265,26 @@ impl Hashchain {
             if self.processing_block.as_ref().unwrap()
                     .has_all_required_signatures() {
                 info!("HCHAIN: All required signatures for processing \
-                       block received; adding to chain...");
+                       block received; adding to chain and broadcasting.");
                 let block = self.processing_block.as_ref().unwrap().clone();
-                self.append_block(block);
+                self.append_block(block.clone());
                 self.processing_block = None;
+
+                // Broadcast the signed block to all signoff peers so
+                // they can include it in their replicas.
+                for peer_addr in &block.signoff_peers {
+                    let mf = BlockManifest::new(block.clone());
+                    match node_table.write().unwrap()
+                            .send_block_manifest(peer_addr, mf.clone()) {
+                        Ok(()) => info!("Block manifest sent to {}", peer_addr),
+                        Err(_) => panic!("TODO: Unable to send block manifest \
+                                          to peer; a flag/retry interval needs \
+                                          to be set. This is not critical \
+                                          because next signing will involve \
+                                          sync, but should be done anyway.")
+                    }
+                }
+
                 return true;
             } else {
                 info!("HCHAIN: Block is not yet valid: {:?}",

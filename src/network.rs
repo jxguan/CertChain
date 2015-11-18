@@ -46,6 +46,7 @@ pub enum NetPayload {
     PeerReq(PeerRequest),
     SigReq(SignatureRequest),
     SigResp(SignatureResponse),
+    BlockManifest(BlockManifest),
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -76,6 +77,11 @@ pub struct SignatureResponse {
     pub block_header_hash: DoubleSha256Hash,
     pub block_header_hash_signature: RecovSignature,
     pub from_signature: RecovSignature,
+}
+
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+pub struct BlockManifest {
+    pub block: Block
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -617,6 +623,20 @@ impl NetNodeTable {
         Ok(())
     }
 
+    pub fn send_block_manifest(&mut self,
+                               inst_addr: &InstAddress,
+                               manifest: BlockManifest) -> std::io::Result<()> {
+        let mut node_map = self.node_map.write().unwrap();
+        match node_map.get_mut(inst_addr) {
+            Some(node) => {
+                node.send(NetPayload::BlockManifest(manifest))
+            },
+            None => Err(io::Error::new(io::ErrorKind::Other,
+                    format!("Node {} is not registered, can't send manifest.",
+                    inst_addr))),
+        }
+    }
+
     pub fn end_peering(&mut self, inst_addr: InstAddress) -> std::io::Result<()> {
 
         // Get the peer.
@@ -635,6 +655,20 @@ impl NetNodeTable {
                 p.ident_state == IdentityState::Confirmed
             }
             None => false
+        }
+    }
+}
+
+/*
+ * Unlike the other requests and respones, block manifests are
+ * intended to be disemminated broadly by anyone in support
+ * of efficient and public replication, so
+ * message signatures, nonces, and addresses are not required here.
+ */
+impl BlockManifest {
+    pub fn new(block: Block) -> BlockManifest {
+        BlockManifest {
+            block: block
         }
     }
 }

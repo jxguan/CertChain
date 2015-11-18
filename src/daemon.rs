@@ -105,6 +105,9 @@ pub fn run(config: CertChainConfig) -> () {
                 },
                 NetPayload::SigResp(sigresp) => {
                     fsm.push_state(FSMState::HandleSigResp(sigresp));
+                },
+                NetPayload::BlockManifest(manifest) => {
+                    fsm.push_state(FSMState::HandleBlockManifest(manifest));
                 }
             }
         }
@@ -186,7 +189,10 @@ pub fn run(config: CertChainConfig) -> () {
                     hashchain.submit_processing_block_signature(
                         peer_addr, peer_sig);
                     info!("FSM: added signature to processing block.");
-                }
+                },
+                FSMState::HandleBlockManifest(_) => {
+                    panic!("TOOO: Received block manifest, handle it.");
+                },
                 FSMState::SyncNodeTableToDisk => {
                     let ref node_table = *node_table.read().unwrap();
                     let mut writer = BufWriter::new(File::create(
@@ -194,7 +200,7 @@ pub fn run(config: CertChainConfig) -> () {
                     serde_json::to_writer_pretty(&mut writer,
                                                  &node_table.to_disk()).unwrap();
                     info!("FSM: sync'ed node table to disk.");
-                }
+                },
                 FSMState::SyncHashchainToDisk => {
                     let ref hashchain = *hashchain.read().unwrap();
                     let mut writer = BufWriter::new(File::create(
