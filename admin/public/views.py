@@ -6,6 +6,9 @@ from certchain.shared import create_rpc_url
 from collections import defaultdict
 import datetime
 
+import logging
+logger = logging.getLogger('certchain')
+
 # No login required for document viewer.
 # TODO: Handle
 #  - bad txn id (CertChain will return blank response)
@@ -13,7 +16,7 @@ import datetime
 def document(request, docid):
   try:
     resp = requests.get(create_rpc_url('/document/' + docid))
-    return render(request, 'public/document.html', {'doc' : resp.json()})
+    return render(request, 'public/document.html', {'doc' : resp.json()['contents']})
   except Exception as ex:
     messages.error(request, 'Unable to retrieve document at this time: ' + str(ex))
     return redirect(reverse('certchain:manage_certifications'))

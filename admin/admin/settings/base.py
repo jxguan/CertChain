@@ -76,3 +76,19 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 # MQUINN 09-19-2015 : Overriding the login url.
 LOGIN_URL = '/'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'certchain': {
+            'handlers': ['console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+        },
+    },
+}

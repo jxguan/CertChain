@@ -15,6 +15,7 @@ use std::io::{Write, BufWriter};
 use hashchain::{DocumentType, Action, Hashchain};
 use secp256k1::key::{SecretKey};
 use serde_json;
+use serde_json::Value;
 
 const RPC_LISTEN : &'static str = "0.0.0.0";
 
@@ -72,7 +73,8 @@ pub fn start(config: &CertChainConfig,
                 (hyper::Get, AbsolutePath(ref path))
                     if path.len() > 10
                         && &path[0..10] == "/document/" => {
-                    handle_document_req(res, &docs_dir, &path[10..]);
+                    handle_document_req(res, hashchain.clone(),
+                        &docs_dir, &path[10..]);
                 },
                 (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 13
@@ -242,6 +244,7 @@ fn handle_certifications_by_student_id_req(res: Response<Fresh>,
 }
 
 fn handle_document_req(res: Response<Fresh>,
+                       hashchain: Arc<RwLock<Hashchain>>,
                        docs_dir_path: &String,
                        doc_id_param: &str) {
     let file_path = format!("{}/{}.txt", docs_dir_path, doc_id_param);
@@ -256,7 +259,13 @@ fn handle_document_req(res: Response<Fresh>,
 
     let mut doc_text = String::new();
     doc_file.read_to_string(&mut doc_text).unwrap();
-    res.send(doc_text.as_bytes()).unwrap();
+    let doc_contents: Value = serde_json::from_str(&doc_text).unwrap();
+    let ref hashchain = *hashchain.read().unwrap();
+    let status_proof = hashchain.get_document_status_proof(
+            DoubleSha256Hash::from_string(doc_id_param).unwrap(),
+            doc_contents);
+    let json = serde_json::to_string_pretty(&status_proof).unwrap();
+    res.send(json.as_bytes()).unwrap();
 }
 
 fn end_peering(res: Response<Fresh>,

@@ -53,7 +53,8 @@ impl MerkleRoot for Vec<Transaction> {
     }
 }*/
 
-#[derive(RustcEncodable, RustcDecodable, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(RustcEncodable, RustcDecodable, Copy, Clone, Hash,
+         Eq, PartialEq, Ord, PartialOrd)]
 pub struct DoubleSha256Hash([u8; 32]);
 
 impl DoubleSha256Hash {

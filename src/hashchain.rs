@@ -1,7 +1,7 @@
 use hash::DoubleSha256Hash;
 use address::InstAddress;
 use serde::{ser, de};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, BTreeMap, HashMap};
 use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
@@ -10,6 +10,7 @@ use signature::RecovSignature;
 use secp256k1::key::SecretKey;
 use common::ValidityErr;
 use serde::ser::Serialize;
+use serde_json::Value;
 
 pub type DocumentId = DoubleSha256Hash;
 
@@ -18,8 +19,23 @@ pub struct Hashchain {
     chain: HashMap<DoubleSha256Hash, ChainNode>,
     head_node: Option<DoubleSha256Hash>,
     tail_node: Option<DoubleSha256Hash>,
+    merkle_tree: MerkleTree,
     processing_block: Option<Block>,
     queued_blocks: VecDeque<Block>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MerkleTree {
+    tree: BTreeMap<DocumentId, MerkleNode>
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MerkleNode {
+    document_id: DocumentId,
+    certified_ts: i64,
+    certified_block_hash: DoubleSha256Hash,
+    revoked_ts: i64,
+    revoked_block_hash: DoubleSha256Hash,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -74,14 +90,35 @@ pub enum AppendErr {
     ChainStateCorrupted,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DocumentStatusProof {
+    contents: Value,
+    most_recent_block_header: Option<BlockHeader>,
+    //merkle_node: MerkleNode,
+    //merkle_proof: MerkleProof,
+}
+
 impl Hashchain {
     pub fn new() -> Hashchain {
         Hashchain {
             chain: HashMap::new(),
             head_node: None,
             tail_node: None,
+            merkle_tree: MerkleTree::new(),
             processing_block: None,
             queued_blocks: VecDeque::new(),
+        }
+    }
+
+    pub fn get_document_status_proof(&self, docid: DocumentId, doc_contents: Value)
+            -> DocumentStatusProof {
+        let chain_tail_header = match self.tail_node {
+            None => None,
+            Some(hash) => Some(self.chain.get(&hash).unwrap().block.header.clone()),
+        };
+        DocumentStatusProof {
+            contents: doc_contents,
+            most_recent_block_header: chain_tail_header,
         }
     }
 
@@ -357,6 +394,14 @@ impl Hashchain {
             }
         }
         summaries
+    }
+}
+
+impl MerkleTree {
+    fn new() -> MerkleTree {
+        MerkleTree {
+            tree: BTreeMap::new(),
+        }
     }
 }
 
