@@ -158,6 +158,7 @@ def certify_diploma(request):
   if request.method == 'POST':
     student_id = request.POST['student_id']
     payload = {
+      'student_id': student_id,
       'recipient': request.POST['recipient'],
       'degree': request.POST['degree'],
       'conferral_date': request.POST['conferral_date']
@@ -183,6 +184,7 @@ def certify_transcript(request):
   if request.method == 'POST':
     student_id = request.POST['student_id']
     payload = {
+      'student_id': student_id,
       'recipient': request.POST['recipient'],
       'gpa': request.POST['gpa'],
       'date': request.POST['date']
