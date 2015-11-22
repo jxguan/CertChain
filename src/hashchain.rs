@@ -30,7 +30,7 @@ pub struct MerkleTree {
     tree: BTreeMap<DocumentId, MerkleNode>
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MerkleNode {
     document_id: DocumentId,
     certified_ts: i64,
@@ -96,8 +96,19 @@ pub enum AppendErr {
 pub struct DocumentStatusProof {
     contents: Value,
     most_recent_block_header: Option<BlockHeader>,
-    //merkle_node: MerkleNode,
-    //merkle_proof: MerkleProof,
+    merkle_node: MerkleNode,
+    merkle_proof: MerkleProof,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MerkleProof {
+    branches: Vec<MerkleProofBranch>
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MerkleProofBranch {
+    position: String,
+    hash: DoubleSha256Hash,
 }
 
 impl Hashchain {
@@ -121,6 +132,8 @@ impl Hashchain {
         DocumentStatusProof {
             contents: doc_contents,
             most_recent_block_header: chain_tail_header,
+            merkle_node: self.merkle_tree.get_node(docid),
+            merkle_proof: self.merkle_tree.merkle_proof(docid),
         }
     }
 
@@ -415,6 +428,28 @@ pub enum MerkleTreeErr {
     DuplicateCertification,
 }
 
+impl MerkleProof {
+    fn new() -> MerkleProof {
+        MerkleProof {
+            branches: Vec::new()
+        }
+    }
+
+    fn add_left_branch(&mut self, hash: DoubleSha256Hash) {
+        self.branches.push(MerkleProofBranch {
+            position: String::from("L"),
+            hash: hash
+        });
+    }
+
+    fn add_right_branch(&mut self, hash: DoubleSha256Hash) {
+        self.branches.push(MerkleProofBranch {
+            position: String::from("R"),
+            hash: hash
+        });
+    }
+}
+
 impl MerkleTree {
     fn new() -> MerkleTree {
         MerkleTree {
@@ -422,13 +457,17 @@ impl MerkleTree {
         }
     }
 
-    /// Computes the Merkle root of this tree were the
-    /// block's actions to be applied. Although this requires
+    fn get_node(&self, docid: DocumentId) -> MerkleNode {
+        self.tree.get(&docid).unwrap().clone()
+    }
+
+    /// Computes the Merkle root of the tree that would result
+    /// after committing the provided block actions. Although this requires
     /// a mutable borrow on this tree, changes made during this
     /// function are reverted before returning. To permanently
     /// apply a block to the tree, you must use commit_block below.
     /// TODO: Remember that when revocation is supported, this function
-    /// will need to add a map of nodes to restore upon returning.
+    /// will need to add a map of nodes to restore before returning.
     fn compute_root_with_actions(&mut self,
                                block_ts: i64,
                                block_height: usize,
@@ -483,13 +522,66 @@ impl MerkleTree {
                 let a = elements[i*2];
                 let b = elements[cmp::min(i*2 + 1, elements.len() - 1)];
                 let combined = a.to_string() + &b.to_string();
-                parent_row.push(DoubleSha256Hash::hash(&combined.as_bytes()[..]))
+                parent_row.push(DoubleSha256Hash::hash_string(&combined))
             }
             merkle_root(parent_row)
         }
         merkle_root(self.tree.iter().map(|(_, m_node)| {
-            DoubleSha256Hash::hash(&m_node.as_string().as_bytes()[..])
+            DoubleSha256Hash::hash_string(&m_node.as_string())
         }).collect())
+    }
+
+    fn merkle_proof(&self, docid: DocumentId) -> MerkleProof {
+        fn merkle_proof(elements: Vec<DoubleSha256Hash>,
+                        hash_to_find: DoubleSha256Hash,
+                        proof: &mut MerkleProof) {
+            if elements.len() < 2 {
+                return
+            }
+            let mut parent_row = vec![];
+            /*
+             * This loop has been adapted from the one used by
+             * Andrew Poelstra in his rust-bitcoin project;
+             * loops ensures odd-length vecs will have last
+             * element duplicated, w/o modification of the vec itself.
+             */
+            let mut new_hash_to_find = None;
+            for i in 0..((elements.len() + 1) / 2) {
+                let a = elements[i*2];
+                let b = elements[cmp::min(i*2 + 1, elements.len() - 1)];
+                let combined = a.to_string() + &b.to_string();
+                debug!("combined: {}", combined);
+                let combined_hash = DoubleSha256Hash::hash_string(&combined);
+                debug!("combined hash: {}", combined_hash);
+                if a == hash_to_find {
+                    proof.add_right_branch(b);
+                    new_hash_to_find = Some(combined_hash);
+                }
+                if b == hash_to_find {
+                    proof.add_left_branch(a);
+                    new_hash_to_find = Some(combined_hash);
+                }
+                parent_row.push(combined_hash);
+            }
+            if new_hash_to_find.is_none() {
+                panic!("Unable to continue proof; no hash to find next.");
+            }
+            merkle_proof(parent_row, new_hash_to_find.unwrap(), proof)
+        }
+
+        // We need to get the hash of the merkle node corresponding to
+        // the requested document ID.
+        let docid_merkle_node_hash = DoubleSha256Hash::hash_string(
+            &self.tree.get(&docid).unwrap().as_string());
+        let mut proof = MerkleProof::new();
+        merkle_proof(self.tree.iter().map(|(_, m_node)| {
+            let st = &m_node.as_string();
+            let hash = DoubleSha256Hash::hash_string(
+                &m_node.as_string());
+            debug!("m_node: {}, hash: {}", st, hash);
+            hash
+        }).collect(), docid_merkle_node_hash, &mut proof);
+        proof
     }
 
     /// Commits a block to the tree; the changes are permanent and
@@ -522,9 +614,15 @@ impl MerkleTree {
 
 impl MerkleNode {
     fn as_string(&self) -> String {
-        format!("{}|{:?}|{}|{:?}|{:?}", self.document_id, self.certified_ts,
-                self.certified_block_height, self.revoked_ts,
-                self.revoked_block_height)
+        let certified_str = format!("{}|{:?}|{}",
+                self.document_id, self.certified_ts,
+                self.certified_block_height);
+        if self.revoked_ts.is_some() && self.revoked_block_height.is_some() {
+            format!("{}|{:?}|{:?}", certified_str, self.revoked_ts,
+                    self.revoked_block_height)
+        } else {
+            certified_str
+        }
     }
 }
 
@@ -611,7 +709,7 @@ impl BlockHeader {
             parent: parent_hash,
             author: our_inst_addr,
             merkle_root: merkle_root,
-            signoff_peers_hash: DoubleSha256Hash::hash(&to_hash.as_bytes()[..])
+            signoff_peers_hash: DoubleSha256Hash::hash_string(&to_hash)
         }
     }
 
@@ -630,7 +728,7 @@ impl BlockHeader {
                               self.timestamp,
                               self.parent,
                               self.author);
-        DoubleSha256Hash::hash(&to_hash.as_bytes()[..])
+        DoubleSha256Hash::hash_string(&to_hash)
     }
 }
 

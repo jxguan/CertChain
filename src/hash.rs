@@ -27,6 +27,20 @@ impl DoubleSha256Hash {
         DoubleSha256Hash(buf)
     }
 
+    /// You should use this function for any string hashes that must
+    /// be reproduced in client-side JavaScript; using the other method
+    /// that accepts a slice makes the client-side code needlessly complex.
+    pub fn hash_string(string: &str) -> DoubleSha256Hash {
+        let DoubleSha256Hash(mut buf) = DoubleSha256Hash::blank();
+        let mut sha256 = Sha256::new();
+        sha256.input_str(string);
+        let string2 = sha256.result_str();
+        sha256.reset();
+        sha256.input_str(&string2);
+        sha256.result(&mut buf);
+        DoubleSha256Hash(buf)
+    }
+
     pub fn from_string(hash_str: &str) -> Result<DoubleSha256Hash, ValidityErr> {
         let hash_vec = match hash_str.from_hex() {
             Ok(v) => v,
