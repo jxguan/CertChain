@@ -7,52 +7,6 @@ use serde::{ser, de};
 use common::ValidityErr;
 use rustc_serialize::hex::FromHex;
 
-/*
- * Credit to Andrew Poelstra for the following implementations
- * in this file (from his rust-bitcoin project):
- * - DoubleSha256 struct, from_data method of impl
- * - MerkleRoot trait and implementation
- */
-
-pub trait MerkleRoot {
-    fn merkle_root(&self) -> DoubleSha256Hash;
-}
-
-/*impl<'a> MerkleRoot for &'a [Transaction] {
-    fn merkle_root(&self) -> DoubleSha256Hash {
-        fn merkle_root(data: Vec<DoubleSha256Hash>) -> DoubleSha256Hash {
-            if data.len() == 0 {
-                return DoubleSha256Hash::blank()
-            }
-            if data.len() == 1 {
-                let DoubleSha256Hash(buf) = data[0];
-                return DoubleSha256Hash(buf)
-            }
-            let mut next = vec![];
-            for idx in 0..((data.len() + 1) / 2) {
-                let idx1 = 2 * idx;
-                let idx2 = cmp::min(idx1 + 1, data.len() - 1);
-                let mut combined_bytes = Vec::new();
-                data[idx1].serialize(&mut combined_bytes).unwrap();
-                data[idx2].serialize(&mut combined_bytes).unwrap();
-                next.push(DoubleSha256Hash::hash(&combined_bytes[..]));
-            }
-            merkle_root(next)
-        }
-        merkle_root(self.iter().map(|txn| {
-            let mut txn_bytes = Vec::new();
-            txn.serialize(&mut txn_bytes).unwrap();
-            DoubleSha256Hash::hash(&txn_bytes[..])
-        }).collect())
-    }
-}
-
-impl MerkleRoot for Vec<Transaction> {
-    fn merkle_root(&self) -> DoubleSha256Hash {
-        (&self[..]).merkle_root()
-    }
-}*/
-
 #[derive(RustcEncodable, RustcDecodable, Copy, Clone, Hash,
          Eq, PartialEq, Ord, PartialOrd)]
 pub struct DoubleSha256Hash([u8; 32]);

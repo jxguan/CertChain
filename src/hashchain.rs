@@ -1,7 +1,7 @@
 use hash::DoubleSha256Hash;
 use address::InstAddress;
 use serde::{ser, de};
-use std::collections::{BTreeSet, BTreeMap, HashMap};
+use std::collections::{BTreeSet, BTreeMap, HashMap, HashSet};
 use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
@@ -11,6 +11,7 @@ use secp256k1::key::SecretKey;
 use common::ValidityErr;
 use serde::ser::Serialize;
 use serde_json::Value;
+use std::cmp;
 
 pub type DocumentId = DoubleSha256Hash;
 
@@ -33,9 +34,9 @@ pub struct MerkleTree {
 pub struct MerkleNode {
     document_id: DocumentId,
     certified_ts: i64,
-    certified_block_hash: DoubleSha256Hash,
-    revoked_ts: i64,
-    revoked_block_hash: DoubleSha256Hash,
+    certified_block_height: usize,
+    revoked_ts: Option<i64>,
+    revoked_block_height: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -58,6 +59,7 @@ pub struct BlockHeader {
     timestamp: i64,
     pub parent: DoubleSha256Hash,
     pub author: InstAddress,
+    merkle_root: DoubleSha256Hash,
     signoff_peers_hash: DoubleSha256Hash,
 }
 
@@ -195,6 +197,8 @@ impl Hashchain {
                         &block.header.parent).unwrap();
                     parent.next_block = Some(block_header_hash.clone());
                 }
+                // Commit block actions to internal merkle tree.
+                self.merkle_tree.commit_block(block, self.chain.len());
                 info!("Block successfully appended to chain.");
             },
             Err(err) => {
@@ -213,9 +217,18 @@ impl Hashchain {
                            actions: Vec<Action>,
                            our_secret_key: &SecretKey) {
         let signoff_peers = self.get_signoff_peers(&actions);
+        let timestamp = time::get_time().sec;
+        // TODO: Handle this rather than unwrapping.
+        let merkle_root = match self.merkle_tree.compute_root_with_actions(
+            timestamp, self.chain.len() + 1, &actions) {
+            Ok(hash) => hash,
+            Err(err) => panic!("Unable to queue block; merkle err: {:?}", err)
+        };
         self.queued_blocks.push_back(
-            Block::new(our_inst_addr,
-                       self.tail_node,
+            Block::new(self.tail_node,
+                       timestamp,
+                       our_inst_addr,
+                       merkle_root,
                        signoff_peers,
                        actions,
                        &our_secret_key));
@@ -397,11 +410,121 @@ impl Hashchain {
     }
 }
 
+#[derive(Debug)]
+pub enum MerkleTreeErr {
+    DuplicateCertification,
+}
+
 impl MerkleTree {
     fn new() -> MerkleTree {
         MerkleTree {
             tree: BTreeMap::new(),
         }
+    }
+
+    /// Computes the Merkle root of this tree were the
+    /// block's actions to be applied. Although this requires
+    /// a mutable borrow on this tree, changes made during this
+    /// function are reverted before returning. To permanently
+    /// apply a block to the tree, you must use commit_block below.
+    /// TODO: Remember that when revocation is supported, this function
+    /// will need to add a map of nodes to restore upon returning.
+    fn compute_root_with_actions(&mut self,
+                               block_ts: i64,
+                               block_height: usize,
+                               actions: &Vec<Action>)
+        -> Result<DoubleSha256Hash, MerkleTreeErr> {
+        let mut to_delete = HashSet::new();
+        for action in actions.iter() {
+            match *action {
+                Action::AddPeer(_, _, _) => continue,
+                Action::Certify(docid, _, _) => {
+                    if self.tree.contains_key(&docid) {
+                        return Err(MerkleTreeErr::DuplicateCertification)
+                    }
+                    to_delete.insert(docid);
+                    self.tree.insert(docid, MerkleNode {
+                        document_id: docid,
+                        certified_ts: block_ts,
+                        certified_block_height: block_height,
+                        revoked_ts: None,
+                        revoked_block_height: None
+                    });
+                }
+            }
+        }
+
+        let root_with_actions = self.merkle_root();
+
+        // Revert our modifications.
+        for docid in to_delete.iter() {
+            self.tree.remove(docid);
+        }
+
+        Ok(root_with_actions)
+    }
+
+    fn merkle_root(&self) -> DoubleSha256Hash {
+        fn merkle_root(elements: Vec<DoubleSha256Hash>) -> DoubleSha256Hash {
+            if elements.len() == 0 {
+                return DoubleSha256Hash::blank()
+            }
+            if elements.len() == 1 {
+                return elements[0]
+            }
+            let mut parent_row = vec![];
+            /*
+             * This loop has been adapted from the one used by
+             * Andrew Poelstra in his rust-bitcoin project;
+             * loops ensures odd-length vecs will have last
+             * element duplicated, w/o modification of the vec itself.
+             */
+            for i in 0..((elements.len() + 1) / 2) {
+                let a = elements[i*2];
+                let b = elements[cmp::min(i*2 + 1, elements.len() - 1)];
+                let combined = a.to_string() + &b.to_string();
+                parent_row.push(DoubleSha256Hash::hash(&combined.as_bytes()[..]))
+            }
+            merkle_root(parent_row)
+        }
+        merkle_root(self.tree.iter().map(|(_, m_node)| {
+            DoubleSha256Hash::hash(&m_node.as_string().as_bytes()[..])
+        }).collect())
+    }
+
+    /// Commits a block to the tree; the changes are permanent and
+    /// will be synced to disk when the hashchain is next synced. If
+    /// you only want to check what the merkle root will be if a block
+    /// is applied, use compute_root_with_block above.
+    fn commit_block(&mut self, block: Block, block_height: usize) {
+        // Iterate over the block's actions and commit the
+        // document-related ones.
+        for action in block.actions.iter() {
+            match *action {
+                Action::AddPeer(_, _, _) => continue,
+                Action::Certify(docid, _, _) => {
+                    self.tree.insert(docid, MerkleNode {
+                        document_id: docid,
+                        certified_ts: block.header.timestamp,
+                        certified_block_height: block_height,
+                        revoked_ts: None,
+                        revoked_block_height: None
+                    });
+                },
+                /*
+                 * TODO: For revocation, get the existing node
+                 * from the merkle tree.
+                 */
+            }
+        }
+    }
+}
+
+impl MerkleNode {
+    fn as_string(&self) -> String {
+        format!("{}|{:?}|{}|{:?}|{:?}", self.document_id, self.certified_ts,
+                self.certified_block_height, self.revoked_ts,
+                self.revoked_block_height)
     }
 }
 
@@ -415,12 +538,16 @@ impl ChainNode {
 }
 
 impl Block {
-    fn new(our_inst_addr: InstAddress,
-           parent: Option<DoubleSha256Hash>,
+    fn new(parent: Option<DoubleSha256Hash>,
+           timestamp: i64,
+           our_inst_addr: InstAddress,
+           merkle_root: DoubleSha256Hash,
            signoff_peers: BTreeSet<InstAddress>,
            actions: Vec<Action>,
            our_secret_key: &SecretKey) -> Block {
-        let header = BlockHeader::new(parent, our_inst_addr, &signoff_peers);
+        let header = BlockHeader::new(timestamp, parent,
+                                      our_inst_addr,
+                                      merkle_root, &signoff_peers);
         let header_hash = header.hash();
         Block {
             header: header,
@@ -459,8 +586,10 @@ impl Block {
 }
 
 impl BlockHeader {
-    pub fn new(parent: Option<DoubleSha256Hash>,
+    pub fn new(timestamp: i64,
+               parent: Option<DoubleSha256Hash>,
                our_inst_addr: InstAddress,
+               merkle_root: DoubleSha256Hash,
                signoff_peers: &BTreeSet<InstAddress>) -> BlockHeader {
         let parent_hash = match parent {
             None => DoubleSha256Hash::genesis_block_parent_hash(),
@@ -478,9 +607,10 @@ impl BlockHeader {
         to_hash = to_hash + "|";
 
         BlockHeader {
-            timestamp: time::get_time().sec,
+            timestamp: timestamp,
             parent: parent_hash,
             author: our_inst_addr,
+            merkle_root: merkle_root,
             signoff_peers_hash: DoubleSha256Hash::hash(&to_hash.as_bytes()[..])
         }
     }

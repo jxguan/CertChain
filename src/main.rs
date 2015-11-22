@@ -25,7 +25,6 @@ pub mod address;
 pub mod daemon;
 pub mod config;
 pub mod network;
-pub mod blockchain;
 pub mod key;
 pub mod hash;
 pub mod signature;
