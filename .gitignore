@@ -5,3 +5,7 @@ data_dirs
 *.pyc
 *.sqlite3
 admin/venv
+emscripten/Makefile
+emscripten/libsecp256k1.js
+emscripten/secp256k1-build
+admin/public/static/public/js/libsecp256k1.js
