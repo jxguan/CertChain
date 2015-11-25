@@ -6,8 +6,70 @@
     <title>Certchain Document Viewer</title>
     <link href='//fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600,700,400italic' rel='stylesheet' type='text/css'>
     <link href="{% static 'certchain/css/viewer.css'%}" rel="stylesheet"/>
+
+    <script type="text/javascript" src="{% static 'certchain/js/jquery-1.10.2.min.js'%}"></script>
+    <script type="text/javascript" src="{% static 'public/js/wrapper.js'%}"></script>
+    <script type="text/javascript" src="{% static 'public/js/cryptojs.js'%}"></script>
+    <script type="text/javascript" src="{% static 'public/js/wordarrayconv.js'%}"></script>
+    <script type="text/javascript" src="{% static 'public/js/verify.js'%}"></script>
   </head>
   <body>
+
+    <form id="sign-and-verify" class="container" action="#">
+        <div>
+        <p>
+            <label for="msg">Message:</label>
+            <input type="text" id="msg" placeholder="Type in message to sign and verify" />
+        </p>
+        <p>
+            <label for="sec">Secret:</label>
+            <input type="text" id="sec" placeholder="Secret passphrase from which secret key is derived" />
+        </p>
+        </div>
+        <span id="wait-sign-and-verify">Waiting for libsecp256k1 to load...</span>
+        <input type="submit" id="go_sign" value="Sign and Verify" style="display: none" />
+    </form>
+
+    <br/>
+    <br/>
+
+    <form id="recover-pubkey" class="container" action="#">
+        <div>
+        <p>
+            <label for="expected_msg">Message:</label>
+            <input type="text" id="expected_msg" placeholder="Type in message" />
+        </p>
+        <p>
+            <label for="sig">Signature:</label>
+            <input type="text" id="sig" placeholder="Type in signature" />
+        </p>
+        <p>
+            <label for="recid">Recid:</label>
+            <input type="text" id="recid" placeholder="Type in recid of signature" />
+        </p>
+        </div>
+        <span id="wait-recover-pubkey">Waiting for libsecp256k1 to load...</span>
+        <input type="submit" id="go_recover" value="Recover Pubkey" style="display: none" />
+    </form>
+
+    <pre id="out"></pre>
+
+    <script type="text/javascript">
+      document.getElementById("sign-and-verify").addEventListener("submit", function(e) { e.preventDefault(); }); 
+      document.getElementById("recover-pubkey").addEventListener("submit", function(e) { e.preventDefault(); }); 
+      secp256k1.init().then(function() {
+          document.getElementById("wait-sign-and-verify").style.display = "none";
+          document.getElementById("wait-recover-pubkey").style.display = "none";
+          document.getElementById("go_sign").style.display = "block";
+          document.getElementById("go_recover").style.display = "block";
+          document.getElementById("sign-and-verify").addEventListener("submit", go_sign);
+          document.getElementById("recover-pubkey").addEventListener("submit", go_recover);
+          console.log('Loaded');
+      });
+    </script>
+
+
+
     <div id="document">
       <div id="cert-area" class="{{ msg_class }}">
         <span id="cert-status">{{ msg }}</span>

@@ -95,7 +95,9 @@ pub enum AppendErr {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DocumentStatusProof {
     contents: Value,
-    most_recent_block_header: Option<BlockHeader>,
+    most_recent_block_header: BlockHeader,
+    peer_signatures: HashMap<InstAddress, RecovSignature>,
+    author_signature: RecovSignature,
     merkle_node: MerkleNode,
     merkle_proof: MerkleProof,
 }
@@ -125,15 +127,19 @@ impl Hashchain {
 
     pub fn get_document_status_proof(&self, docid: DocumentId, doc_contents: Value)
             -> DocumentStatusProof {
-        let chain_tail_header = match self.tail_node {
-            None => None,
-            Some(hash) => Some(self.chain.get(&hash).unwrap().block.header.clone()),
-        };
-        DocumentStatusProof {
-            contents: doc_contents,
-            most_recent_block_header: chain_tail_header,
-            merkle_node: self.merkle_tree.get_node(docid),
-            merkle_proof: self.merkle_tree.merkle_proof(docid),
+        match self.tail_node {
+            None => panic!("TODO: Handle this rare situation gracefully."),
+            Some(hash) => {
+                let ref block = self.chain.get(&hash).unwrap().block;
+                DocumentStatusProof {
+                    contents: doc_contents,
+                    most_recent_block_header: block.header.clone(),
+                    peer_signatures: block.signoff_signatures.clone(),
+                    author_signature: block.author_signature.clone(),
+                    merkle_node: self.merkle_tree.get_node(docid),
+                    merkle_proof: self.merkle_tree.merkle_proof(docid),
+                }
+            }
         }
     }
 
