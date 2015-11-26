@@ -730,10 +730,12 @@ impl BlockHeader {
          * TODO: Keep this in mind, and continue to add fields of BlockHeader
          * to this hash as they are added during development.
          */
-        let to_hash = format!("BLOCKHEADER:{},{},{}",
+        let to_hash = format!("BLOCKHEADER:{},{},{},{},{}",
                               self.timestamp,
                               self.parent,
-                              self.author);
+                              self.author,
+                              self.merkle_root,
+                              self.signoff_peers_hash);
         DoubleSha256Hash::hash_string(&to_hash)
     }
 }

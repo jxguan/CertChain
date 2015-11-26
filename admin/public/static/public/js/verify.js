@@ -91,28 +91,18 @@ function sig_str_to_uint8array(sig_str) {
     return ua;
 }
 
-function go_recover(e) {
-    var msg_str = document.getElementById("expected_msg").value;
-    var sig_str = document.getElementById("sig").value;
-    var recid_str = document.getElementById("recid").value;
-    console.log('Go with msg="'+msg_str+'" sig="'+sig_str+'" and recid="'+recid_str+'"');
-
-    var out = document.getElementById("out");
-    out.innerText = "";
-
-    if (msg_str == "" || sig_str == "" || recid_str == "")
-    {
-        log("Error: You must fill in all three fields!");
-        return;
-    }
+function recover_signature_pubkey(message, signature) {
+    // We expect signature to be <recid>|<signature>;
+    // break them apart now.
+    recid = signature.substring(0,1);
+    sig = signature.substring(2);
 
     var state = {};
-    state.message = CryptoJS.enc.u8array.stringify(CryptoJS.SHA256(msg_str));  
-    state.sig = sig_str_to_uint8array(sig_str)
-    console.log(state.sig)
-    state.recid = parseInt(recid_str); 
-    Promise.resolve()
-    .then(function(ret) {
+    state.message = CryptoJS.enc.u8array.stringify(
+        CryptoJS.SHA256(message));  
+    state.sig = sig_str_to_uint8array(sig)
+    state.recid = parseInt(recid); 
+    Promise.resolve().then(function(ret) {
         // If an expected argument name maps to the same name as an alias, there is no need to include it in the map.
         // For example, in this case sig and recid are stored under the same name in state as what the function expects,
         // and therefore the map argument only maps 'msg' to 'message'.
@@ -125,3 +115,37 @@ function go_recover(e) {
         log(error);
     });
 }
+
+function double_sha256(str) {
+    var bitArray = sjcl.hash.sha256.hash(str);
+    var digest_sha256 = sjcl.codec.hex.fromBits(bitArray); 
+    bitArray = sjcl.hash.sha256.hash(digest_sha256);
+    digest_sha256 = sjcl.codec.hex.fromBits(bitArray);
+    return digest_sha256;
+};
+
+$(document).ready(function() {
+  secp256k1.init().then(function() {
+      console.log('Loaded secp256k1.');
+      var json = $.parseJSON($('#raw-data').text());
+      
+      // TODO: Verify timestamp on block first.
+      var block_header = json['most_recent_block_header'];
+
+      // Compute hash of block header.
+      var to_hash = 'BLOCKHEADER:'
+        + block_header['timestamp']
+        + ',' + block_header['parent']
+        + ',' + block_header['author']
+        + ',' + block_header['merkle_root']
+        + ',' + block_header['signoff_peers_hash'];
+      var computed_block_header_hash = double_sha256(to_hash);
+      console.log('Computed block header hash: ' + computed_block_header_hash);
+  
+      // Recover the author's signature of the computed block
+      // header hash: does the recovered public key
+      // hash to the block's authoring address?
+      recover_signature_pubkey(computed_block_header_hash,
+        json['author_signature']);
+  });
+});

@@ -15,7 +15,8 @@ pub struct RecovSignature {
 }
 
 impl RecovSignature {
-    pub fn sign(hash: &DoubleSha256Hash, secret_key: &SecretKey) -> RecovSignature {
+    pub fn sign(hash: &DoubleSha256Hash,
+                secret_key: &SecretKey) -> RecovSignature {
         let ctx = Secp256k1::new();
         let sig = ctx.sign_recoverable(&Message::from_slice(&hash[..]).unwrap(),
             &secret_key).unwrap();

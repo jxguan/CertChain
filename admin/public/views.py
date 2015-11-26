@@ -16,7 +16,9 @@ logger = logging.getLogger('certchain')
 def document(request, docid):
   try:
     resp = requests.get(create_rpc_url('/document/' + docid))
-    return render(request, 'public/document.html', {'doc' : resp.json()['contents']})
+    json = resp.json()
+    return render(request, 'public/document.html',
+      {'doc' : json['contents'], 'raw_data': resp.text})
   except Exception as ex:
     messages.error(request, 'Unable to retrieve document at this time: ' + str(ex))
     return redirect(reverse('certchain:manage_certifications'))
