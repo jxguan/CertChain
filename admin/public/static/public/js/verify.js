@@ -1,22 +1,15 @@
 function log(s) {
     console.log(s);
     var str;
-    if (typeof s === 'object')
-    {
-        if (s.hasOwnProperty('message'))
-        {
+    if (typeof s === 'object') {
+        if (s.hasOwnProperty('message')) {
             str = s['message'];
-        }
-        else
-        {
+        } else {
             str = JSON.stringify(s);
         }
-    }
-    else
-    {
+    } else {
         str = s.toString();
     }
-    out.innerText += '\n' + str;
 }
 
 function go_sign(e)
@@ -77,14 +70,14 @@ function go_sign(e)
     });
 }
 
-// Expects hex string of 128
-function sig_str_to_uint8array(sig_str) {
-    if (sig_str.length != 128) {
-        throw 'Expected hex string of length 128.';
+// Enforces length of len
+function hex_str_to_uint8array(hex_str, len) {
+    if (hex_str.length != len) {
+        throw 'Expected hex string of length: ' + len;
     }
-    var ua = new Uint8Array(64);
-    for (var i = 0; i < 64; i++) {
-        hex = sig_str.substring(i*2, i*2 + 2);
+    var ua = new Uint8Array(len / 2);
+    for (var i = 0; i < (len / 2); i++) {
+        hex = hex_str.substring(i*2, i*2 + 2);
         dec = parseInt(hex, 16);
         ua[i] = dec
     }
@@ -98,9 +91,8 @@ function recover_signature_pubkey(message, signature) {
     sig = signature.substring(2);
 
     var state = {};
-    state.message = CryptoJS.enc.u8array.stringify(
-        CryptoJS.SHA256(message));  
-    state.sig = sig_str_to_uint8array(sig)
+    state.message = hex_str_to_uint8array(message, 64);
+    state.sig = hex_str_to_uint8array(sig, 128);
     state.recid = parseInt(recid); 
     Promise.resolve().then(function(ret) {
         // If an expected argument name maps to the same name as an alias, there is no need to include it in the map.
