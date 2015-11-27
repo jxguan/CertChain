@@ -12,6 +12,7 @@ use common::ValidityErr;
 use std::hash::{Hash};
 use serde::ser;
 use serde::de;
+use rustc_serialize::hex::ToHex;
 
 const ADDRESS_LEN_BYTES: usize = 25;
 const MAINNET_ADDRESS_VERSION_PREFIX: u8 = 88; // "c" in Base58
@@ -54,7 +55,8 @@ impl InstAddress {
 
         // Compute checksum on version + hash,
         // ensure it matches last 4 addr bytes.
-        let checksum = DoubleSha256Hash::hash(&self.data[0..21]);
+        let to_checksum = &self.data[0..21].to_hex();
+        let checksum = DoubleSha256Hash::hash_string(&to_checksum);
         if &checksum[0..4] != &self.data[21..25] {
             return Err(ValidityErr::InstAddressChecksum)
         }
@@ -63,30 +65,40 @@ impl InstAddress {
     }
 
    pub fn from_pubkey(pub_key: &PublicKey) -> Result<InstAddress, ValidityErr> {
-        // Generate the address from the compressed public key.
+
+        // The first byte of an InstAddress is always
+        // the network version prefix.
+        let mut address_arr = [0u8; ADDRESS_LEN_BYTES];
+        address_arr[0] = MAINNET_ADDRESS_VERSION_PREFIX;
+
+        // Compute the SHA256 of the public key bytes.
         let context = Secp256k1::new();
         let mut sha256 = Sha256::new();
-        let mut sha256_arr = [0u8; 32];
-        sha256.input(&pub_key.serialize_vec(&context, true)[..]);
-        sha256.result(&mut sha256_arr);
+        let pubkey_bytes = &pub_key.serialize_vec(&context, true);
+        sha256.input_str(&pubkey_bytes[..].to_hex());
+        let pubkey_sha256_str = sha256.result_str();
+
+        // The next 20 bytes of an InstAddress are the
+        // RIPEMD160 of the above SHA256 hash.
         let mut ripemd160 = Ripemd160::new();
-        let mut address_arr = [0u8; ADDRESS_LEN_BYTES];
-        // First byte is the version prefix.
-        address_arr[0] = MAINNET_ADDRESS_VERSION_PREFIX;
-        ripemd160.input(&sha256_arr[..]);
-        // The next 20 bytes are the hash of the public key.
+        ripemd160.input_str(&pubkey_sha256_str);
         ripemd160.result(&mut address_arr[1..21]);
-        // The last 4 bytes are the checksum of the version + pubkey hash.
-        let checksum = DoubleSha256Hash::hash(&address_arr[0..21]);
-        // We append only the first 4 bytes of the checksum to the end of the address.
+
+        // The last 4 bytes of an InstAddress are the
+        // first 4 bytes of the checksum of the version + pubkey hash.
+        let to_checksum = &address_arr[0..21].to_hex();
+        info!("To checksum: {}", to_checksum);
+        let checksum = DoubleSha256Hash::hash_string(&to_checksum);
         address_arr[21] = checksum[0];
         address_arr[22] = checksum[1];
         address_arr[23] = checksum[2];
         address_arr[24] = checksum[3];
+        info!("Address arr: {:?}", address_arr);
 
         let addr = InstAddress {
             data: address_arr
         };
+
         match addr.check_validity() {
             Ok(_) => Ok(addr),
             Err(err) => Err(err)

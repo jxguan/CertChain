@@ -70,7 +70,6 @@ function go_sign(e)
     });
 }
 
-// Enforces length of len
 function hex_str_to_uint8array(hex_str, len) {
     if (hex_str.length != len) {
         throw 'Expected hex string of length: ' + len;
@@ -93,7 +92,7 @@ function recover_signature_pubkey(message, signature) {
     var state = {};
     state.message = hex_str_to_uint8array(message, 64);
     state.sig = hex_str_to_uint8array(sig, 128);
-    state.recid = parseInt(recid); 
+    state.recid = parseInt(recid);
     Promise.resolve().then(function(ret) {
         // If an expected argument name maps to the same name as an alias, there is no need to include it in the map.
         // For example, in this case sig and recid are stored under the same name in state as what the function expects,
@@ -101,12 +100,59 @@ function recover_signature_pubkey(message, signature) {
         return secp256k1.api.ecdsa_recover(state, {msg: 'message'});
     }).then(function(ret) {
         state.recovered_pubkey = ret;
-        log("Recovered public key is: " + CryptoJS.enc.u8array.parse(state.recovered_pubkey).toString());
+        var recov_pubkey_hex = CryptoJS.enc.u8array.parse(state.recovered_pubkey).toString();
+        log("Recovered public key is: " + recov_pubkey_hex);
+        pubkey_to_inst_address(recov_pubkey_hex);
     }).catch(function(error) {
         log("Error occured: ");
         log(error);
     });
+};
+
+// Expects big endian words.
+function word_array_to_uint8arr(word_arr) {
+    var uint8arr = new Uint8Array(4 * word_arr.length);
+    for (var i = 0; i < word_arr.length; i++) {
+        var word = word_arr[i];
+        uint8arr[4*i] = word >>> 24;
+        uint8arr[4*i+1] = (word >>> 16) & 0x000000FF;
+        uint8arr[4*i+2] = (word >>> 8) & 0x000000FF;
+        uint8arr[4*i+3] = word & 0x000000FF; 
+    }
+    return uint8arr;
 }
+
+function pubkey_to_inst_address(pubkey_hex) {
+    var inst_addr = new Uint8Array(25);
+
+    // First byte is mainnet version prefix.
+    inst_addr[0] = 88;
+    console.log(inst_addr);
+
+    // Next 20 bytes are RIPEMD160(SHA256(pubkey_hex))
+    var bitArray = sjcl.hash.sha256.hash(pubkey_hex);
+    var digest_sha256 = sjcl.codec.hex.fromBits(bitArray);
+    console.log(digest_sha256);
+    wordArr = sjcl.hash.ripemd160.hash(digest_sha256);
+    var uint8arr = word_array_to_uint8arr(wordArr);
+    for (var i = 0; i < uint8arr.length; i++) {
+        inst_addr[i+1] = uint8arr[i];
+    }
+
+    // Final 4 bytes are SHA256(SHA256(prev 21 bytes)).
+    var to_checksum = CryptoJS.enc.u8array.parse(inst_addr.slice(0,21)).toString();
+    console.log('To checksum: ' + to_checksum);
+    bitArray = sjcl.hash.sha256.hash(to_checksum);
+    digest_sha256 = sjcl.codec.hex.fromBits(bitArray); 
+    bitArray = sjcl.hash.sha256.hash(digest_sha256);
+    uint8arr = word_array_to_uint8arr(bitArray);
+    for (var i = 0; i < 4; i++) {
+        inst_addr[i+21] = uint8arr[i];
+    }
+
+    // Encode InstAddress in base 58.
+    console.log(base58.encode(inst_addr));
+};
 
 function double_sha256(str) {
     var bitArray = sjcl.hash.sha256.hash(str);
