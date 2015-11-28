@@ -8,6 +8,7 @@ from django.core.urlresolvers import reverse
 from django.conf import settings
 from templatetags.certchain_extras import cc_addr_to_name, cc_format_sig_ts
 from certchain.shared import create_rpc_url
+import os, hashlib
 
 def trust_table_sort(key):
   if key == settings.INSTITUTION_CERTCHAIN_ADDRESS:
@@ -112,34 +113,6 @@ def untrust_institution(request):
 
 @login_required
 def certify(request):
-  # try:
-  #   resp = requests.get(create_rpc_url('/my_txns'))
-  # except Exception as ex:
-  #   messages.error(request, 'Your institution\'s CertChain node \
-  #     is not available at this time.')
-  #   return render(request, 'certchain/diplomas.html', {})
-
-  # txn_doc_map = {}
-  # for txn in Transaction.objects.all():
-  #   txn_doc_map[txn.txn_id] = txn.document
-
-  # txns = resp.json()
-  # for txn in txns:
-  #   txn_id = txn['txn_id']
-  #   # There should always be a record in the database
-  #   # with a txn id returned by the peer node, but
-  #   # being cautious just in case (this way, record will appear,
-  #   # but with blank document fields).
-  #   if txn_id in txn_doc_map:
-  #     txn['document'] = txn_doc_map[txn_id]
-  #     txn['document_base64'] = base64.b64encode(txn['document'])
-
-  # # Order txns by most recent to least.
-  # txns = sorted(txns, key=lambda txn: txn['signature_ts'], reverse=True)
-
-  # return render(request, 'certchain/diplomas.html', {
-  #     'txns' : txns,
-  #   })
   return render(request, 'certchain/certify.html', {})
 
 @login_required
@@ -158,14 +131,17 @@ def certify_diploma(request):
   if request.method == 'POST':
     student_id = request.POST['student_id']
     payload = {
+      'commitment': hashlib.sha256(os.urandom(8)).hexdigest(),
       'student_id': student_id,
       'recipient': request.POST['recipient'],
       'degree': request.POST['degree'],
       'conferral_date': request.POST['conferral_date']
     }
     # Be careful here; remember that changing the way the document
-    # is formatted will create different hashes.
-    document = json.dumps(payload, sort_keys=True)
+    # is formatted will create different hashes. We also eliminate
+    # space b/w separators so that when we recreate the document
+    # client-side, we get the same string representation for hashing.
+    document = json.dumps(payload, sort_keys=True, separators=(',', ':'))
     resp = requests.post(create_rpc_url('/certify/Diploma/'+student_id),
       data=document)
     if resp.status_code == 200:
@@ -184,14 +160,17 @@ def certify_transcript(request):
   if request.method == 'POST':
     student_id = request.POST['student_id']
     payload = {
+      'commitment': hashlib.sha256(os.urandom(8)).hexdigest(),
       'student_id': student_id,
       'recipient': request.POST['recipient'],
       'gpa': request.POST['gpa'],
       'date': request.POST['date']
     }
     # Be careful here; remember that changing the way the document
-    # is formatted will create different hashes.
-    document = json.dumps(payload, sort_keys=True)
+    # is formatted will create different hashes. We also eliminate
+    # space b/w separators so that when we recreate the document
+    # client-side, we get the same string representation for hashing.
+    document = json.dumps(payload, sort_keys=True, separators=(',', ':'))
     resp = requests.post(create_rpc_url('/certify/Transcript/'+student_id),
       data=document)
     if resp.status_code == 200:

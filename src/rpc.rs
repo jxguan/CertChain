@@ -196,8 +196,8 @@ fn certify(res: Response<Fresh>,
     };
 
     // First, hash the document to obtain its ID.
-    let doc_bytes = &document.as_bytes()[..];
-    let doc_id = DoubleSha256Hash::hash(doc_bytes);
+    let doc_id = DoubleSha256Hash::hash_string(&document);
+    info!("Hashed {} to {}", &document, doc_id);
 
     // Second, write the document contents to disk for later retrieval.
     let doc_file = match File::create(format!("{}/{:?}.txt",
@@ -210,7 +210,7 @@ fn certify(res: Response<Fresh>,
         }
     };
     let mut writer = BufWriter::new(doc_file);
-    match writer.write(doc_bytes) {
+    match writer.write(&document.as_bytes()[..]) {
         Ok(_) => (),
         Err(_) => {
             res.send("Failed to write document contents to disk;

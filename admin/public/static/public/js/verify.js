@@ -364,6 +364,7 @@ var mark_checklist = function(dom_id, result, json) {
 // null represents pending, true represents confirmed,
 // false represents invalid.
 var checklist = {
+    'document-hash-valid': null,
     'author-sig-valid': null,
     'peer-hash-valid': null,
     'all-peers-signed': null,
@@ -401,6 +402,20 @@ $(document).ready(function() {
 
         var json = $.parseJSON($('#raw-data').text());
         var block_header = json['most_recent_block_header'];
+
+        // Compute hash of provided document; ensure it,
+        // the requested doc ID, AND the received merkle node
+        // doc ID all match.
+        var reconstructed_doc_str = JSON.stringify(json['contents']);
+        var computed_doc_id = double_sha256(reconstructed_doc_str);
+        var requested_doc_id = $('#doc-id').text();
+        var merkle_node_doc_id = json['merkle_node']['document_id'];
+        if (computed_doc_id == requested_doc_id
+                && computed_doc_id == merkle_node_doc_id) {
+            mark_checklist('document-hash-valid', true, json);
+        } else {
+            mark_checklist('document-hash-valid', false, json);
+        }
 
         // Compute hash of block header.
         var to_hash = 'BLOCKHEADER:'

@@ -39,6 +39,7 @@
       <tr id="checklist">
         <td>
           <ul>
+            <li id="document-hash-valid">Does the committed document hash to the expected and received hash values? <span class="yes">YES</span></li> 
             <li id="author-sig-valid">Is the block header signed by the authoring institution? <span class="yes">YES</span><span class="no">NO</span></li>
             <li id="peer-hash-valid">Are there one or more peers identified as signatories in the block header? <span class="yes">YES</span><span class="no">NO</span></li>
             <li id="all-peers-signed">Is the block header signed by all peers identified in the header? <span class="yes">YES</span><span class="no">NO</span></li>
@@ -50,6 +51,7 @@
       </tr>
     </table>
     <div id="raw-data" style="display: none">{{ raw_data }}</div>
+    <div id="doc-id" style="display: none">{{ docid }}</div>
     <div id="document">
       <img id="doc-bg" src="{% static 'certchain/images/diploma_bg.png' %}"/>
       <div id="document-body">
