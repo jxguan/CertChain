@@ -18,16 +18,16 @@
   <body>
     <div id="raw-data" style="display: none">{{ raw_data }}</div>
     <div id="document">
-      <table id="verify-area" class="yellow">
+      <table id="verify-area" class="gray">
         <tr>
           <td>
             <span id="cert-status">Verifying document authenticity...</span>
             <ul>
-              <li>Was this block published within the last hour?</li>
               <li id="author-sig-valid">Is the block header signed by the authoring institution? <span class="yes">YES</span><span class="no">NO</span></li>
               <li id="peer-hash-valid">Are there one or more peers identified as signatories in the block header? <span class="yes">YES</span><span class="no">NO</span></li>
-              <li id="all-peers-signed">Is the block header signed by all peer signatories? <span class="yes">YES</span><span class="no">NO</span></li>
-              <li id="all-peers-signed">Does the provided Merkle inclusion proof resolve to the signed root? <span class="yes">YES</span><span class="no">NO</span></li>
+              <li id="all-peers-signed">Is the block header signed by all peers identified in the header? <span class="yes">YES</span><span class="no">NO</span></li>
+              <li id="merkle-proof-valid">Does the provided Merkle inclusion proof resolve to the signed root? <span class="yes">YES</span><span class="no">NO</span></li>
+              <li>Was this block published within the last hour? <span class="yes">YES</span><span class="no">NO</span></li>
             </ul>
           </td>
           <td>

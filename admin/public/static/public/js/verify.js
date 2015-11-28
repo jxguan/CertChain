@@ -236,6 +236,43 @@ var check_peer_sigs = function(json, block_header_hash) {
     }
 };
 
+var run_merkle_proof = function(json) {
+    var node = json['merkle_node'];
+    var node_str = node.document_id + '|'
+        + node.certified_ts + '|'
+        + node.certified_block_height;
+    if (node.revoked_ts != null
+        && node.revoked_block_height != null) {
+        node_str += '|' + node.revoked_ts
+            + '|' + node.revoked_block_height;
+    }
+    var node_hash = double_sha256(node_str);
+    console.log('Node hash: ' + node_hash);
+
+    // Apply each branch of the proof.
+    var computed_root_hash = node_hash;
+    $.each(json['merkle_proof']['branches'], function(idx, branch) {
+        var pos = branch['position'];
+        var branch_hash = branch['hash'];
+        if (pos == 'L') {
+            computed_root_hash = double_sha256(
+                branch_hash + computed_root_hash);
+        } else if (pos == 'R') {
+            computed_root_hash = double_sha256(
+                computed_root_hash + branch_hash);
+        } else {
+            throw 'Unexpected proof branch pos: ' + pos;
+        }
+    });
+
+    var block_header = json['most_recent_block_header'];
+    if (computed_root_hash == block_header['merkle_root']) {
+        $('#merkle-proof-valid').addClass('confirmed');
+    } else {
+        $('#merkle-proof-valid').addClass('invalid');
+    }
+};
+
 $(document).ready(function() {
     secp256k1.init().then(function() {
         console.log('Loaded secp256k1.');
@@ -255,5 +292,6 @@ $(document).ready(function() {
         console.log('Computed block header hash: ' + computed_block_header_hash);
 
         check_author_sig(json, computed_block_header_hash);
+        run_merkle_proof(json);
     });
 });

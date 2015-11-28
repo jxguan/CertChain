@@ -552,6 +552,7 @@ impl MerkleTree {
              * element duplicated, w/o modification of the vec itself.
              */
             let mut new_hash_to_find = None;
+            debug!("In this row, hash to find is {:?}", hash_to_find);
             for i in 0..((elements.len() + 1) / 2) {
                 let a = elements[i*2];
                 let b = elements[cmp::min(i*2 + 1, elements.len() - 1)];
@@ -562,10 +563,11 @@ impl MerkleTree {
                 if a == hash_to_find {
                     proof.add_right_branch(b);
                     new_hash_to_find = Some(combined_hash);
-                }
-                if b == hash_to_find {
+                    debug!("Adding *b* to proof.");
+                } else if b == hash_to_find {
                     proof.add_left_branch(a);
                     new_hash_to_find = Some(combined_hash);
+                    debug!("Adding *a* to proof.");
                 }
                 parent_row.push(combined_hash);
             }
