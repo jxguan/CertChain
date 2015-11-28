@@ -2,7 +2,7 @@ body {
   background-color: #484848;
 }
 
-* {
+#verify-area {
   font-family: 'Source Sans Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
 }
 
@@ -12,27 +12,45 @@ body {
 
 #document {
   margin: 0 auto;
-  width: 70%;
-  height: 100%;
-  background-image: url('/static/certchain/images/diploma_bg.png');
-  background-position: center;
-  background-size: contain;
-  background-repeat: no-repeat;
+  display: block;
   padding: 10px;
+}
+
+#doc-bg,
+#document-body {
+  position: absolute;
+  width: 70%;
+  left: 15%;
+  right: 15%;
+}
+
+#document-body {
+  top: 200px;
+  font-family: serif !important;
+}
+
+#document-body > * {
+  display: block;
+  margin: 0 auto;
+  text-align: center;
+  padding: 10px 0;
+  font-size: 2.3em;
+}
+
+#label-line1 {
+  font-weight: bold;
 }
 
 #verify-area {
-  width: 90%;
+  top: 0;
+  left: 0;
+  width: 100%;
+  position: fixed;
   padding: 10px;
-  margin-left: 45px;
-  margin-top: 10px;
-  font-size: 1.2em;
   line-height: 130%;
   cursor: pointer;
-}
-
-#verify-area tr {
-  width: 100%;
+  box-shadow: 0px 3px 3px 2px rgba(0,0,0,0.3);
+  z-index: 2000;
 }
 
 .yes {
@@ -78,8 +96,24 @@ body {
 }
 
 #verify-area.green {
-  background-color: #BBFF4B;
-  border: 1px solid #81CA0C;
+  /* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#a0fc02+0,91e842+100 */
+  background: #a0fc02; /* Old browsers */
+  background: -moz-linear-gradient(top, #a0fc02 0%, #91e842 100%); /* FF3.6-15 */
+  background: -webkit-linear-gradient(top, #a0fc02 0%,#91e842 100%); /* Chrome10-25,Safari5.1-6 */
+  background: linear-gradient(to bottom, #a0fc02 0%,#91e842 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#a0fc02', endColorstr='#91e842',GradientType=0 ); /* IE6-9 */
+  border-bottom: 1px solid #4C7328;
+}
+
+#hide-details {
+  height: 50px;
+  width: auto;
+}
+
+#show-details {
+  display: none;
+  height: 25px;
+  width: auto;
 }
 
 #verify-area.red {
@@ -92,15 +126,18 @@ body {
   border: 1px solid #D6DE6C;
 }
 
-#verify-area.gray {
-  background-color: #E1E1E1;
-  border: 1px solid #5A5A5A;
+#progress-status {
+  font-weight: bold;
 }
 
-#verify-area #progress {
-  height: 18px;
-  float: right;
-  margin: 4px;
+#verify-area.gray {
+  /* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#eeeeee+0,cccccc+100;Gren+3D */
+  background: #eeeeee; /* Old browsers */
+  background: -moz-linear-gradient(top, #eeeeee 0%, #cccccc 100%); /* FF3.6-15 */
+  background: -webkit-linear-gradient(top, #eeeeee 0%,#cccccc 100%); /* Chrome10-25,Safari5.1-6 */
+  background: linear-gradient(to bottom, #eeeeee 0%,#cccccc 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#eeeeee', endColorstr='#cccccc',GradientType=0 ); /* IE6-9 */
+  border-bottom:; 1px solid #5A5A5A;
 }
 
 #valid-text,
@@ -114,7 +151,7 @@ body {
 }
 
 #cert-line {
-  font-size: 1.2em;
+  font-size: 1.1em;
   font-weight: bold;
 }
 
@@ -124,11 +161,11 @@ body {
 
 #peer-line {
   padding-top: 3px !important;
-  font-size: 1.1em;
+  font-size: 1em;
 }
 
 #raw-data-line {
-  font-size: 0.9em;
+  font-size: 0.8em;
   padding-top: 2px !important;
 }
 
@@ -136,20 +173,4 @@ body {
   padding: 0px;
   margin: 5px 0px 0px 25px;
   font-size: 0.9em;
-}
-
-#document-body {
-  padding-top: 200px;
-}
-
-#document-body > * {
-  display: block;
-  margin: 0 auto;
-  text-align: center;
-  padding: 10px 0;
-  font-size: 2.3em;
-}
-
-#label-line1 {
-  font-weight: bold;
 }

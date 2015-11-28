@@ -314,7 +314,6 @@ var mark_checklist = function(dom_id, result, json) {
                     $('#ago').text(ago + ' minute' + (ago == 1 ? '' : 's') + ' ago');
                 }
 
-                
                 $('.block-author-hostname').text(author_hostname_port.split(':')[0]);
                 var peer_list = [];
                 $.each(json['node_locations'], function(k, v) {
@@ -372,6 +371,22 @@ $(document).ready(function() {
 
         $('#verify-area').click(function(){
             $('#checklist').toggle();
+        });
+
+        $('#show-details').click(function(event){
+            $('#peer-line, #raw-data-line, #hide-details').show();
+            $('#show-details').hide();
+            $('#verify-area').click(function(){
+                $('#checklist').toggle();
+            });
+            event.stopPropagation();
+        });
+
+        $('#hide-details').click(function(event){
+            $('#peer-line, #raw-data-line, #checklist, #hide-details').hide();
+            $('#show-details').show();
+            $('#verify-area').unbind('click');
+            event.stopPropagation();
         });
 
         var json = $.parseJSON($('#raw-data').text());
