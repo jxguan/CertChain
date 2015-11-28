@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.core.urlresolvers import reverse
 from certchain.shared import create_rpc_url
 from collections import defaultdict
+from django.http import HttpResponse
 import datetime
 
 import logging
@@ -18,58 +19,17 @@ def document(request, docid):
     resp = requests.get(create_rpc_url('/document/' + docid))
     json = resp.json()
     return render(request, 'public/document.html',
-      {'doc' : json['contents'], 'raw_data': resp.text})
+      {'docid' : docid, 'doc' : json['contents'], 'raw_data': resp.text})
   except Exception as ex:
     messages.error(request, 'Unable to retrieve document at this time: ' + str(ex))
     return redirect(reverse('certchain:manage_certifications'))
-  # context = {
-  #   'txnid': txnid
-  # }
-  # try:
-  #   document = base64.b64decode(docb64)
-  #   context['doc'] = document
-  #   payload = {
-  #     'txn_id': txnid,
-  #     'document': document
-  #   }
-  #   resp = requests.post(create_rpc_url('/diploma_status'),
-  #     data=json.dumps(payload))
-  #   latest_txn_id = None
-  #   if resp.status_code == 200:
-  #     validity = resp.json()
-  #     if validity['status'] == 'QUEUED':
-  #       context['msg_class'] = 'yellow'
-  #       context['msg'] = 'This diploma has just been submitted for \
-  #             certification; its validity status\
-  #             will be available soon.'
-  #     elif validity['status'] == 'CERTIFIED':
-  #       context['latest_txn_id'] = validity['latest_txn_id']
-  #       context['msg_class'] = 'green'
-  #       context['msg'] = 'Certified by ' + cc_addr_to_name(validity['author_addr'])\
-  #         + ' on ' + str(cc_format_sig_ts(validity['latest_txn_ts'])) + '. \
-  #         This diploma is valid and has not been tampered with.'
-  #     elif validity['status'] == 'REVOKED':
-  #       context['latest_txn_id'] = validity['latest_txn_id']
-  #       context['msg_class'] = 'red'
-  #       context['msg'] = 'Revoked by ' + cc_addr_to_name(validity['author_addr'])\
-  #         + ' on ' + str(cc_format_sig_ts(validity['latest_txn_ts'])) + '. \
-  #         This diploma is no longer valid.'
-  #     elif validity['status'] == 'NONEXISTENT':
-  #       context['msg_class'] = 'red'
-  #       context['msg'] = 'This diploma is not valid; it has never been certified.'
-  #     else:
-  #       context['msg_class'] = 'red'
-  #       context['msg'] = 'This diploma has been tampered with and is not valid.'
-  #       context['document_override'] = 'INVALID'
-  #   else:
-  #     context['msg_class'] = 'red'
-  #     context['msg'] = 'A communications error prevented \
-  #       the validation of this diploma at the moment: ' + str(resp.status_code)
-  # except Exception as ex:
-  #   context['msg_class'] = 'red'
-  #   context['msg'] = context['msg'] = 'This diploma has been tampered with and is not valid.'
-  #   context['document_override'] = 'INVALID'
-  # return render(request, 'certchain/viewer.html', context)
+
+# Allows public users to see raw JSON data via link;
+# we cannot link directly to the RPC port as that is
+# not intended to be publicly accessible.
+def raw_document(request, docid):
+  resp = requests.get(create_rpc_url('/document/' + docid))
+  return HttpResponse(resp.text, content_type='application/json')
 
 def student(request, student_id):
   try:

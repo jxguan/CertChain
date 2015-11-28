@@ -373,6 +373,10 @@ $(document).ready(function() {
             $('#checklist').toggle();
         });
 
+        $('#verify-area a').click(function(event){
+            event.stopPropagation();
+        })
+
         $('#show-details').click(function(event){
             $('#peer-line, #raw-data-line, #hide-details').show();
             $('#show-details').hide();
