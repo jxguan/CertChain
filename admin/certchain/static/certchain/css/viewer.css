@@ -21,14 +21,51 @@ body {
   padding: 10px;
 }
 
-#cert-area {
-  display: block;
+#verify-area {
   width: 90%;
   padding: 10px;
   margin-left: 45px;
   margin-top: 10px;
   font-size: 1.2em;
   line-height: 130%;
+}
+
+#verify-area tr {
+  width: 100%;
+}
+
+.yes {
+  font-size: 0.8em;
+  background-color: #BBFF4B;
+  border: 1px solid #81CA0C;
+  padding: 2px 5px;
+  border-radius: 5px;
+  margin-left: 5px;
+  display: none;
+}
+
+.no {
+  font-size: 0.8em;
+  background-color: #FF9292;
+  border: 1px solid #C60000;
+  padding: 2px 5px;
+  border-radius: 5px;
+  margin-left: 5px;
+  display: none;
+}
+
+#verify-area li {
+  color: gray;
+}
+
+#verify-area li.confirmed,
+#verify-area li.invalid {
+  color: black;
+}
+
+#verify-area li.confirmed .yes,
+#verify-area li.invalid .no {
+  display: inline !important;
 }
 
 #cert-status {
@@ -39,19 +76,30 @@ body {
   font-size: 0.9em !important;
 }
 
-#cert-area.green {
+#verify-area.green {
   background-color: #BBFF4B;
   border: 1px solid #81CA0C;
 }
 
-#cert-area.red {
+#verify-area.red {
   background-color: #FF9292;
   border: 1px solid #C60000;
 }
 
-#cert-area.yellow {
+#verify-area.yellow {
   background-color: #F6FF84;
   border: 1px solid #D6DE6C;
+}
+
+#verify-area #progress {
+  height: 18px;
+  float: right;
+  margin: 4px;
+}
+
+#verify-area ul {
+  padding: 0px;
+  margin: 5px 0px 0px 25px;
 }
 
 #document-body {

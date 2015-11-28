@@ -16,15 +16,24 @@
     <script type="text/javascript" src="{% static 'public/js/verify.js'%}"></script>
   </head>
   <body>
-    <div id="raw-data">{{ raw_data }}</div>
+    <div id="raw-data" style="display: none">{{ raw_data }}</div>
     <div id="document">
-      <div id="cert-area" class="{{ msg_class }}">
-        <span id="cert-status">{{ msg }}</span>
-        <br/>
-        {% if latest_txn_id %}
-        <span id="cert-details">The underlying transaction data is publicly available at <a href="">{{ latest_txn_id }}.</a></span>
-        {% endif %}
-      </div>
+      <table id="verify-area" class="yellow">
+        <tr>
+          <td>
+            <span id="cert-status">Verifying document authenticity...</span>
+            <ul>
+              <li>Was block published within the last hour?</li>
+              <li id="author-sig-valid">Is the block header signed by the authoring institution? <span class="yes">YES</span><span class="no">NO</span></li>
+              <li id="peer-hash-valid">Are there one or more peers identified as signatories in the block header? <span class="yes">YES</span><span class="no">NO</span></li>
+              <li>Is the block header signed by all listed peers?</li>
+            </ul>
+          </td>
+          <td>
+            <img id="progress" src="{% static 'public/images/progress_bar.gif'%}"/>
+          </td>
+        </tr>
+      </table>
       <div id="document-body">
         {% if document_override %}
         <span id="label-line1">INVALID</span>

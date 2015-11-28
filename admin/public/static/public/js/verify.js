@@ -83,7 +83,7 @@ function hex_str_to_uint8array(hex_str, len) {
     return ua;
 }
 
-function recover_signature_pubkey(message, signature) {
+function recover_sig_inst_addr(message, signature) {
     // We expect signature to be <recid>|<signature>;
     // break them apart now.
     recid = signature.substring(0,1);
@@ -93,7 +93,8 @@ function recover_signature_pubkey(message, signature) {
     state.message = hex_str_to_uint8array(message, 64);
     state.sig = hex_str_to_uint8array(sig, 128);
     state.recid = parseInt(recid);
-    Promise.resolve().then(function(ret) {
+
+    return Promise.resolve().then(function(ret) {
         // If an expected argument name maps to the same name as an alias, there is no need to include it in the map.
         // For example, in this case sig and recid are stored under the same name in state as what the function expects,
         // and therefore the map argument only maps 'msg' to 'message'.
@@ -102,9 +103,11 @@ function recover_signature_pubkey(message, signature) {
         state.recovered_pubkey = ret;
         var recov_pubkey_hex = CryptoJS.enc.u8array.parse(state.recovered_pubkey).toString();
         log("Recovered public key is: " + recov_pubkey_hex);
-        pubkey_to_inst_address(recov_pubkey_hex);
+        var recov_inst_addr = pubkey_to_inst_address(recov_pubkey_hex);
+        log("Recovered inst addr is: " + recov_inst_addr);
+        return recov_inst_addr;
     }).catch(function(error) {
-        log("Error occured: ");
+        log("Error occured: " + error);
         log(error);
     });
 };
@@ -127,12 +130,11 @@ function pubkey_to_inst_address(pubkey_hex) {
 
     // First byte is mainnet version prefix.
     inst_addr[0] = 88;
-    console.log(inst_addr);
 
     // Next 20 bytes are RIPEMD160(SHA256(pubkey_hex))
     var bitArray = sjcl.hash.sha256.hash(pubkey_hex);
     var digest_sha256 = sjcl.codec.hex.fromBits(bitArray);
-    console.log(digest_sha256);
+    // console.log(digest_sha256);
     wordArr = sjcl.hash.ripemd160.hash(digest_sha256);
     var uint8arr = word_array_to_uint8arr(wordArr);
     for (var i = 0; i < uint8arr.length; i++) {
@@ -141,7 +143,7 @@ function pubkey_to_inst_address(pubkey_hex) {
 
     // Final 4 bytes are SHA256(SHA256(prev 21 bytes)).
     var to_checksum = CryptoJS.enc.u8array.parse(inst_addr.slice(0,21)).toString();
-    console.log('To checksum: ' + to_checksum);
+    // console.log('To checksum: ' + to_checksum);
     bitArray = sjcl.hash.sha256.hash(to_checksum);
     digest_sha256 = sjcl.codec.hex.fromBits(bitArray); 
     bitArray = sjcl.hash.sha256.hash(digest_sha256);
@@ -151,7 +153,7 @@ function pubkey_to_inst_address(pubkey_hex) {
     }
 
     // Encode InstAddress in base 58.
-    console.log(base58.encode(inst_addr));
+    return base58.encode(inst_addr);
 };
 
 function double_sha256(str) {
@@ -163,27 +165,48 @@ function double_sha256(str) {
 };
 
 $(document).ready(function() {
-  secp256k1.init().then(function() {
-      console.log('Loaded secp256k1.');
-      var json = $.parseJSON($('#raw-data').text());
-      
-      // TODO: Verify timestamp on block first.
-      var block_header = json['most_recent_block_header'];
+    secp256k1.init().then(function() {
+        console.log('Loaded secp256k1.');
+        var json = $.parseJSON($('#raw-data').text());
 
-      // Compute hash of block header.
-      var to_hash = 'BLOCKHEADER:'
+        // TODO: Verify timestamp on block first.
+        var block_header = json['most_recent_block_header'];
+
+        // Compute hash of block header.
+        var to_hash = 'BLOCKHEADER:'
         + block_header['timestamp']
         + ',' + block_header['parent']
         + ',' + block_header['author']
         + ',' + block_header['merkle_root']
         + ',' + block_header['signoff_peers_hash'];
-      var computed_block_header_hash = double_sha256(to_hash);
-      console.log('Computed block header hash: ' + computed_block_header_hash);
-  
-      // Recover the author's signature of the computed block
-      // header hash: does the recovered public key
-      // hash to the block's authoring address?
-      recover_signature_pubkey(computed_block_header_hash,
-        json['author_signature']);
-  });
+        var computed_block_header_hash = double_sha256(to_hash);
+        console.log('Computed block header hash: ' + computed_block_header_hash);
+
+        // Recover the author's signature of the computed block
+        // header hash: does the recovered public key
+        // hash to the block's authoring address?
+        recover_sig_inst_addr(computed_block_header_hash,
+        json['author_signature']).then(function(inst_addr) {
+            if (inst_addr == block_header['author']) {
+                $('#author-sig-valid').addClass('confirmed');
+            } else {
+                $('#author-sig-valid').addClass('invalid');
+            }
+        });
+
+        // Is there at least one other peer signatory?
+        var peer_str = '|';
+        var num_peers = 0;
+        $.each(json['peer_signatures'], function(k, v) {
+            num_peers++;
+            peer_str += k + '|'
+        });
+        var peer_str_hash = double_sha256(peer_str);
+        if (num_peers > 0
+                && peer_str_hash == block_header['signoff_peers_hash']) {
+            $('#peer-hash-valid').addClass('confirmed');
+        } else {
+            $('#peer-hash-valid').addClass('invalid');
+        }
+    });
 });
