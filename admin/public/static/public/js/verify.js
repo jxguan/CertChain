@@ -164,6 +164,78 @@ function double_sha256(str) {
     return digest_sha256;
 };
 
+var check_author_sig = function(json, block_header_hash) {
+    // Recover the author's signature of the computed block
+    // header hash: does the recovered public key
+    // hash to the block's authoring address?
+    var block_header = json['most_recent_block_header'];
+    recover_sig_inst_addr(block_header_hash,
+    json['author_signature']).then(function(inst_addr) {
+        if (inst_addr == block_header['author']) {
+            $('#author-sig-valid').addClass('confirmed');
+        } else {
+            $('#author-sig-valid').addClass('invalid');
+        }
+        check_peer_sigs(json, block_header_hash);
+    });
+};
+
+var check_peer_sigs = function(json, block_header_hash) {
+    // Is there at least one other peer signatory?
+    var peer_str = '|';
+    var num_peers = 0;
+    $.each(json['peer_signatures'], function(k, v) {
+        num_peers++;
+        peer_str += k + '|'
+    });
+    var block_header = json['most_recent_block_header'];
+    var peer_str_hash = double_sha256(peer_str);
+    if (num_peers > 0
+            && peer_str_hash == block_header['signoff_peers_hash']) {
+        $('#peer-hash-valid').addClass('confirmed');
+    } else {
+        $('#peer-hash-valid').addClass('invalid');
+    }
+
+    // Have all peers (of which there must be >= 1)
+    // signed the block header?
+    var map = {};
+    if (num_peers > 0) {
+        $.each(json['peer_signatures'], function(k, v) {
+            /*
+             * TODO: If you are here because you have multiple
+             * peers and are getting a simultaneous use error
+             * for secp256k1, you will need to chain the calls
+             * to happen one after the other here.
+             */
+            recover_sig_inst_addr(block_header_hash,
+                v).then(function(inst_addr) {
+                    map[k] = (inst_addr == k);
+
+                    // If we now have T/F results for all
+                    // peer sigs, make sure are all valid.
+                    if (map.length == json['peer_signatures'].length) {
+                        var areAnyInvalid = false;
+                        $.each(map, function(k, v) {
+                            if (!v) {
+                                areAnyInvalid = true;
+                                return false;
+                            }
+                        });
+                        if (!areAnyInvalid) {
+                            $('#all-peers-signed').addClass('confirmed');
+                        } else {
+                            $('#all-peers-signed').addClass('invalid');
+                        }
+                    }
+                }
+            );
+        });
+    } else {
+        $('#all-peers-signed').addClass('invalid');
+    }
+};
+
 $(document).ready(function() {
     secp256k1.init().then(function() {
         console.log('Loaded secp256k1.');
@@ -182,31 +254,6 @@ $(document).ready(function() {
         var computed_block_header_hash = double_sha256(to_hash);
         console.log('Computed block header hash: ' + computed_block_header_hash);
 
-        // Recover the author's signature of the computed block
-        // header hash: does the recovered public key
-        // hash to the block's authoring address?
-        recover_sig_inst_addr(computed_block_header_hash,
-        json['author_signature']).then(function(inst_addr) {
-            if (inst_addr == block_header['author']) {
-                $('#author-sig-valid').addClass('confirmed');
-            } else {
-                $('#author-sig-valid').addClass('invalid');
-            }
-        });
-
-        // Is there at least one other peer signatory?
-        var peer_str = '|';
-        var num_peers = 0;
-        $.each(json['peer_signatures'], function(k, v) {
-            num_peers++;
-            peer_str += k + '|'
-        });
-        var peer_str_hash = double_sha256(peer_str);
-        if (num_peers > 0
-                && peer_str_hash == block_header['signoff_peers_hash']) {
-            $('#peer-hash-valid').addClass('confirmed');
-        } else {
-            $('#peer-hash-valid').addClass('invalid');
-        }
+        check_author_sig(json, computed_block_header_hash);
     });
 });
