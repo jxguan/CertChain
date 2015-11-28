@@ -147,6 +147,40 @@ impl Hashchain {
         }
     }
 
+    /// This method retrieves a block by its block height, because actions
+    /// are tied to the block height rather than their block hash. This is because
+    /// when a block is authored, its header is based in part on its merkle root; if
+    /// we require nodes (actions) in the merkle tree to refer to the hash of the
+    /// block currently being constructed, we get a circular dependency. We break that
+    /// by using block height in the action; this is acceptable because our hashchains
+    /// are not allowed to branch.
+    /// TODO: This method is inefficient (O(n) in the number of blocks); eventually
+    /// index blocks by height for O(1) lookup.
+    pub fn get_block(&self, block_height: usize) -> Option<Block> {
+        if block_height == 0 || block_height > self.chain.len()
+                || self.head_node.is_none() {
+            return None
+        } else {
+            let mut idx = 1;
+            let mut lookup_hash = self.head_node.unwrap();
+            while idx < block_height {
+                match self.chain.get(&lookup_hash) {
+                    None => return None,
+                    Some(ref chain_node) => {
+                        match chain_node.next_block {
+                            None => return None,
+                            Some(ref hash) => {
+                                lookup_hash = hash.clone();
+                                idx += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            return Some(self.chain.get(&lookup_hash).unwrap().block.clone());
+        }
+    }
+
     /// Determines if the provided block can be appended to the hashchain.
     pub fn is_block_eligible_for_append(
             &self, block: &Block) -> Result<(), AppendErr> {

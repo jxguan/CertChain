@@ -31,6 +31,10 @@ def raw_document(request, docid):
   resp = requests.get(create_rpc_url('/document/' + docid))
   return HttpResponse(resp.text, content_type='application/json')
 
+def raw_block(request, block_height):
+  resp = requests.get(create_rpc_url('/block/' + block_height))
+  return HttpResponse(resp.text, content_type='application/json')
+
 def student(request, student_id):
   try:
     resp = requests.get(create_rpc_url('/certifications_by_student_id/' + student_id))

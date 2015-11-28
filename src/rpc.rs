@@ -82,6 +82,11 @@ pub fn start(config: &CertChainConfig,
                     end_peering(res, fsm.clone(),
                             node_table.clone(), &path[13..]);
                 },
+                (hyper::Get, AbsolutePath(ref path))
+                    if path.len() > 7
+                        && &path[0..7] == "/block/" => {
+                    handle_block_req(res, hashchain.clone(), &path[7..]);
+                },
                 _ => *res.status_mut() = hyper::NotFound
             }
         }
@@ -291,4 +296,28 @@ fn end_peering(res: Response<Fresh>,
     let ref mut fsm = *fsm.write().unwrap();
     fsm.push_state(FSMState::SyncNodeTableToDisk);
     res.send("OK; peering ended.".as_bytes()).unwrap();
+}
+
+fn handle_block_req(res: Response<Fresh>,
+                       hashchain: Arc<RwLock<Hashchain>>,
+                       block_height: &str) {
+    let height = match block_height.parse::<usize>() {
+        Ok(h) => h,
+        Err(_) => {
+            res.send("Block height is invalid.".as_bytes()).unwrap();
+            return;
+        }
+    };
+
+    let ref hashchain = *hashchain.read().unwrap();
+    match hashchain.get_block(height) {
+        None => {
+            res.send("Block does not exist.".as_bytes()).unwrap();
+            return;
+        },
+        Some(b) => {
+            let json = serde_json::to_string_pretty(&b).unwrap();
+            res.send(json.as_bytes()).unwrap();
+        }
+    }
 }

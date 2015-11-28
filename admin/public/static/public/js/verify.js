@@ -314,6 +314,12 @@ var mark_checklist = function(dom_id, result, json) {
                     $('#ago').text(ago + ' minute' + (ago == 1 ? '' : 's') + ' ago');
                 }
 
+                // Point to the block in which this document was certified.
+                var url = $('#block-url').attr('href');
+                var url = url.substring(0, url.length - 2)
+                    + json['merkle_node']['certified_block_height'];
+                $('#block-url').attr('href', url);
+
                 $('.block-author-hostname').text(author_hostname_port.split(':')[0]);
                 var peer_list = [];
                 $.each(json['node_locations'], function(k, v) {
