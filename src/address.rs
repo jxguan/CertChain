@@ -9,7 +9,6 @@ use hash::DoubleSha256Hash;
 use std::fmt::{Debug, Display, Formatter};
 use rustc_serialize::{Encodable};
 use common::ValidityErr;
-use std::hash::{Hash};
 use serde::ser;
 use serde::de;
 use rustc_serialize::hex::ToHex;

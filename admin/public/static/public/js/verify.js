@@ -172,9 +172,9 @@ var check_author_sig = function(json, block_header_hash) {
     recover_sig_inst_addr(block_header_hash,
     json['author_signature']).then(function(inst_addr) {
         if (inst_addr == block_header['author']) {
-            $('#author-sig-valid').addClass('confirmed');
+            mark_checklist('author-sig-valid', true, json);
         } else {
-            $('#author-sig-valid').addClass('invalid');
+            mark_checklist('author-sig-valid', false, json);
         }
         check_peer_sigs(json, block_header_hash);
     });
@@ -192,9 +192,9 @@ var check_peer_sigs = function(json, block_header_hash) {
     var peer_str_hash = double_sha256(peer_str);
     if (num_peers > 0
             && peer_str_hash == block_header['signoff_peers_hash']) {
-        $('#peer-hash-valid').addClass('confirmed');
+        mark_checklist('peer-hash-valid', true, json);
     } else {
-        $('#peer-hash-valid').addClass('invalid');
+        mark_checklist('peer-hash-valid', false, json);
     }
 
     // Have all peers (of which there must be >= 1)
@@ -223,9 +223,9 @@ var check_peer_sigs = function(json, block_header_hash) {
                             }
                         });
                         if (!areAnyInvalid) {
-                            $('#all-peers-signed').addClass('confirmed');
+                            mark_checklist('all-peers-signed', true, json);
                         } else {
-                            $('#all-peers-signed').addClass('invalid');
+                            mark_checklist('all-peers-signed', false, json);
                         }
                     }
                 }
@@ -267,18 +267,114 @@ var run_merkle_proof = function(json) {
 
     var block_header = json['most_recent_block_header'];
     if (computed_root_hash == block_header['merkle_root']) {
-        $('#merkle-proof-valid').addClass('confirmed');
+        mark_checklist('merkle-proof-valid', true, json);
     } else {
-        $('#merkle-proof-valid').addClass('invalid');
+        mark_checklist('merkle-proof-valid', false, json);
     }
 };
 
+var mark_checklist = function(dom_id, result, json) {
+    if (checklist[dom_id] !== undefined) {
+        if (result) {
+            $('#' + dom_id).addClass('confirmed');
+        } else {
+            $('#' + dom_id).addClass('invalid');
+        }
+        checklist[dom_id] = result;
+
+        // Is this the final pending item in the checklist?
+        // If so, transform the status area accordingly.
+        var all_items_done = true;
+        var aggregate_result = true;
+        $.each(checklist, function(item, item_status) {
+            if (item_status == null) {
+                all_items_done = false;
+                return false;
+            } else {
+                aggregate_result = aggregate_result && item_status;
+            }
+        });
+        if (all_items_done) {
+            if (aggregate_result) {
+                $('#verify-area').removeClass('gray').addClass('green');
+                $('#progress-status').hide();
+                $('#checklist').hide();
+                var cert_ts = new Date(0);
+                cert_ts.setUTCSeconds(json['merkle_node']['certified_ts']);
+                var author_addr = json['most_recent_block_header']['author'];
+                var author_hostname_port = json['node_locations'][author_addr];
+                var block_ts = new Date(0);
+                block_ts.setUTCSeconds(json['most_recent_block_header']['timestamp']);
+                var ago = (new Date() - block_ts) / 1000 / 60;
+                if (ago < 1) {
+                    ago = parseInt((new Date() - block_ts) / 1000);
+                    $('#ago').text(ago + ' second' + (ago == 1 ? '' : 's') + ' ago');
+                } else {
+                    ago = parseInt(ago);
+                    $('#ago').text(ago + ' minute' + (ago == 1 ? '' : 's') + ' ago');
+                }
+
+                
+                $('.block-author-hostname').text(author_hostname_port.split(':')[0]);
+                var peer_list = [];
+                $.each(json['node_locations'], function(k, v) {
+                    var hostname = v.split(':')[0];
+                    if (k != author_addr) {
+                        peer_list.push(hostname);
+                    }
+                });
+                var list_str = 'peer';
+                if (peer_list.length > 1) {
+                    list_str += 's ';
+                } else {
+                    list_str += ' ';
+                }
+                for (var i = 0; i < peer_list.length; i++) {
+                    if (i != 0 && i == peer_list.length - 1) {
+                        list_str += 'and ';
+                    }
+                    list_str += '<strong>' + peer_list[i] + '</strong>';
+                    if (i != peer_list.length - 1) {
+                        if (peer_list.length > 2) {
+                            list_str += ', ';
+                        } else {
+                            list_str += ' ';
+                        }
+                    }
+                }
+                $('#peer-list').html(list_str);
+                $('#cert-date').text(cert_ts);
+                $('#valid-text').show();
+            } else {
+                $('#verify-area').removeClass('gray').addClass('red');
+                $('#progress-status').hide();
+                $('#invalid-text').show();
+            }
+        }
+    } else {
+        throw 'Received unexpected checklist DOM id: ' + dom_id;
+    }
+}
+
+// null represents pending, true represents confirmed,
+// false represents invalid.
+var checklist = {
+    'author-sig-valid': null,
+    'peer-hash-valid': null,
+    'all-peers-signed': null,
+    'node-locs-agreed': null,
+    'merkle-proof-valid': null,
+    'within-last-hour': null
+};
 $(document).ready(function() {
     secp256k1.init().then(function() {
         console.log('Loaded secp256k1.');
-        var json = $.parseJSON($('#raw-data').text());
 
-        // TODO: Verify timestamp on block first.
+        $('#verify-area').click(function(){
+            $('#checklist').toggle();
+        });
+
+        var json = $.parseJSON($('#raw-data').text());
         var block_header = json['most_recent_block_header'];
 
         // Compute hash of block header.
@@ -287,11 +383,38 @@ $(document).ready(function() {
         + ',' + block_header['parent']
         + ',' + block_header['author']
         + ',' + block_header['merkle_root']
-        + ',' + block_header['signoff_peers_hash'];
+        + ',' + block_header['signoff_peers_hash']
+        + ',' + block_header['node_locations_hash'];
         var computed_block_header_hash = double_sha256(to_hash);
         console.log('Computed block header hash: ' + computed_block_header_hash);
 
         check_author_sig(json, computed_block_header_hash);
         run_merkle_proof(json);
+
+        // Ensure node locations are reported correctly.
+        var node_locs_str = '|';
+        $.each(json['node_locations'], function(k, v) {
+            node_locs_str += k + ':' + v + '|';
+        });
+        var node_locs_str_hash = double_sha256(node_locs_str);
+        console.log(node_locs_str_hash);
+        if (node_locs_str_hash
+            == block_header['node_locations_hash']) {
+            mark_checklist('node-locs-agreed', true, json);
+        } else {
+            mark_checklist('node-locs-agreed', false, json);
+        }
+
+        // Ensure block was authored within the last hour.
+        var author_ts = new Date(0);
+        var now = new Date();
+        var ONE_HOUR_MILLIS = 60 * 60 * 1000;
+        author_ts.setUTCSeconds(block_header['timestamp']);
+        if (author_ts < now
+                && (now - author_ts) < ONE_HOUR_MILLIS) {
+            mark_checklist('within-last-hour', true, json);
+        } else {
+            mark_checklist('within-last-hour', false, json);
+        }
     });
 });

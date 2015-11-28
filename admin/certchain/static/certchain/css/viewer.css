@@ -28,6 +28,7 @@ body {
   margin-top: 10px;
   font-size: 1.2em;
   line-height: 130%;
+  cursor: pointer;
 }
 
 #verify-area tr {
@@ -102,9 +103,39 @@ body {
   margin: 4px;
 }
 
+#valid-text,
+#invalid-text {
+  display: none;
+}
+
+#valid-text p {
+  padding: 0;
+  margin: 0;
+}
+
+#cert-line {
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+#checklist {
+  display: none;
+}
+
+#peer-line {
+  padding-top: 3px !important;
+  font-size: 1.1em;
+}
+
+#raw-data-line {
+  font-size: 0.9em;
+  padding-top: 2px !important;
+}
+
 #verify-area ul {
   padding: 0px;
   margin: 5px 0px 0px 25px;
+  font-size: 0.9em;
 }
 
 #document-body {

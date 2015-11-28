@@ -180,8 +180,7 @@ pub fn run(config: CertChainConfig) -> () {
                 FSMState::QueueNewBlock(actions) => {
                     let ref mut hashchain = *hashchain.write().unwrap();
                     hashchain.queue_new_block(
-                        node_table.read().unwrap().get_our_inst_addr(),
-                        actions, &secret_key);
+                        node_table.clone(), actions, &secret_key);
                     info!("FSM: queued new block.");
                 },
                 FSMState::AddSignatureToProcessingBlock(peer_addr, peer_sig) => {

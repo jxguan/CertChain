@@ -49,9 +49,10 @@ pub struct ChainNode {
 pub struct Block {
     pub header: BlockHeader,
     actions: Vec<Action>,
+    author_signature: RecovSignature,
     signoff_peers: BTreeSet<InstAddress>,
     signoff_signatures: HashMap<InstAddress, RecovSignature>,
-    author_signature: RecovSignature
+    node_locations: BTreeMap<InstAddress, String>,
 }
 
 #[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -61,6 +62,7 @@ pub struct BlockHeader {
     pub author: InstAddress,
     merkle_root: DoubleSha256Hash,
     signoff_peers_hash: DoubleSha256Hash,
+    node_locations_hash: DoubleSha256Hash,
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
@@ -98,6 +100,7 @@ pub struct DocumentStatusProof {
     most_recent_block_header: BlockHeader,
     peer_signatures: HashMap<InstAddress, RecovSignature>,
     author_signature: RecovSignature,
+    node_locations: BTreeMap<InstAddress, String>,
     merkle_node: MerkleNode,
     merkle_proof: MerkleProof,
 }
@@ -136,6 +139,7 @@ impl Hashchain {
                     most_recent_block_header: block.header.clone(),
                     peer_signatures: block.signoff_signatures.clone(),
                     author_signature: block.author_signature.clone(),
+                    node_locations: block.node_locations.clone(),
                     merkle_node: self.merkle_tree.get_node(docid),
                     merkle_proof: self.merkle_tree.merkle_proof(docid),
                 }
@@ -232,10 +236,13 @@ impl Hashchain {
     /// to process the queue, signatures will be sent once all prior
     /// queued blocks have been signed and finalized.
     pub fn queue_new_block(&mut self,
-                           our_inst_addr: InstAddress,
+                           node_table: Arc<RwLock<NetNodeTable>>,
                            actions: Vec<Action>,
                            our_secret_key: &SecretKey) {
+        let ref node_table = *node_table.read().unwrap();
+        let our_inst_addr = node_table.get_our_inst_addr();
         let signoff_peers = self.get_signoff_peers(&actions);
+        let node_locations = node_table.get_node_locations(&signoff_peers);
         let timestamp = time::get_time().sec;
         // TODO: Handle this rather than unwrapping.
         let merkle_root = match self.merkle_tree.compute_root_with_actions(
@@ -250,6 +257,7 @@ impl Hashchain {
                        merkle_root,
                        signoff_peers,
                        actions,
+                       node_locations,
                        &our_secret_key));
     }
 
@@ -650,18 +658,21 @@ impl Block {
            merkle_root: DoubleSha256Hash,
            signoff_peers: BTreeSet<InstAddress>,
            actions: Vec<Action>,
+           node_locations: BTreeMap<InstAddress, String>,
            our_secret_key: &SecretKey) -> Block {
         let header = BlockHeader::new(timestamp, parent,
                                       our_inst_addr,
+                                      &node_locations,
                                       merkle_root, &signoff_peers);
         let header_hash = header.hash();
         Block {
             header: header,
             actions: actions,
+            author_signature: RecovSignature::sign(
+                &header_hash, &our_secret_key),
             signoff_peers: signoff_peers,
             signoff_signatures: HashMap::new(),
-            author_signature: RecovSignature::sign(
-                &header_hash, &our_secret_key)
+            node_locations: node_locations,
         }
     }
 
@@ -695,6 +706,7 @@ impl BlockHeader {
     pub fn new(timestamp: i64,
                parent: Option<DoubleSha256Hash>,
                our_inst_addr: InstAddress,
+               node_locations: &BTreeMap<InstAddress, String>,
                merkle_root: DoubleSha256Hash,
                signoff_peers: &BTreeSet<InstAddress>) -> BlockHeader {
         let parent_hash = match parent {
@@ -706,18 +718,30 @@ impl BlockHeader {
         // because we are using BTreeSet, iteration will occur
         // lexicographically, which is important because we want
         // client-side JS to be able to easily reconstruct this hash.
-        let mut to_hash = String::from("|");
+        let mut signoff_peers_to_hash = String::from("|");
         for peer_addr in signoff_peers.iter() {
-            to_hash = to_hash + &peer_addr.to_base58();
+            signoff_peers_to_hash = signoff_peers_to_hash
+                + &peer_addr.to_base58() + "|";
         }
-        to_hash = to_hash + "|";
+
+        // Create a string containing each node's address and hostname + port.
+        // We use BTreeSet here as well in order to ensure lexicographic
+        // iteration.
+        let mut node_locs_to_hash = String::from("|");
+        for (addr, hostname_port) in node_locations.iter() {
+            node_locs_to_hash = node_locs_to_hash
+                + &addr.to_base58() + ":" + hostname_port + "|";
+        }
 
         BlockHeader {
             timestamp: timestamp,
             parent: parent_hash,
             author: our_inst_addr,
             merkle_root: merkle_root,
-            signoff_peers_hash: DoubleSha256Hash::hash_string(&to_hash)
+            signoff_peers_hash: DoubleSha256Hash::hash_string(
+                &signoff_peers_to_hash),
+            node_locations_hash: DoubleSha256Hash::hash_string(
+                &node_locs_to_hash)
         }
     }
 
@@ -732,12 +756,13 @@ impl BlockHeader {
          * TODO: Keep this in mind, and continue to add fields of BlockHeader
          * to this hash as they are added during development.
          */
-        let to_hash = format!("BLOCKHEADER:{},{},{},{},{}",
+        let to_hash = format!("BLOCKHEADER:{},{},{},{},{},{}",
                               self.timestamp,
                               self.parent,
                               self.author,
                               self.merkle_root,
-                              self.signoff_peers_hash);
+                              self.signoff_peers_hash,
+                              self.node_locations_hash);
         DoubleSha256Hash::hash_string(&to_hash)
     }
 }

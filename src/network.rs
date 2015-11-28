@@ -19,7 +19,7 @@ use std::hash::{Hash};
 use rand::os::OsRng;
 use rand::Rng;
 use compress::checksum::adler;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeSet, BTreeMap};
 use msgpack;
 use hashchain::{Hashchain, Action, Block, AppendErr};
 use fsm::{FSM, FSMState};
@@ -218,6 +218,21 @@ impl NetNodeTable {
 
     pub fn get_our_inst_addr(&self) -> InstAddress {
         self.our_inst_addr
+    }
+
+    /// Gets the node locations of the InstAddresses passed in the argument
+    /// set, as well as our own location.
+    pub fn get_node_locations(&self, signoff_peers: &BTreeSet<InstAddress>)
+            -> BTreeMap<InstAddress, String> {
+        let mut map = BTreeMap::new();
+        map.insert(self.our_inst_addr.clone(),
+            format!("{}:{}", self.our_hostname, self.our_port));
+        for peer_addr in signoff_peers.iter() {
+            let ref node_map = *self.node_map.read().unwrap();
+            let ref node = node_map.get(&peer_addr).unwrap();
+            map.insert(peer_addr.clone(), format!("{}:{}", node.hostname, node.port));
+        }
+        map
     }
 
     /// Creates a condensed representation of this NetNodeTable suitable
