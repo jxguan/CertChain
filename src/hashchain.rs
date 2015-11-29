@@ -494,7 +494,9 @@ impl Hashchain {
             }
         }
 
-        summaries.iter().map(|(_, s)| s.clone()).collect()
+        let mut s_vec : Vec<DocumentSummary> = summaries.iter().map(|(_, s)| s.clone()).collect();
+        s_vec.sort();
+        s_vec
     }
 }
 
@@ -904,3 +906,22 @@ impl de::Deserialize for DocumentType {
         d.visit_str(DocumentTypeVisitor)
     }
 }
+
+// DocumentSummaries are ordered by cert_timestamp; most
+// recent comes before least.
+impl Ord for DocumentSummary {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        other.cert_timestamp.cmp(&self.cert_timestamp)
+    }
+}
+impl PartialOrd for DocumentSummary {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(other.cmp(&self))
+    }
+}
+impl PartialEq for DocumentSummary {
+    fn eq(&self, other: &Self) -> bool {
+        self.cert_timestamp == other.cert_timestamp
+    }
+}
+impl Eq for DocumentSummary {}
