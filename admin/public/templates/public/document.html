@@ -17,9 +17,9 @@
   </head>
   <body>
     <table id="verify-area" class="gray">
-      <tr id="valid-text">
+      <tr id="certified-text">
         <td>
-          <p id="cert-line">Certified by <span class="block-author-hostname"></span> on <span id="cert-date"></span> in <a id="block-url" href="{% url 'public:raw_block' 0 %}">this block</a>.</p>
+          <p id="cert-line"><span id="cert-status"></span> by <span class="block-author-hostname"></span> on <span id="action-date"></span> in <a id="block-url" href="{% url 'public:raw_block' 0 %}">this block</a>.</p>
           <p id="peer-line">Latest confirmation authored <span id="ago"></span> by <strong><span class="block-author-hostname"></span></strong> with <span id="peer-list"></span>.</p>
           <p id="raw-data-line">All authenticity checks were performed in your browser on <a href="{% url 'public:raw_document' docid %}">the raw data located here</a>. To view the checklist, tap this box.</p>
         </td>

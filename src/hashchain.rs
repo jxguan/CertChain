@@ -719,8 +719,8 @@ impl MerkleNode {
                 self.document_id, self.certified_ts,
                 self.certified_block_height);
         if self.revoked_ts.is_some() && self.revoked_block_height.is_some() {
-            format!("{}|{:?}|{:?}", certified_str, self.revoked_ts,
-                    self.revoked_block_height)
+            format!("{}|{:?}|{:?}", certified_str, self.revoked_ts.unwrap(),
+                    self.revoked_block_height.unwrap())
         } else {
             certified_str
         }

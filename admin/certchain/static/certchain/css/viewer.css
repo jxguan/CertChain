@@ -117,8 +117,13 @@ body {
 }
 
 #verify-area.red {
-  background-color: #FF9292;
-  border: 1px solid #C60000;
+  /* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#ff8e84+0,f9686b+100 */
+  background: #ff8e84; /* Old browsers */
+  background: -moz-linear-gradient(top, #ff8e84 0%, #f9686b 100%); /* FF3.6-15 */
+  background: -webkit-linear-gradient(top, #ff8e84 0%,#f9686b 100%); /* Chrome10-25,Safari5.1-6 */
+  background: linear-gradient(to bottom, #ff8e84 0%,#f9686b 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#ff8e84', endColorstr='#f9686b',GradientType=0 ); /* IE6-9 */
+  border-bottom: 1px solid #C60000;
 }
 
 #verify-area.yellow {
@@ -140,12 +145,12 @@ body {
   border-bottom:; 1px solid #5A5A5A;
 }
 
-#valid-text,
+#certified-text,
 #invalid-text {
   display: none;
 }
 
-#valid-text p {
+#certified-text p {
   padding: 0;
   margin: 0;
 }

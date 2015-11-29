@@ -241,11 +241,11 @@ var run_merkle_proof = function(json) {
     var node_str = node.document_id + '|'
         + node.certified_ts + '|'
         + node.certified_block_height;
-    if (node.revoked_ts != null
-        && node.revoked_block_height != null) {
+    if (is_revoked(json)) {
         node_str += '|' + node.revoked_ts
             + '|' + node.revoked_block_height;
     }
+    console.log('Node str: ' + node_str);
     var node_hash = double_sha256(node_str);
     console.log('Node hash: ' + node_hash);
 
@@ -273,6 +273,10 @@ var run_merkle_proof = function(json) {
     }
 };
 
+var is_revoked = function(json) {
+    return json['merkle_node']['revoked_ts'] != null;
+};
+
 var mark_checklist = function(dom_id, result, json) {
     if (checklist[dom_id] !== undefined) {
         if (result) {
@@ -296,11 +300,35 @@ var mark_checklist = function(dom_id, result, json) {
         });
         if (all_items_done) {
             if (aggregate_result) {
-                $('#verify-area').removeClass('gray').addClass('green');
-                $('#progress-status').hide();
-                $('#checklist').hide();
-                var cert_ts = new Date(0);
-                cert_ts.setUTCSeconds(json['merkle_node']['certified_ts']);
+                $('#progress-status, #checklist').hide();
+                $('#verify-area').removeClass('gray');
+
+                var action_ts = new Date(0);
+                var action_block_height = null;
+                if (is_revoked(json)) {
+                    $('#cert-status').text('Revoked');
+                    $('#verify-area').addClass('red');
+                    action_ts.setUTCSeconds(
+                        json['merkle_node']['revoked_ts']);
+                    action_block_height = json['merkle_node']
+                        ['revoked_block_height'];
+                } else {
+                    $('#cert-status').text('Certified');
+                    $('#verify-area').addClass('green');
+                    action_ts.setUTCSeconds(
+                        json['merkle_node']['certified_ts']);
+                    action_block_height = json['merkle_node']
+                        ['certified_block_height'];
+                }
+
+                $('#action-date').text(action_ts);
+
+                // Point to the block in which this document was certified.
+                var url = $('#block-url').attr('href');
+                var url = url.substring(0, url.length - 2)
+                    + action_block_height;
+                $('#block-url').attr('href', url);
+
                 var author_addr = json['most_recent_block_header']['author'];
                 var author_hostname_port = json['node_locations'][author_addr];
                 var block_ts = new Date(0);
@@ -313,12 +341,6 @@ var mark_checklist = function(dom_id, result, json) {
                     ago = parseInt(ago);
                     $('#ago').text(ago + ' minute' + (ago == 1 ? '' : 's') + ' ago');
                 }
-
-                // Point to the block in which this document was certified.
-                var url = $('#block-url').attr('href');
-                var url = url.substring(0, url.length - 2)
-                    + json['merkle_node']['certified_block_height'];
-                $('#block-url').attr('href', url);
 
                 $('.block-author-hostname').text(author_hostname_port.split(':')[0]);
                 var peer_list = [];
@@ -348,8 +370,7 @@ var mark_checklist = function(dom_id, result, json) {
                     }
                 }
                 $('#peer-list').html(list_str);
-                $('#cert-date').text(cert_ts);
-                $('#valid-text').show();
+                $('#certified-text').show();
             } else {
                 $('#verify-area').removeClass('gray').addClass('red');
                 $('#progress-status').hide();
