@@ -44,30 +44,37 @@ pub fn run(config: CertChainConfig) -> () {
     // Connect to known nodes, as serialized to disk during prior execution.
     // TODO: This should probably only connect to pending/approved peers
     // (we will connect to subscribers on an on-demand basis).
-    let nodes_file = File::open(&config.path_to("nodes.dat")).unwrap();
-    let nodes: Vec<OnDiskNetNode> = serde_json::from_reader(nodes_file).unwrap();
-    for p in nodes {
-        let node_inst_addr = InstAddress::from_string(
-                &p.inst_addr[..]).unwrap();
-        let node_table_c1 = node_table.clone();
-        thread::spawn(move || {
-            node_table_c1.write().unwrap()
-                .register(node_inst_addr, &p.hostname, p.port,
-                          p.our_peering_approval);
-            loop {
-                let conn_res = node_table_c1.write()
-                        .unwrap().connect(node_inst_addr, Some(&secret_key));
-                if let Err(err) = conn_res {
-                    info!("Unable to connect to {}, will \
-                          retry: {}.", node_inst_addr, err);
-                    thread::sleep_ms(3000);
-                    continue;
-                }
-                info!("Successfully connected to {}", node_inst_addr);
-                break;
+    match File::open(&config.path_to("nodes.dat")) {
+        Ok(nodes_file) => {
+            let nodes: Vec<OnDiskNetNode> = serde_json::from_reader(
+                nodes_file).unwrap();
+            for p in nodes {
+                let node_inst_addr = InstAddress::from_string(
+                        &p.inst_addr[..]).unwrap();
+                let node_table_c1 = node_table.clone();
+                thread::spawn(move || {
+                    node_table_c1.write().unwrap()
+                        .register(node_inst_addr, &p.hostname, p.port,
+                                  p.our_peering_approval);
+                    loop {
+                        let conn_res = node_table_c1.write()
+                                .unwrap().connect(
+                                    node_inst_addr, Some(&secret_key));
+                        if let Err(err) = conn_res {
+                            info!("Unable to connect to {}, will \
+                                  retry: {}.", node_inst_addr, err);
+                            thread::sleep_ms(3000);
+                            continue;
+                        }
+                        info!("Successfully connected to {}", node_inst_addr);
+                        break;
+                    }
+                });
             }
-        });
-    }
+        },
+        Err(_) =>
+            warn!("Unable to open node table file; no nodes will be loaded.")
+    };
 
     // Start the RPC server.
     let fsm_c1 = fsm.clone();

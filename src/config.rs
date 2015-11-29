@@ -7,6 +7,7 @@ use std::error::Error;
 use std::{io, process, convert};
 use std::io::Read;
 use toml;
+use key;
 
 #[derive(Debug, RustcDecodable, Clone)]
 pub struct CertChainConfig {
@@ -58,14 +59,23 @@ pub fn load() -> Result<CertChainConfig, ConfigLoadError> {
     let program = args[0].clone();
 
     let mut opts = Options::new();
+    opts.optflag("k", "keypair", "print new keypair and exit");
     opts.optopt("c", "config", "set config file path", "CONFIG");
     opts.optflag("h", "help", "print this help menu");
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => { m },
         Err(f) => { panic!(f.to_string()) }
     };
+
+    // Display help and exit if -h specified.
     if matches.opt_present("h") {
         print_usage(&program, opts);
+        process::exit(0);
+    }
+
+    // Print a new keypair and exit if -k specified.
+    if matches.opt_present("k") {
+        key::print_new_keypair();
         process::exit(0);
     }
 
