@@ -20,7 +20,3 @@ make clean
 make
 ./tests
 make install
-
-# Build CertChain.
-cd ..
-cargo build

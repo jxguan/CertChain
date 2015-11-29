@@ -3,7 +3,7 @@ Distributed cryptographic certification and revocation of academic records.
 
 ## Installation
 * Download the latest nightly (not stable) Rust compiler. The latest compiler known to compile CertChain successfully is rustc 1.6.0-nightly (7499558dd 2015-11-28).
-* `$ ./setup.sh` to build the secp256k1 shared libraries required by CertChain at compilation and runtime.
+* `$ ./install.sh` to build the secp256k1 shared libraries required by CertChain at compilation and runtime.
 * `$ cargo build` to build CertChain.
 
 ## Developing
