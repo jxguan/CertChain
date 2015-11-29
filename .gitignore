@@ -1,6 +1,7 @@
 target
 Cargo.lock
 data_dirs
+data_dir
 *.swp
 *.pyc
 *.sqlite3
