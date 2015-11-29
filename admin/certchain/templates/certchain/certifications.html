@@ -28,19 +28,25 @@
           <th>Document Type</th>
           <th>Student ID</th>
           <th>Document ID</th>
-          <th></th>
+          <th style="text-align: center">Certfied</th>
+          <th style="text-align: center">Revoked</th>
         </tr>
         {% for c in certifications %}
         <tr>
           <td>{{ c.doc_type }}</td>
           <td><a href="{% url 'public:student' c.student_id %}">{{ c.student_id }}</a></td>
           <td><a href="{% url 'public:document' c.doc_id %}">{{ c.doc_id }}</a></td>
-          <td>
-            <form method="post" action="{% url 'certchain:revoke_diploma' %}">
+          <td style="text-align: center">{{ c.cert_timestamp | cc_unix_epoch_to_date }}</td>
+          <td style="text-align: center">
+            {% if c.rev_timestamp %}
+              <span>{{ c.rev_timestamp | cc_unix_epoch_to_date }}</span>
+            {% else %}
+            <form method="post" action="{% url 'certchain:revoke_document' %}">
               {% csrf_token %}
-              <input name="txn_id_to_revoke" type="hidden" value="{{ txn.txn_id }}"/>
+              <input name="docid_to_revoke" type="hidden" value="{{ c.doc_id }}"/>
               <input class="cc-btn" type="submit" value="REVOKE"/>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% empty %}

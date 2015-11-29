@@ -74,7 +74,8 @@ pub enum DocumentType {
 #[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
 pub enum Action {
     Certify(DocumentId, DocumentType, String),
-    AddPeer(InstAddress, String, u16)
+    AddPeer(InstAddress, String, u16),
+    Revoke(DocumentId),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -82,7 +83,7 @@ pub struct DocumentSummary {
     doc_id: DocumentId,
     doc_type: DocumentType,
     student_id: String,
-    cert_timestamp: Option<i64>,
+    cert_timestamp: i64,
     rev_timestamp: Option<i64>,
 }
 
@@ -309,6 +310,7 @@ impl Hashchain {
                         peers.insert(inst_addr);
                     },
                     Action::Certify(_, _, _) => (),
+                    Action::Revoke(_) => (),
                     /*
                      * TODO: When adding RemovePeer to this
                      * statement, remove from peer set.
@@ -325,6 +327,7 @@ impl Hashchain {
                     peers.insert(inst_addr);
                 },
                 Action::Certify(_, _, _) => (),
+                Action::Revoke(_) => (),
                 /*
                  * TODO: When adding RemovePeer to this
                  * statement, remove from peer set.
@@ -444,36 +447,62 @@ impl Hashchain {
 
     pub fn get_certifications(&self,
                 optional_student_id: Option<&str>) -> Vec<DocumentSummary> {
-        let mut summaries = Vec::new();
-        for (_, chain_node) in self.chain.iter() {
-            for action in chain_node.block.actions.iter() {
-                match *action {
-                    Action::Certify(_, _, ref sid) => {
-                        match optional_student_id {
-                            Some(id) => {
-                                if id == sid {
-                                    summaries.push(
+        if self.head_node.is_none() { return Vec::new() }
+        let mut summaries = HashMap::new();
+        let mut lookup_hash = self.head_node;
+        // Iterate through the chain from front to back; this is important,
+        // because processing revocations depends on the certification
+        // being processed beforehand.
+        while lookup_hash.is_some() {
+            match self.chain.get(&lookup_hash.unwrap()) {
+                None => break,
+                Some(ref chain_node) => {
+                    for action in chain_node.block.actions.iter() {
+                        match *action {
+                            Action::Certify(docid, _, ref sid) => {
+                                if optional_student_id.is_none()
+                                    || (optional_student_id.unwrap() == sid) {
+                                    summaries.insert(docid,
                                         DocumentSummary::new(&chain_node.block,
-                                                             action.clone()))
+                                                             action.clone()));
                                 }
-                            }, None => summaries.push(
-                                            DocumentSummary::new(&chain_node
-                                                        .block, action.clone()))
-                        };
-                    },
-                    Action::AddPeer(_, _, _) => {
-                        continue;
+                            },
+                            Action::Revoke(docid) => {
+                                match summaries.get_mut(&docid) {
+                                    // This can legitimately yield None, i.e.,
+                                    // if optional_student_id is provided and
+                                    // this Revocation is for a document
+                                    // issued to a different student.
+                                    None => (),
+                                    Some(ref mut summary) => {
+                                        if optional_student_id.is_none()
+                                            || (optional_student_id.unwrap()
+                                                == summary.student_id) {
+                                            summary.rev_timestamp = Some(
+                                                chain_node.block.header.timestamp);
+                                        }
+                                    }
+                                }
+                            },
+                            Action::AddPeer(_, _, _) => {
+                                continue;
+                            }
+                        }
                     }
+                    lookup_hash = chain_node.next_block;
                 }
             }
         }
-        summaries
+
+        summaries.iter().map(|(_, s)| s.clone()).collect()
     }
 }
 
 #[derive(Debug)]
 pub enum MerkleTreeErr {
     DuplicateCertification,
+    RevocationOfNonexistentCertification,
+    DuplicateRevocation
 }
 
 impl MerkleProof {
@@ -514,14 +543,13 @@ impl MerkleTree {
     /// a mutable borrow on this tree, changes made during this
     /// function are reverted before returning. To permanently
     /// apply a block to the tree, you must use commit_block below.
-    /// TODO: Remember that when revocation is supported, this function
-    /// will need to add a map of nodes to restore before returning.
     fn compute_root_with_actions(&mut self,
                                block_ts: i64,
                                block_height: usize,
                                actions: &Vec<Action>)
         -> Result<DoubleSha256Hash, MerkleTreeErr> {
         let mut to_delete = HashSet::new();
+        let mut to_revert = HashSet::new();
         for action in actions.iter() {
             match *action {
                 Action::AddPeer(_, _, _) => continue,
@@ -537,15 +565,35 @@ impl MerkleTree {
                         revoked_ts: None,
                         revoked_block_height: None
                     });
+                },
+                Action::Revoke(docid) => {
+                    match self.tree.get_mut(&docid) {
+                        None => return Err(
+                            MerkleTreeErr::RevocationOfNonexistentCertification),
+                        Some(ref mut m_node) => {
+                            if m_node.revoked_ts.is_some()
+                                || m_node.revoked_block_height.is_some() {
+                                return Err(MerkleTreeErr::DuplicateRevocation)
+                            }
+                            to_revert.insert(docid);
+                            m_node.revoked_ts = Some(block_ts);
+                            m_node.revoked_block_height = Some(block_height);
+                        }
+                    }
                 }
             }
         }
 
         let root_with_actions = self.merkle_root();
 
-        // Revert our modifications.
+        // Delete and revert our modifications.
         for docid in to_delete.iter() {
             self.tree.remove(docid);
+        }
+        for docid in to_revert.iter() {
+            let m_node = self.tree.get_mut(&docid).unwrap();
+            m_node.revoked_ts = None;
+            m_node.revoked_block_height = None;
         }
 
         Ok(root_with_actions)
@@ -653,10 +701,11 @@ impl MerkleTree {
                         revoked_block_height: None
                     });
                 },
-                /*
-                 * TODO: For revocation, get the existing node
-                 * from the merkle tree.
-                 */
+                Action::Revoke(docid) => {
+                    let ref mut m_node = self.tree.get_mut(&docid).unwrap();
+                    m_node.revoked_ts = Some(block.header.timestamp);
+                    m_node.revoked_block_height = Some(block_height);
+                }
             }
         }
     }
@@ -809,9 +858,12 @@ impl DocumentSummary {
                     doc_id: doc_id,
                     doc_type: doc_type,
                     student_id: student_id,
-                    cert_timestamp: Some(block.header.timestamp),
+                    cert_timestamp: block.header.timestamp,
                     rev_timestamp: None
                 }
+            },
+            Action::Revoke(_) => {
+                panic!("TODO: Handle Revoke in DocumentSummary constructor.");
             },
             Action::AddPeer(_, _, _) => {
                 panic!("Cannot create DocumentSummary from AddPeer;

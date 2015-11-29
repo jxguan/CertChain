@@ -60,6 +60,11 @@ pub fn start(config: &CertChainConfig,
                     certify(res, fsm.clone(),
                             &docs_dir, req_body, &params);
                 },
+                (hyper::Post, AbsolutePath(ref path))
+                    if path.len() > 8
+                        && &path[0..8] == "/revoke/" => {
+                    revoke(res, fsm.clone(), &path[8..]);
+                },
                 (hyper::Get, AbsolutePath(ref path))
                     if path == "/all_certifications" => {
                     handle_all_certifications_req(res, hashchain.clone());
@@ -229,6 +234,30 @@ fn certify(res: Response<Fresh>,
     fsm.push_state(FSMState::SyncHashchainToDisk);
 
     res.send("OK; certification submitted.".as_bytes()).unwrap();
+}
+
+fn revoke(res: Response<Fresh>,
+                    fsm: Arc<RwLock<FSM>>,
+                    docid_param: &str) {
+    // Ensure that the provided document ID is valid.
+    let docid = match DoubleSha256Hash::from_string(docid_param) {
+        Ok(id) => id,
+        Err(_) => {
+            res.send("Document ID is not valid.".as_bytes()).unwrap();
+            return;
+        }
+    };
+
+    // Create a revocation action for the document.
+    let action = Action::Revoke(docid);
+
+    // Have the FSM queue a new block and sync the queued
+    // block to disk.
+    let ref mut fsm = *fsm.write().unwrap();
+    fsm.push_state(FSMState::QueueNewBlock(vec![action]));
+    fsm.push_state(FSMState::SyncHashchainToDisk);
+
+    res.send("OK; revocation submitted.".as_bytes()).unwrap();
 }
 
 fn handle_all_certifications_req(res: Response<Fresh>,

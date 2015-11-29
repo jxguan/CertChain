@@ -53,19 +53,6 @@
     </div>
   </div>
 
-  <!-- <div class="row">
-    <div class="span8">
-      <p>To trust an institution that has not yet been trusted by anyone else, enter their address here:</p>
-    </div>
-    <div id="cc-trust-arbitrary" class="span4">
-      <form method="post" action="{% url 'certchain:trust_institution' %}">
-        {% csrf_token %}
-        <input name="addr_to_trust" type="text"/>
-        <input type="submit" class="cc-btn" value="TRUST"/>
-      </form>
-    </div>
-  </div> -->
-
   {% for _, node in network.node_map.items %}
   <div class="netnode">
     <div class="row">

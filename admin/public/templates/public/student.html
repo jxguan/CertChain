@@ -26,9 +26,9 @@
         <tr>
           <td>
             <span class="type">{{ cert.doc_type }}</span>
-            <span>Certified on {{ cert.cert_timestamp }}</span>
+            <span>Certified on {{ cert.cert_timestamp | cc_unix_epoch_to_date }}</span>
             {% if cert.rev_timestamp %}
-            <span>Revoked on {{ cert.rev_timestamp }}</span>
+            <span>Revoked on {{ cert.rev_timestamp | cc_unix_epoch_to_date }}</span>
             {% endif %}
           </td>
           <td>

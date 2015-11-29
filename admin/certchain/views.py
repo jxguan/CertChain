@@ -74,44 +74,6 @@ def end_peering(request):
   raise Http404
 
 @login_required
-def trust_institution(request):
-  if request.method == 'POST':
-    addr = request.POST['addr_to_trust']
-    payload = {'address' : addr}
-    resp = requests.post(create_rpc_url('/trust_institution'),
-      data=json.dumps(payload))
-    if resp.status_code == 200:
-      messages.success(request,\
-        'Your trust request for ' + addr + ' was submitted \
-        successfully; it will take effect once it is included \
-        in a block.')
-    else:
-      messages.error(request,\
-        'An error occurred while processing your trust request \
-        for ' + addr + ': ' + str(resp.status_code))
-    return redirect(reverse('certchain:overview'))
-  raise Http404
-
-@login_required
-def untrust_institution(request):
-  if request.method == 'POST':
-    addr = request.POST['addr_to_untrust']
-    payload = {'address' : addr}
-    resp = requests.post(create_rpc_url('/untrust_institution'),
-      data=json.dumps(payload))
-    if resp.status_code == 200:
-      messages.success(request,\
-        'Your trust revocation request for ' + cc_addr_to_name(addr) + ' was submitted \
-        successfully; it will take effect once it is included \
-        in a block.')
-    else:
-      messages.error(request,\
-        'An error occurred while processing your trust revocation request \
-        for ' + cc_addr_to_name(addr) + ': ' + str(resp.status_code))
-    return redirect(reverse('certchain:overview'))
-  raise Http404
-
-@login_required
 def certify(request):
   return render(request, 'certchain/certify.html', {})
 
@@ -145,9 +107,8 @@ def certify_diploma(request):
     resp = requests.post(create_rpc_url('/certify/Diploma/'+student_id),
       data=document)
     if resp.status_code == 200:
-      txn_id = resp.text
       messages.success(request,\
-        'The diploma has been submitted to the network as transaction ' + txn_id)
+        'The diploma has been submitted to the network for certification.')
     else:
       messages.error(request,\
         'An error occurred while processing your \
@@ -174,9 +135,8 @@ def certify_transcript(request):
     resp = requests.post(create_rpc_url('/certify/Transcript/'+student_id),
       data=document)
     if resp.status_code == 200:
-      txn_id = resp.text
       messages.success(request,\
-        'The transcript has been submitted to the network as transaction ' + txn_id)
+        'The transcript has been submitted to the network for certification.')
     else:
       messages.error(request,\
         'An error occurred while processing your \
@@ -184,23 +144,18 @@ def certify_transcript(request):
     return redirect(reverse('certchain:certify'))
   raise Http404
 
-
 @login_required
-def revoke_diploma(request):
+def revoke_document(request):
   if request.method == 'POST':
-    txn_id_to_revoke = request.POST['txn_id_to_revoke']
-    payload = {
-      'txn_id': txn_id_to_revoke
-    }
-    resp = requests.post(create_rpc_url('/revoke_document'),
-      data=json.dumps(payload))
+    docid = request.POST['docid_to_revoke']
+    payload = {'docid' : docid}
+    resp = requests.post(create_rpc_url('/revoke/' + docid))
     if resp.status_code == 200:
-      txn_id = resp.text
       messages.success(request,\
-        'The revocation has been submitted to the network as transaction ' + txn_id)
+        'Your document revocation request has been submitted to the network.')
     else:
       messages.error(request,\
-        'An error occurred while processing your \
-        revocation request: ' + str(resp.status_code))
-    return redirect(reverse('certchain:diplomas'))
+        'An error occurred while processing your revocation \
+        request: ' + str(resp.status_code))
+    return redirect(reverse('certchain:manage_certifications'))
   raise Http404

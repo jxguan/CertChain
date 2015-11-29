@@ -63,3 +63,7 @@ def cc_format_sig_ts(seconds):
 @register.filter
 def cc_txn_status_class(txn_status):
   return txn_status.lower()
+
+@register.filter
+def cc_unix_epoch_to_date(unix_epoch):
+  return datetime.datetime.fromtimestamp(int(unix_epoch))

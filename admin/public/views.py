@@ -40,10 +40,6 @@ def student(request, student_id):
     resp = requests.get(create_rpc_url('/certifications_by_student_id/' + student_id))
     certs_by_type = defaultdict(list)
     for c in resp.json():
-      if c['cert_timestamp']:
-        c['cert_timestamp'] = datetime.datetime.fromtimestamp(int(c['cert_timestamp']))
-      if c['rev_timestamp']:
-        c['rev_timestamp'] = datetime.datetime.fromtimestamp(int(c['rev_timestamp']))
       certs_by_type[c['doc_type']].append(c)
     return render(request, 'public/student.html',\
       {'certs_by_type' : certs_by_type.iteritems(),
