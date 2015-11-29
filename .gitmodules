@@ -1,6 +1,9 @@
-[submodule "secp256k1"]
-	path = secp256k1
+[submodule "secp256k1_client"]
+	path = secp256k1_client
 	url = https://github.com/bitcoin/secp256k1.git
 [submodule "sjcl"]
 	path = sjcl
 	url = https://github.com/bitwiseshiftleft/sjcl.git
+[submodule "secp256k1_server"]
+	path = secp256k1_server
+	url = https://github.com/bitcoin/secp256k1.git
