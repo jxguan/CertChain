@@ -1,11 +1,10 @@
 # CertChain [![Build Status](https://travis-ci.org/mquinn/CertChain.svg)](https://travis-ci.org/mquinn/CertChain)
-Peer-to-peer institutional document certification and revocation.
+Distributed cryptographic certification and revocation of academic records.
 
 ## Installation
-* At this time, you must build from source. Before you can do so, you need to build the secp256k1 library from source as follows:
-  * `$ git clone https://github.com/bitcoin/secp256k1.git`
-  * Follow the steps in the README.md of the secp256k1 repository; when you get to the `./configure` line, use the following command instead: `$ ./configure --enable-module-ecdh --enable-module-recovery`. This enables the recoverable key module, which CertChain makes use of.
-  * After running `sudo make install`, run `sudo ldconfig <path_to_secp256k1_libs>` to make CertChain aware of the secp256k1 libraries when compiling; note that by default, secp256k1 is installed to `/usr/local/lib` unless you specified otherwise.
+* Download the latest nightly (not stable) Rust compiler. The latest compiler known to compile CertChain successfully is rustc 1.6.0-nightly (7499558dd 2015-11-28).
+* `$ ./setup.sh` to build the secp256k1 shared libraries required by CertChain at compilation and runtime.
+* `$ cargo build` to build CertChain.
 
 ## Developing
 * To build CertChain, simply run `$ cargo build`.
