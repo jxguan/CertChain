@@ -1,7 +1,10 @@
 language: rust
 rust:
-  - stable
-  - beta
+# MQUINN 11-29-2015 : Disabling stable and beta builds
+# for now as they do not allow use of certain compiler
+# features/flags we require.
+#  - stable
+#  - beta
   - nightly
 
 install:
