@@ -6,8 +6,7 @@ data_dir
 *.pyc
 *.sqlite3
 admin/venv
-emscripten/Makefile
-emscripten/libsecp256k1.js
-emscripten/secp256k1-build
-admin/public/static/public/js/libsecp256k1.js
+secp256k1_transcompile/Makefile
+secp256k1_transcompile/libsecp256k1.js
+secp256k1_transcompile/secp256k1-build
 secp256k1_server_libs

@@ -9,7 +9,7 @@ GLUE_SCRIPT_NAME="glue.js"
 INNER_BUILD_DIR_NAME="secp256k1-build"
 INSTALL_SCRIPT_DIR=`readlink -f ../admin/public/static/public/js`
 SOURCE_DIR=`readlink -f .`
-SECP256K1_SOURCE_DIR=`readlink -f ../secp256k1`
+SECP256K1_SOURCE_DIR=`readlink -f ../secp256k1_client`
 BUILD_DIR=`pwd`
 INNER_BUILD_DIR="${BUILD_DIR}/${INNER_BUILD_DIR_NAME}"
 
