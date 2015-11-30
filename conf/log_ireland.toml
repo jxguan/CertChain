@@ -3,5 +3,5 @@ kind = "console"
 pattern = "[IRELAND] %l %d{%m/%d/%YT%H:%M:%S} - %m"
 
 [root]
-level = "info"
+level = "debug"
 appenders = ["stdout"]
