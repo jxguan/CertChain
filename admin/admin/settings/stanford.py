@@ -1,6 +1,7 @@
 from .base import *
 
-INSTITUTION_CERTCHAIN_NODE_HOSTNAME = 'stanford.certchain.org'
+ALLOWED_HOSTS = ['stanford.certchain.org', 'localhost']
+INSTITUTION_CERTCHAIN_NODE_HOSTNAME = 'localhost'
 INSTITUTION_CERTCHAIN_NODE_RPC_PORT = '4001'
 
 TEMPLATE_DIRS = [

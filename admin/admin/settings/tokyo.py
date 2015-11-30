@@ -1,5 +1,6 @@
 from .base import *
 
+ALLOWED_HOSTS = ['tokyo.certchain.org', 'localhost']
 INSTITUTION_CERTCHAIN_NODE_HOSTNAME = 'tokyo.certchain.org'
 INSTITUTION_CERTCHAIN_NODE_RPC_PORT = '4001'
 
