@@ -1,0 +1,21 @@
+{% extends "public/viewer.html" %}
+
+{% load staticfiles %}
+
+{% block stylesheets %}
+  {{ block.super }}
+  <link href="{% static 'public/css/diploma.css'%}" rel="stylesheet"/>
+{% endblock stylesheets %}
+
+{% block document %}
+<img id="doc-bg" src="{% static 'certchain/images/diploma_bg.png' %}"/>
+<div id="document-body">
+  {% if document_override %}
+  <span id="label-line1">INVALID</span>
+  {% else %}
+  <span id="label-line1">{{ doc.recipient }}</span>
+  <span id="label-line2">{{ doc.degree }}</span>
+  <span id="label-line3">Conferred on {{ doc.conferral_date }}</span>
+  {% endif %}
+</div>
+{% endblock document %}

@@ -24,23 +24,6 @@ body {
   right: 15%;
 }
 
-#document-body {
-  top: 200px;
-  font-family: serif !important;
-}
-
-#document-body > * {
-  display: block;
-  margin: 0 auto;
-  text-align: center;
-  padding: 10px 0;
-  font-size: 2.3em;
-}
-
-#label-line1 {
-  font-weight: bold;
-}
-
 #verify-area {
   top: 0;
   left: 0;

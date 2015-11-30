@@ -10,19 +10,21 @@ import datetime
 import logging
 logger = logging.getLogger('certchain')
 
-# No login required for document viewer.
-# TODO: Handle
-#  - bad txn id (CertChain will return blank response)
-#  - bad document (exception will be thrown)
-def document(request, docid):
+def get_document(request, docid, type):
   try:
-    resp = requests.get(create_rpc_url('/document/' + docid))
-    json = resp.json()
-    return render(request, 'public/document.html',
-      {'docid' : docid, 'doc' : json['contents'], 'raw_data': resp.text})
+      resp = requests.get(create_rpc_url('/document/' + docid))
+      json = resp.json()
+      return render(request, 'public/'+ type + '.html',
+        {'docid' : docid, 'doc' : json['contents'], 'raw_data': resp.text})
   except Exception as ex:
-    messages.error(request, 'Unable to retrieve document at this time: ' + str(ex))
+    messages.error(request, 'Unable to retrieve ' + type + ' at this time: ' + str(ex))
     return redirect(reverse('certchain:manage_certifications'))
+
+def diploma(request, docid):
+  return get_document(request, docid, 'diploma')
+
+def transcript(request, docid):
+  return get_document(request, docid, 'transcript')
 
 # Allows public users to see raw JSON data via link;
 # we cannot link directly to the RPC port as that is

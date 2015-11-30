@@ -35,7 +35,7 @@
         <tr>
           <td>{{ c.doc_type }}</td>
           <td><a href="{% url 'public:student' c.student_id %}">{{ c.student_id }}</a></td>
-          <td><a href="{% url 'public:document' c.doc_id %}">{{ c.doc_id }}</a></td>
+          <td><a href="{{ c | cc_doc_viewer_url }}">{{ c.doc_id }}</a></td>
           <td style="text-align: center">{{ c.cert_timestamp | cc_unix_epoch_to_date }}</td>
           <td style="text-align: center">
             {% if c.rev_timestamp %}

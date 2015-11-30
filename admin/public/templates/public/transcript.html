@@ -1,0 +1,19 @@
+{% extends "public/viewer.html" %}
+
+{% load staticfiles %}
+
+{% block stylesheets %}
+  {{ block.super }}
+  <link href="{% static 'public/css/transcript.css'%}" rel="stylesheet"/>
+{% endblock stylesheets %}
+
+{% block document %}
+<div id="document-body">
+  <div id="transcript-body">
+    <p>Date: {{ doc.date }}</p>
+    <p>Student Name: {{ doc.recipient }}</p>
+    <p>Student ID: {{ doc.student_id}} </p>
+    <p>GPA: {{ doc.gpa }}</p>
+  </div>
+</div>
+{% endblock document %}

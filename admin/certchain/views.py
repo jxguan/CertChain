@@ -10,12 +10,6 @@ from templatetags.certchain_extras import cc_addr_to_name, cc_format_sig_ts
 from certchain.shared import create_rpc_url
 import os, hashlib
 
-def trust_table_sort(key):
-  if key == settings.INSTITUTION_CERTCHAIN_ADDRESS:
-    return 0
-  else:
-    return 1
-
 @login_required
 def overview(request):
   try:

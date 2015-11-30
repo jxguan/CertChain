@@ -1,5 +1,6 @@
 from django import template
 import json, datetime
+from django.core.urlresolvers import reverse
 
 register = template.Library()
 
@@ -67,3 +68,12 @@ def cc_txn_status_class(txn_status):
 @register.filter
 def cc_unix_epoch_to_date(unix_epoch):
   return datetime.datetime.fromtimestamp(int(unix_epoch))
+
+@register.filter
+def cc_doc_viewer_url(doc):
+  if doc['doc_type'].lower() == 'diploma':
+    return reverse('public:diploma', args=(doc['doc_id'],))
+  elif doc['doc_type'].lower() == 'transcript':
+    return reverse('public:transcript', args=(doc['doc_id'],))
+  else:
+    return 'Unrecognized document type.'

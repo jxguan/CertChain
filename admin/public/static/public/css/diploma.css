@@ -1,0 +1,16 @@
+#label-line1 {
+  font-weight: bold;
+}
+
+#document-body {
+  top: 200px;
+  font-family: serif !important;
+}
+
+#document-body > * {
+  display: block;
+  margin: 0 auto;
+  text-align: center;
+  padding: 10px 0;
+  font-size: 2.3em;
+}
