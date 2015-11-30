@@ -16,7 +16,8 @@
 .netnode-states {
   font-size: 1.2em;
   width: 80%;
-  margin: 0 auto 50px;
+  margin: 0 auto;
+  margin-bottom: 50px;
   padding: 15px 8px 8px 8px;
   background-color: #F1F1F1;
   border-bottom-left-radius: 8px;
