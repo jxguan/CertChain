@@ -1,0 +1,10 @@
+Overall Workflow:
+ - Registrar issues transcript, student receives the link and the raw data.
+ - When student applies for a job, the student provides the link or the raw
+   data.
+ - The company would go to a third party website and enter the link or upload
+   the raw data, then, a fully rendered pdf is shown.
+
+Third Party should behave like a normal peer except that it never signs or asks
+other peers to sign documents. It only keeps a replica of the HashChains of
+other peers.
