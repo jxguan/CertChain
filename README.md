@@ -17,19 +17,17 @@ Distributed cryptographic certification and revocation of academic records.
 * CertChain uses SJCL for client-side block verification. Use the following build string to build SJCL with the dependencies required by CertChain: `$ ./configure --without-all --with-sha256 --with-ripemd160 --with-codecHex`
 
 ## Running a Demo
-* If this is the first time you are running the demo, run ./init\_local\_nodes.sh
+* If this is the first time you are running the demo, run `$ ./init\_local\_nodes.sh`
 to configure the two local nodes.  You only need to go through this process
 once.
 * To run a demo, you might wany to run a local two-node network. To do this, you
-can simply run $ ./start\_local\_nodes.sh, which will start two nodes in the
-background with stanford on RPC port 5001, and virginia on RPC port 4001.
+can simply run `$ ./start\_local\_nodes.sh`, which will start two nodes in the
+background with stanford on RPC port `5001`, and virginia on RPC port `4001`.
 * The frontend uses Django. You will need a superuser to log in to the
-administration system.  To do this, run $ ./admin/manage.py createsuperuser
---settings=admin.settings.stanford, and follow the instructions.
-* Then, start the Django server by running $ ./admin/manage.py runserver
---settings=admin.settings.stanford
-* Now you should be able to visit http://127.0.0.1:8000/, log in with the
+administration system.  To do this, run `$ ./admin/manage.py createsuperuser --settings=admin.settings.stanford`, and follow the instructions.
+* Then, start the Django server by running `$ ./admin/manage.py runserver --settings=admin.settings.stanford`.
+* Now you should be able to visit `http://127.0.0.1:8000/`, log in with the
 account you just created.  Everything is there!
-* After you are done, shutdown the server and run $ ./killall.sh to terminate
+* After you are done, shutdown the server and run `$ ./killall.sh` to terminate
 the two nodes.
-* To reset the documents, hashchains, and replicas, run ./reset.py.
+* To reset the documents, hashchains, and replicas, run `$ ./reset.py`.
