@@ -22,6 +22,26 @@ def overview(request):
     return render(request, 'certchain/overview.html', {})
 
 @login_required
+def add_node(request):
+  if request.method == 'POST':
+    payload = {
+      'hostname': request.POST['hostname'],
+      'port': request.POST['port'],
+      'address': request.POST['address']
+    }
+    resp = requests.post(create_rpc_url('/add_node'),
+      data=json.dumps(payload))
+    if resp.status_code == 200 and resp.text == 'OK':
+      messages.success(request,\
+        'The node was added to the list of known nodes.')
+    else:
+      messages.error(request,\
+        'An error occurred while adding the node you specified: '
+        + str(resp.text))
+    return redirect(reverse('certchain:overview'))
+  raise Http404
+
+@login_required
 def approve_peer_request(request):
   if request.method == 'POST':
     addr = request.POST['requesting_addr']
@@ -142,7 +162,6 @@ def certify_transcript(request):
 def revoke_document(request):
   if request.method == 'POST':
     docid = request.POST['docid_to_revoke']
-    payload = {'docid' : docid}
     resp = requests.post(create_rpc_url('/revoke/' + docid))
     if resp.status_code == 200:
       messages.success(request,\

@@ -4,6 +4,7 @@ from certchain import views
 
 urlpatterns = patterns('',
   url(r'^overview/$', views.overview, name='overview'),
+  url(r'^add_node/$', views.add_node, name='add_node'),
   url(r'^approve_peer_request/$', views.approve_peer_request, name='approve_peer_request'),
   url(r'^request_peer/$', views.request_peer, name='request_peer'),
   url(r'^end_peering/$', views.end_peering, name='end_peering'),

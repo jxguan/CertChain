@@ -41,7 +41,7 @@
   margin: 0 !important;
 }
 
-.netnode-states .peering-form .cc-btn {
+.cc-btn {
   font-size: 15px;
 }
 
@@ -107,4 +107,19 @@
   font-size: 1em;
   width: 100px;
   margin: 15px 20px;
+}
+
+#add-node > form {
+  margin: 0;
+  padding: 0;
+}
+
+#add-node > form > div {
+  display: inline-block;
+  padding: 0 20px;
+}
+
+#add-node input[type='submit'] {
+  margin-top: -10px;
+  margin-left: 20px;
 }

@@ -4,7 +4,7 @@ use hyper::net::Fresh;
 use hyper::uri::RequestUri::AbsolutePath;
 use config::CertChainConfig;
 use std::sync::{Arc, RwLock};
-use network::NetNodeTable;
+use network::{NetNodeTable, PeeringApproval};
 use rustc_serialize::json;
 use address::InstAddress;
 use fsm::{FSM, FSMState};
@@ -16,6 +16,7 @@ use hashchain::{DocumentType, Action, Hashchain};
 use secp256k1::key::{SecretKey};
 use serde_json;
 use serde_json::Value;
+use std::collections::HashMap;
 
 const RPC_LISTEN : &'static str = "0.0.0.0";
 
@@ -59,6 +60,12 @@ pub fn start(config: &CertChainConfig,
                     req.read_to_string(&mut req_body).unwrap();
                     certify(res, fsm.clone(),
                             &docs_dir, req_body, &params);
+                },
+                (hyper::Post, AbsolutePath(ref path))
+                    if path == "/add_node" => {
+                    let mut req_body = String::new();
+                    req.read_to_string(&mut req_body).unwrap();
+                    add_node(res, node_table.clone(), fsm.clone(), req_body);
                 },
                 (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 8
@@ -349,4 +356,68 @@ fn handle_block_req(res: Response<Fresh>,
             res.send(json.as_bytes()).unwrap();
         }
     }
+}
+
+fn add_node(res: Response<Fresh>,
+            node_table: Arc<RwLock<NetNodeTable>>,
+            fsm: Arc<RwLock<FSM>>,
+            body: String) {
+    let node: HashMap<String, String> =
+        serde_json::from_str(&body).unwrap();
+
+    let hostname = match node.get("hostname") {
+        Some(h) => {
+            if h.len() == 0 {
+                res.send("Expected non-blank hostname.".as_bytes()).unwrap();
+                return
+            }
+            h.clone()
+        },
+        None => {
+            res.send("Expected hostname.".as_bytes()).unwrap();
+            return
+        }
+    };
+
+    let port = match node.get("port") {
+        Some(p) => {
+            match p.parse::<u16>() {
+                Ok(u) => u,
+                Err(_) => {
+                    res.send("Expected 16-bit port.".as_bytes()).unwrap();
+                    return
+                }
+            }
+        },
+        None => {
+            res.send("Expected port.".as_bytes()).unwrap();
+            return
+        }
+    };
+
+    let address = match node.get("address") {
+        Some(a) => {
+            match InstAddress::from_string(&a) {
+                Ok(addr) => addr,
+                Err(_) => {
+                    res.send("Invalid address provided.".as_bytes()).unwrap();
+                    return
+                }
+            }
+        },
+        None => {
+            res.send("Expected address.".as_bytes()).unwrap();
+            return
+        }
+    };
+
+    // Register the node.
+    let ref mut node_table = *node_table.write().unwrap();
+    node_table.register(address, &hostname, port, PeeringApproval::NotApproved);
+
+    // Have the FSM eventually sync the node table to disk.
+    let ref mut fsm = *fsm.write().unwrap();
+    fsm.push_state(FSMState::SyncNodeTableToDisk);
+
+    res.send("OK".as_bytes()).unwrap();
 }

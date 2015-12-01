@@ -45,10 +45,43 @@
   </div>
 
   <br/>
+  <br/>
 
   <div class="row">
     <div class="span12">
-      <h2>Network Nodes</h2>
+      <h2>Add a Node</h2>
+      <p>You will initiate and maintain connections with nodes that you enter here, and can optionally choose to peer with them after they are added to the list below.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <div id="add-node">
+        <form method="post" action="{% url 'certchain:add_node' %}">
+         {% csrf_token %}
+          <div>
+            <label>Hostname</label>
+            <input name="hostname" type="text"/>
+          </div>
+          <div>
+            <label>Port</label>
+            <input name="port" type="text"/>
+          </div>
+          <div>
+            <label>Address</label>
+            <input name="address" type="text"/>
+          </div>
+          <input class="cc-btn" type="submit" value="ADD NODE"/>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <br/>
+
+  <div class="row">
+    <div class="span12">
+      <h2>Known Nodes</h2>
       <p>Your institution maintains contact with the institutions below.</p>
     </div>
   </div>
@@ -56,17 +89,20 @@
   {% for _, node in network.node_map.items %}
   <div class="netnode">
     <div class="row">
-      <div class="span4">
+      <div class="span3">
         <span>{{ node.hostname }}</span>
         <label>Hostname</label>
       </div>
-      <div class="span2">
+      <div class="span1">
         <span>{{ node.port }}</span>
         <label>Port</label>
       </div>
       <div class="span6">
         <span>{{ node.inst_addr }}</span>
         <label>Address</label>
+      </div>
+      <div class="span2">
+        <input class="cc-btn" type="submit" value="FORGET NODE"/>
       </div>
     </div>
   </div>
@@ -192,16 +228,6 @@
     </div>
     {% endif %}
   </div>
-  
-  <!-- <div class="row">
-    <div class="span12">
-      <strong>Connection State</strong>: {{ node.conn_state }}
-      <br/>
-      <strong>Identity State</strong>: {{ node.ident_state }}
-      <br/>
-      <strong>Peering State</strong>: {{ node.peering_state }}
-    </div>
-  </div> -->
   {% empty %}
   <div class="row">
     <div class="span12">
@@ -210,4 +236,5 @@
   </div>
   {% endfor %}
 </div>
+
 {% endblock %}
