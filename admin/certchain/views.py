@@ -42,6 +42,21 @@ def add_node(request):
   raise Http404
 
 @login_required
+def remove_node(request):
+  if request.method == 'POST':
+    inst_addr = request.POST['inst_addr']
+    resp = requests.post(create_rpc_url('/remove_node/' + inst_addr))
+    if resp.status_code == 200 and resp.text == 'OK':
+      messages.success(request,\
+        'The node was removed from the list of known nodes.')
+    else:
+      messages.error(request,\
+        'An error occurred while removing the node you specified: '
+        + str(resp.text))
+    return redirect(reverse('certchain:overview'))
+  raise Http404
+
+@login_required
 def approve_peer_request(request):
   if request.method == 'POST':
     addr = request.POST['requesting_addr']

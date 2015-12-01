@@ -68,6 +68,12 @@ pub fn start(config: &CertChainConfig,
                     add_node(res, node_table.clone(), fsm.clone(), req_body);
                 },
                 (hyper::Post, AbsolutePath(ref path))
+                    if path.len() > 13
+                        && &path[0..13] == "/remove_node/" => {
+                    remove_node(res, fsm.clone(),
+                            node_table.clone(), &path[13..]);
+                },
+                (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 8
                         && &path[0..8] == "/revoke/" => {
                     revoke(res, fsm.clone(), &path[8..]);
@@ -414,6 +420,35 @@ fn add_node(res: Response<Fresh>,
     // Register the node.
     let ref mut node_table = *node_table.write().unwrap();
     node_table.register(address, &hostname, port, PeeringApproval::NotApproved);
+
+    // Have the FSM eventually sync the node table to disk.
+    let ref mut fsm = *fsm.write().unwrap();
+    fsm.push_state(FSMState::SyncNodeTableToDisk);
+
+    res.send("OK".as_bytes()).unwrap();
+}
+
+fn remove_node(res: Response<Fresh>,
+            fsm: Arc<RwLock<FSM>>,
+            node_table: Arc<RwLock<NetNodeTable>>,
+            inst_addr: &str) {
+    let addr = match InstAddress::from_string(&inst_addr) {
+        Ok(addr) => addr,
+        Err(_) => {
+            res.send("Invalid address provided.".as_bytes()).unwrap();
+            return
+        }
+    };
+
+    // Remove the node.
+    let ref mut node_table = *node_table.write().unwrap();
+    match node_table.remove_node(addr) {
+        Ok(_) => (),
+        Err(err) => {
+            res.send(format!("{}", err).as_bytes()).unwrap();
+            return
+        }
+    };
 
     // Have the FSM eventually sync the node table to disk.
     let ref mut fsm = *fsm.write().unwrap();

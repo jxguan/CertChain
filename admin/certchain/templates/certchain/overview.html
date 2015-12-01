@@ -102,7 +102,11 @@
         <label>Address</label>
       </div>
       <div class="span2">
-        <input class="cc-btn" type="submit" value="FORGET NODE"/>
+        <form class="forget-node" method="post" action="{% url 'certchain:remove_node' %}">
+          {% csrf_token %}
+          <input name="inst_addr" type="hidden" value="{{ node.inst_addr }}"/>
+          <input class="cc-btn" type="submit" value="FORGET NODE"/>
+        </form>
       </div>
     </div>
   </div>

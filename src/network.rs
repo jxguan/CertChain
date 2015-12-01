@@ -264,6 +264,34 @@ impl NetNodeTable {
         }
     }
 
+    /// Removes a node from the node table.
+    pub fn remove_node(&mut self,
+                    node_addr: InstAddress) -> std::io::Result<()> {
+        let mut node_map = self.node_map.write().unwrap();
+        match node_map.get(&node_addr) {
+            Some(node) => {
+                if node.our_peering_approval != PeeringApproval::NotApproved {
+                    // Technically speaking, we really only care if the node
+                    // is considered a peer according to our hashchain; approval
+                    // is only used as a proxy for that here temporarily.
+                    // TODO: Eventually convert this to a check against the
+                    // hashchain, rather then looking at the approval status
+                    // (will need to issue RemovePeer action when removing a peer).
+                    return Err(io::Error::new(io::ErrorKind::Other,
+                        format!("You must end peering with this \
+                                node before you can remove it.")))
+                }
+            },
+            None => {
+                info!("Ignoring call to remove node {}; \
+                        it does not exist.", node_addr);
+                return Ok(())
+            }
+        };
+        node_map.remove(&node_addr);
+        Ok(())
+    }
+
     /// Connects to a node. If a secret key is provided, we will ask
     /// that node to confirm their identity.
     pub fn connect(&mut self, node_addr: InstAddress,
