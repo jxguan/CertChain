@@ -1,6 +1,7 @@
 use std::collections::{LinkedList};
 use network::{IdentityRequest, IdentityResponse, PeerRequest,
-              SignatureRequest, SignatureResponse, BlockManifest};
+              SignatureRequest, SignatureResponse, BlocksRequest,
+              BlockManifest};
 use address::InstAddress;
 use hashchain::Action;
 use signature::RecovSignature;
@@ -18,6 +19,7 @@ pub enum FSMState {
     HandleSigReq(SignatureRequest),
     HandleSigResp(SignatureResponse),
     AddSignatureToProcessingBlock(InstAddress, RecovSignature),
+    HandleBlocksReq(BlocksRequest),
     HandleBlockManifest(BlockManifest),
     SyncNodeTableToDisk,
     SyncHashchainToDisk,

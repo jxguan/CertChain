@@ -113,6 +113,9 @@ pub fn run(config: CertChainConfig) -> () {
                 NetPayload::SigResp(sigresp) => {
                     fsm.push_state(FSMState::HandleSigResp(sigresp));
                 },
+                NetPayload::BlocksReq(blocksreq) => {
+                    fsm.push_state(FSMState::HandleBlocksReq(blocksreq));
+                },
                 NetPayload::BlockManifest(manifest) => {
                     fsm.push_state(FSMState::HandleBlockManifest(manifest));
                 }
@@ -205,6 +208,9 @@ pub fn run(config: CertChainConfig) -> () {
                     hashchain.submit_processing_block_signature(
                         peer_addr, peer_sig);
                     info!("FSM: added signature to processing block.");
+                },
+                FSMState::HandleBlocksReq(blocks_req) => {
+                    panic!("TODO: Handle BlocksRequest.");
                 },
                 FSMState::HandleBlockManifest(mf) => {
                     // At this time, we are only concerned about block

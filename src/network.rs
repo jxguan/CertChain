@@ -47,6 +47,7 @@ pub enum NetPayload {
     PeerReq(PeerRequest),
     SigReq(SignatureRequest),
     SigResp(SignatureResponse),
+    BlocksReq(BlocksRequest),
     BlockManifest(BlockManifest),
 }
 
@@ -62,7 +63,8 @@ pub struct IdentityRequest {
     pub from_signature: RecovSignature,
 }
 
-#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug,
+         Serialize, Deserialize)]
 pub struct SignatureRequest {
     pub nonce: u64,
     pub to_inst_addr: InstAddress,
@@ -77,6 +79,14 @@ pub struct SignatureResponse {
     pub from_inst_addr: InstAddress,
     pub block_header_hash: DoubleSha256Hash,
     pub block_header_hash_signature: RecovSignature,
+    pub from_signature: RecovSignature,
+}
+
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+pub struct BlocksRequest {
+    pub to_inst_addr: InstAddress,
+    pub from_inst_addr: InstAddress,
+    pub after_block_hash: DoubleSha256Hash,
     pub from_signature: RecovSignature,
 }
 
@@ -575,8 +585,11 @@ impl NetNodeTable {
             Err(AppendErr::BlockAlreadyInChain) =>
                 panic!("TODO: Handle case where block is already in replica; \
                         (should just ignore and make a log entry)."),
-            Err(AppendErr::MissingBlocksSince(_)) =>
-                panic!("TODO: Handle case where we are missing replica blocks."),
+            Err(AppendErr::MissingBlocksSince(after_block_hash)) => {
+                let blocks_req = BlocksRequest::new(node.inst_addr,
+                    after_block_hash, self.our_inst_addr, &our_secret_key);
+                return node.send(NetPayload::BlocksReq(blocks_req))
+            },
             Err(AppendErr::BlockParentAlreadyClaimed) =>
                 panic!("TODO: Handle case where block parent is already claimed."),
             Err(AppendErr::ChainStateCorrupted) =>
@@ -968,6 +981,28 @@ impl Display for NetNode {
         try!(write!(f, "NetNode[{}, {}:{}]", self.inst_addr,
                     self.hostname, self.port));
         Ok(())
+    }
+}
+
+impl BlocksRequest {
+    pub fn new(to_inst_addr: InstAddress,
+               after_block_hash: DoubleSha256Hash,
+               our_inst_addr: InstAddress,
+               our_secret_key: &SecretKey) -> BlocksRequest {
+        let to_hash = format!("BLOCKSREQUEST:{},{},{}", to_inst_addr,
+                              our_inst_addr, after_block_hash);
+        BlocksRequest {
+            to_inst_addr: to_inst_addr,
+            from_inst_addr: our_inst_addr,
+            after_block_hash: after_block_hash,
+            from_signature: RecovSignature::sign(
+                &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
+                &our_secret_key)
+        }
+    }
+    pub fn check_validity(&self, our_addr: &InstAddress)
+            -> Result<(), ValidityErr> {
+        panic!("TODO: Implement check_validity for BlocksRequest.");
     }
 }
 

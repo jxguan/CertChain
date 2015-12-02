@@ -22,6 +22,7 @@ pub struct Hashchain {
     merkle_tree: MerkleTree,
     processing_block: Option<Block>,
     queued_blocks: VecDeque<Block>,
+    sigreqs_pending_sync: HashMap<DoubleSha256Hash, SignatureRequest>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -140,6 +141,7 @@ impl Hashchain {
             merkle_tree: MerkleTree::new(),
             processing_block: None,
             queued_blocks: VecDeque::new(),
+            sigreqs_pending_sync: HashMap::new(),
         }
     }
 
