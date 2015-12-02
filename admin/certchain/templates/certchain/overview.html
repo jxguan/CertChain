@@ -114,12 +114,13 @@
     <table>
       <tr>
         {% if node.conn_state == 'Connected' %}
-        <td>
-          <span class="state green">CONNECTION</span>
-        </td>
-        <td>
-          Your institution is connected to this node.
-        </td>
+          {% if node.ident_state == 'Confirmed' %}
+          <td><span class="state green">CONNECTION</span></td>
+          <td>Your institution is connected to this node.</td>
+          {% else %}
+          <td><span class="state yellow">CONNECTION</span></td>
+          <td>Your institution is connected to this node, but they have not proved their identity to you.</td>
+          {% endif %}
         <td></td>
         {% else %}
         <td>
@@ -127,25 +128,6 @@
         </td>
         <td>
           Your institution is not connected to this node.
-        </td>
-        <td></td>
-        {% endif %}
-      </tr>
-      <tr>
-        {% if node.ident_state == 'Confirmed' %}
-        <td>
-          <span class="state green">IDENTITY</span>
-        </td>
-        <td>
-          This node has proved their identity to you.
-        </td>
-        <td></td>
-        {% else %}
-        <td>
-          <span class="state red">IDENTITY</span>
-        </td>
-        <td>
-          This node has not proved their identity to you.
         </td>
         <td></td>
         {% endif %}
