@@ -8,7 +8,6 @@ use std::sync::{Arc, RwLock};
 use network::{NetNodeTable, SignatureRequest, BlockManifest};
 use signature::RecovSignature;
 use secp256k1::key::SecretKey;
-use common::ValidityErr;
 use serde::ser::Serialize;
 use serde_json::Value;
 use std::cmp;
@@ -93,6 +92,17 @@ pub enum AppendErr {
     BlockAlreadyInChain,
     BlockParentAlreadyClaimed,
     ChainStateCorrupted,
+    NoSignoffPeersListed,
+    AuthorSignatureInvalid,
+    MissingPeerSignature,
+    InvalidPeerSignature,
+    UnexpectedSignoffPeers,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum RequireAllPeerSigs {
+    Yes,
+    No
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -182,64 +192,111 @@ impl Hashchain {
         }
     }
 
-    /// Determines if the provided block can be appended to the hashchain.
+    /// This is the authoritative method for checking whether a given
+    /// block can be appended to a hashchain instance, be it an institution's
+    /// own hashchain or a replica chain belonging to a peer.
     pub fn is_block_eligible_for_append(
-            &self, block: &Block) -> Result<(), AppendErr> {
+            &self, block: &Block,
+            require_peer_sigs: RequireAllPeerSigs) -> Result<(), AppendErr> {
+
+        // The author's signature must be valid.
+        if block.author_signature.check_validity(
+                        &block.header.hash(), &block.header.author).is_err() {
+            return Err(AppendErr::AuthorSignatureInvalid);
+        }
+
+        // Blocks must have at least one signoff peer.
+        if block.signoff_peers.len() == 0 {
+            return Err(AppendErr::NoSignoffPeersListed);
+        }
 
         // Is this block already present in the chain?
         if self.chain.contains_key(&block.header.hash()) {
             return Err(AppendErr::BlockAlreadyInChain)
         }
 
-        // Is this the genesis block?
         if block.header.parent == DoubleSha256Hash::genesis_block_parent_hash() {
-            if self.head_node == None
-                && self.tail_node == None
-                && self.chain.len() == 0 {
-                return Ok(())
-            } else {
+            // If this is the genesis block, ensure our replica state
+            // reflects that expectation.
+            if self.head_node != None
+                    || self.tail_node != None
+                    || self.chain.len() > 0 {
                 return Err(AppendErr::ChainStateCorrupted)
+            }
+        } else {
+            // Otherwise, if this is not the genesis block, determine
+            // if we are missing blocks or if the parent has already been
+            // claimed.
+            match self.tail_node {
+                None => {
+                    // If we have nothing in the replica chain and the peer
+                    // is sending us a non-genesis block, we have to sync
+                    // our replica up starting from the genesis hash (000000...).
+                    return Err(AppendErr::MissingBlocksSince(
+                            DoubleSha256Hash::genesis_block_parent_hash()))
+                },
+                Some(tail_hash) => {
+                    match self.chain.get(&block.header.parent) {
+                        None => {
+                            // If we don't have the block's parent, we must
+                            // be missing blocks issued since our recorded tail.
+                            return Err(AppendErr::MissingBlocksSince(tail_hash));
+                        },
+                        Some(parent_block_node) => {
+                            // Is the parent already claimed?
+                            if parent_block_node.next_block.is_some() {
+                                return Err(AppendErr::BlockParentAlreadyClaimed);
+                            }
+                            // If the parent is not already claimed, it should
+                            // be the tail of our append-only hashchain. Do a
+                            // sanity check to be sure.
+                            if tail_hash != parent_block_node.block.header.hash() {
+                                return Err(AppendErr::ChainStateCorrupted)
+                            }
+                        }
+                    }
+                }
+            };
+        }
+
+        // The signoff peers in the block must match those that we expect
+        // based on what we know of the replica. IT IS IMPORTANT that this
+        // check come after the check for missing blocks; if there are missing
+        // blocks, this check will typically fail, and if we return this error
+        // instead of a missing blocks error, it will not allow the caller
+        // to retrieve the blocks.
+        let signoff_peers = self.get_signoff_peers(&block.actions);
+        if signoff_peers != block.signoff_peers {
+            return Err(AppendErr::UnexpectedSignoffPeers);
+        }
+
+        // When a signature request is received from a peer for its block,
+        // we don't require all peer signatures to be present, hence the option.
+        // All other use cases will generally want to require that all
+        // peer signatures be present.
+        if require_peer_sigs == RequireAllPeerSigs::Yes {
+            for peer_addr in &block.signoff_peers {
+                match block.signoff_signatures.get(&peer_addr) {
+                    None => return Err(AppendErr::MissingPeerSignature),
+                    Some(peer_sig) => {
+                        if peer_sig.check_validity(
+                            &block.header.hash(), &peer_addr).is_err() {
+                            return Err(AppendErr::InvalidPeerSignature);
+                        }
+                    }
+                };
             }
         }
 
-        match self.tail_node {
-            None => {
-                // If we have nothing in the replica chain and the peer
-                // is sending us a non-genesis block, we have to sync
-                // our replica up starting from the genesis hash (000000...).
-                return Err(AppendErr::MissingBlocksSince(
-                        DoubleSha256Hash::genesis_block_parent_hash()))
-            },
-            Some(tail_hash) => {
-                match self.chain.get(&block.header.parent) {
-                    None => {
-                        // If we don't have the block's parent, we must
-                        // be missing blocks issued since our recorded tail.
-                        return Err(AppendErr::MissingBlocksSince(tail_hash));
-                    },
-                    Some(parent_block_node) => {
-                        // Is the parent already claimed?
-                        if parent_block_node.next_block.is_some() {
-                            return Err(AppendErr::BlockParentAlreadyClaimed);
-                        }
-                        // If the parent is not already claimed, it should
-                        // be the tail of our append-only hashchain. Do a
-                        // sanity check to be sure.
-                        if tail_hash != parent_block_node.block.header.hash() {
-                            return Err(AppendErr::ChainStateCorrupted)
-                        }
-                        return Ok(())
-                    }
-                }
-            }
-        }
+        Ok(())
     }
 
     pub fn append_block(&mut self, block: Block) {
 
         // Make absolutely sure that this block is eligible
         // to be appended to the chain.
-        match self.is_block_eligible_for_append(&block) {
+        match self.is_block_eligible_for_append(&block,
+                                                RequireAllPeerSigs::Yes) {
             Ok(_) => {
                 let block_header_hash = block.header.hash();
                 self.chain.insert(block_header_hash.clone(),
@@ -299,7 +356,8 @@ impl Hashchain {
     /// Determines the peers whose signatures are required for a set of block
     /// actions to be added to the hashchain. This includes existing peers and peers
     /// being added in 'actions', and excludes peers being removed in 'actions'.
-    fn get_signoff_peers(&self, actions: &Vec<Action>) -> BTreeSet<InstAddress> {
+    pub fn get_signoff_peers(&self,
+                             actions: &Vec<Action>) -> BTreeSet<InstAddress> {
 
         // Existing peers must sign off on new_block.
         let mut peers = BTreeSet::new();
@@ -383,35 +441,38 @@ impl Hashchain {
             // Hashchain state modified, sync to disk.
             return true;
         } else {
-            if self.processing_block.as_ref().unwrap()
-                    .has_all_required_signatures() {
-                info!("HCHAIN: All required signatures for processing \
-                       block received; adding to chain and broadcasting.");
-                let block = self.processing_block.as_ref().unwrap().clone();
-                self.append_block(block.clone());
-                self.processing_block = None;
+            match self.is_block_eligible_for_append(
+                    self.processing_block.as_ref().unwrap(),
+                    RequireAllPeerSigs::Yes) {
+                Ok(_) => {
+                    info!("HCHAIN: Block is now eligible for append; \
+                           adding to chain and broadcasting.");
+                    let block = self.processing_block.as_ref().unwrap().clone();
+                    self.append_block(block.clone());
+                    self.processing_block = None;
 
-                // Broadcast the signed block to all signoff peers so
-                // they can include it in their replicas.
-                for peer_addr in &block.signoff_peers {
-                    let mf = BlockManifest::new(block.clone());
-                    match node_table.write().unwrap()
-                            .send_block_manifest(peer_addr, mf.clone()) {
-                        Ok(()) => info!("Block manifest sent to {}", peer_addr),
-                        Err(_) => panic!("TODO: Unable to send block manifest \
-                                          to peer; a flag/retry interval needs \
-                                          to be set. This is not critical \
-                                          because next signing will involve \
-                                          sync, but should be done anyway.")
+                    // Broadcast the signed block to all signoff peers so
+                    // they can include it in their replicas.
+                    for peer_addr in &block.signoff_peers {
+                        let mf = BlockManifest::new(block.clone());
+                        match node_table.write().unwrap()
+                                .send_block_manifest(peer_addr, mf.clone()) {
+                            Ok(()) => info!("Block manifest sent to {}", peer_addr),
+                            Err(_) => panic!("TODO: Unable to send block manifest \
+                                              to peer; a flag/retry interval needs \
+                                              to be set. This is not critical \
+                                              because next signing will involve \
+                                              sync, but should be done anyway.")
+                        }
                     }
+                    return true;
+                },
+                Err(err) => {
+                    info!("HCHAIN: Block is not yet \
+                          eligible for append: {:?}", err);
+                    return false;
                 }
-
-                return true;
-            } else {
-                info!("HCHAIN: Block is not yet valid: {:?}",
-                      self.processing_block.as_ref().unwrap().signoff_signatures);
-                return false;
-            }
+            };
         }
     }
 
@@ -759,31 +820,6 @@ impl Block {
             signoff_signatures: HashMap::new(),
             node_locations: node_locations,
         }
-    }
-
-    pub fn is_authors_signature_valid(&self) -> Result<(), ValidityErr> {
-        let expected_msg = self.header.hash();
-        self.author_signature.check_validity(&expected_msg, &self.header.author)
-    }
-
-
-    fn has_all_required_signatures(&self) -> bool {
-        for peer_addr in &self.signoff_peers {
-            match self.signoff_signatures.get(&peer_addr) {
-                None => return false,
-                Some(peer_sig) => {
-                    // If peer's signature is invalid, panic; this
-                    // should never occur.
-                    if peer_sig.check_validity(
-                        &self.header.hash(), &peer_addr).is_err() {
-                        panic!("Peer's signature is invalid during \
-                                required signature check; this should
-                                never happen, understand why.");
-                    }
-                }
-            }
-        }
-        true
     }
 }
 

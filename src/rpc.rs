@@ -58,7 +58,7 @@ pub fn start(config: &CertChainConfig,
                     let params = &path[9..].split("/").collect::<Vec<&str>>();
                     let mut req_body = String::new();
                     req.read_to_string(&mut req_body).unwrap();
-                    certify(res, fsm.clone(),
+                    certify(res, fsm.clone(), hashchain.clone(),
                             &docs_dir, req_body, &params);
                 },
                 (hyper::Post, AbsolutePath(ref path))
@@ -184,6 +184,7 @@ fn approve_peer_req(res: Response<Fresh>,
 
 fn certify(res: Response<Fresh>,
            fsm: Arc<RwLock<FSM>>,
+           hashchain: Arc<RwLock<Hashchain>>,
            docs_dir_path: &String,
            document: String,
            params: &Vec<&str>) {
@@ -213,11 +214,23 @@ fn certify(res: Response<Fresh>,
         _ => String::from(params[1])
     };
 
-    // First, hash the document to obtain its ID.
+
+    // Create a certification action for the document.
     let doc_id = DoubleSha256Hash::hash_string(&document);
     info!("Hashed {} to {}", &document, doc_id);
+    let action = Action::Certify(doc_id, doctype, student_id);
 
-    // Second, write the document contents to disk for later retrieval.
+    // Any block issued by an institution must have at least
+    // one signoff peer. This is enforced later, but check it now
+    // to give immediate notification to user if this is the case.
+    let ref hashchain = *hashchain.read().unwrap();
+    if hashchain.get_signoff_peers(&vec![action.clone()]).len() == 0 {
+        res.send("You must have at least one peer \
+                 to certify documents on the network.".as_bytes()).unwrap();
+        return
+    }
+
+    // Write the document contents to disk for later retrieval.
     let doc_file = match File::create(format!("{}/{:?}.txt",
                                     docs_dir_path, doc_id)) {
         Ok(f) => f,
@@ -237,16 +250,13 @@ fn certify(res: Response<Fresh>,
         }
     };
 
-    // Third, create a certification action for the document.
-    let action = Action::Certify(doc_id, doctype, student_id);
-
     // Have the FSM queue a new block and sync the queued
     // block to disk.
     let ref mut fsm = *fsm.write().unwrap();
     fsm.push_state(FSMState::QueueNewBlock(vec![action]));
     fsm.push_state(FSMState::SyncHashchainToDisk);
 
-    res.send("OK; certification submitted.".as_bytes()).unwrap();
+    res.send("OK".as_bytes()).unwrap();
 }
 
 fn revoke(res: Response<Fresh>,

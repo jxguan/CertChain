@@ -21,7 +21,8 @@ use rand::Rng;
 use compress::checksum::adler;
 use std::collections::{HashMap, BTreeSet, BTreeMap};
 use msgpack;
-use hashchain::{Hashchain, Action, Block, AppendErr};
+use hashchain::{Hashchain, Action, Block,
+                AppendErr, RequireAllPeerSigs};
 use fsm::{FSM, FSMState};
 use std::fs::File;
 use serde_json;
@@ -530,16 +531,12 @@ impl NetNodeTable {
             }
         }
 
-        /*
-         * TODO
-         * Before attempting insert into hashchain, play the actions
-         * against past actions to determine if actions are
-         * valid (and validate integrity of block's signatures, etc.).
-         */
-
+        // If the block is eligible to be appended to our replica of
+        // the peer's hashchain, issue a signature for it.
         let ref hc_replica = node.lazy_load_replica(&self.replica_dir);
         match hc_replica.read().unwrap()
-                .is_block_eligible_for_append(&sigreq.block) {
+                .is_block_eligible_for_append(&sigreq.block,
+                                              RequireAllPeerSigs::No) {
             Ok(_) => {
                 info!("Signing block {} as requested by {} and sending over \
                       network.", &sigreq.block.header.hash(), node.inst_addr);
@@ -547,6 +544,15 @@ impl NetNodeTable {
                     sigreq.nonce, node.inst_addr, self.our_inst_addr,
                     sigreq.block.header.hash(), &our_secret_key);
                 return node.send(NetPayload::SigResp(sigresp))
+            },
+            Err(e @ AppendErr::AuthorSignatureInvalid)
+            | Err(e @ AppendErr::NoSignoffPeersListed)
+            | Err(e @ AppendErr::MissingPeerSignature)
+            | Err(e @ AppendErr::InvalidPeerSignature)
+            | Err(e @ AppendErr::UnexpectedSignoffPeers) => {
+                info!("Peer {} sent us a sigreq for a block that \
+                      we are ignoring due to: {:?}", node.inst_addr, e);
+                return Ok(())
             },
             Err(AppendErr::BlockAlreadyInChain) =>
                 panic!("TODO: Handle case where block is already in replica; \
@@ -706,7 +712,8 @@ impl NetNodeTable {
         match node.our_peering_approval {
             PeeringApproval::Approved => {
                 let res = hc_replica.read().unwrap()
-                        .is_block_eligible_for_append(&mf.block);
+                        .is_block_eligible_for_append(&mf.block,
+                                                      RequireAllPeerSigs::Yes);
                 match res {
                     Ok(_) => {
                         hc_replica.write().unwrap().append_block(mf.block);
@@ -722,13 +729,18 @@ impl NetNodeTable {
                         info!("Ignoring block in manifest; already in chain.");
                         Ok(())
                     },
-                    Err(AppendErr::BlockParentAlreadyClaimed) => {
+                    Err(e @ AppendErr::AuthorSignatureInvalid)
+                    | Err(e @ AppendErr::NoSignoffPeersListed)
+                    | Err(e @ AppendErr::MissingPeerSignature)
+                    | Err(e @ AppendErr::InvalidPeerSignature)
+                    | Err(e @ AppendErr::BlockParentAlreadyClaimed)
+                    | Err(e @ AppendErr::UnexpectedSignoffPeers) => {
                         panic!("TODO: Peer has equivocated; set flag and \
-                                stop processing replica updates.");
+                                stop processing replica updates: {:?}", e);
                     },
                     Err(AppendErr::ChainStateCorrupted) =>
                         panic!("TODO: Peer's replica is corrupted; determine \
-                                 why.")
+                                 why."),
                 }
             },
             _ => {

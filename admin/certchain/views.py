@@ -135,13 +135,13 @@ def certify_diploma(request):
     document = json.dumps(payload, sort_keys=True, separators=(',', ':'))
     resp = requests.post(create_rpc_url('/certify/Diploma/'+student_id),
       data=document)
-    if resp.status_code == 200:
+    if resp.status_code == 200 and resp.text == 'OK':
       messages.success(request,\
         'The diploma has been submitted to the network for certification.')
     else:
       messages.error(request,\
         'An error occurred while processing your \
-        certification request: ' + str(resp.status_code))
+        certification request: ' + resp.text)
     return redirect(reverse('certchain:certify'))
   raise Http404
 
@@ -163,13 +163,13 @@ def certify_transcript(request):
     document = json.dumps(payload, sort_keys=True, separators=(',', ':'))
     resp = requests.post(create_rpc_url('/certify/Transcript/'+student_id),
       data=document)
-    if resp.status_code == 200:
+    if resp.status_code == 200 and resp.text == 'OK':
       messages.success(request,\
         'The transcript has been submitted to the network for certification.')
     else:
       messages.error(request,\
         'An error occurred while processing your \
-        certification request: ' + str(resp.status_code))
+        certification request: ' + resp.text)
     return redirect(reverse('certchain:certify'))
   raise Http404
 
