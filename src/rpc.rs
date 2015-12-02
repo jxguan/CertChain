@@ -97,7 +97,7 @@ pub fn start(config: &CertChainConfig,
                 (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 13
                         && &path[0..13] == "/end_peering/" => {
-                    end_peering(res, fsm.clone(),
+                    end_peering(res, hashchain.clone(), fsm.clone(),
                             node_table.clone(), &path[13..]);
                 },
                 (hyper::Get, AbsolutePath(ref path))
@@ -142,7 +142,7 @@ fn handle_peer_request(res: Response<Fresh>,
             // Have the FSM eventually sync node table to disk.
             let ref mut fsm = *fsm.write().unwrap();
             fsm.push_state(FSMState::SyncNodeTableToDisk);
-            res.send("OK; peer request submitted.".as_bytes()).unwrap();
+            res.send("OK".as_bytes()).unwrap();
         },
         Err(err) => {
             res.send(format!("An error prevented your peer request from \
@@ -323,9 +323,10 @@ fn handle_document_req(res: Response<Fresh>,
 }
 
 fn end_peering(res: Response<Fresh>,
-                       fsm: Arc<RwLock<FSM>>,
-                       node_table: Arc<RwLock<NetNodeTable>>,
-                       addr_param: &str) {
+               hashchain: Arc<RwLock<Hashchain>>,
+               fsm: Arc<RwLock<FSM>>,
+               node_table: Arc<RwLock<NetNodeTable>>,
+               addr_param: &str) {
 
     // Convert the address parameter into an InstAddress.
     let addr = match InstAddress::from_string(addr_param) {
@@ -337,14 +338,16 @@ fn end_peering(res: Response<Fresh>,
         }
     };
 
-    // Downgrade our approval of peering with this addr.
+    // End peering; the callee will handle
+    // all further checks and FSM state queueing.
     let ref mut node_table = *node_table.write().unwrap();
-    node_table.end_peering(addr).unwrap();
-
-    // Have the FSM eventually sync node table to disk.
-    let ref mut fsm = *fsm.write().unwrap();
-    fsm.push_state(FSMState::SyncNodeTableToDisk);
-    res.send("OK; peering ended.".as_bytes()).unwrap();
+    match node_table.end_peering(addr, hashchain, fsm) {
+        Ok(_) => res.send("OK".as_bytes()).unwrap(),
+        Err(err) => {
+            res.send(format!("{}", err).as_bytes()).unwrap();
+            return;
+        }
+    };
 }
 
 fn handle_block_req(res: Response<Fresh>,

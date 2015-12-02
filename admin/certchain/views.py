@@ -61,14 +61,13 @@ def approve_peer_request(request):
   if request.method == 'POST':
     addr = request.POST['requesting_addr']
     resp = requests.post(create_rpc_url('/approve_peerreq/' + addr))
-    if resp.status_code == 200:
+    if resp.status_code == 200 and resp.text == 'OK':
       messages.success(request,\
-        'Your approval was submitted; it may take a few \
-        seconds for the approval to be reflected below.')
+        'Your approval was submitted successfully.')
     else:
       messages.error(request,\
         'An error occurred while processing your \
-        peer request approval for ' + addr + '.')
+        peer request approval: ' + resp.text)
     return redirect(reverse('certchain:overview'))
   raise Http404
 
@@ -77,13 +76,13 @@ def request_peer(request):
   if request.method == 'POST':
     addr = request.POST['addr']
     resp = requests.post(create_rpc_url('/request_peer/' + addr))
-    if resp.status_code == 200:
+    if resp.status_code == 200 and resp.text == 'OK':
       messages.success(request,\
         'Your peering request was successfully submitted.')
     else:
       messages.error(request,\
         'An error occurred while processing your \
-        peer request for ' + addr + '.')
+        peer request: ' + resp.text)
     return redirect(reverse('certchain:overview'))
   raise Http404
 
@@ -92,13 +91,13 @@ def end_peering(request):
   if request.method == 'POST':
     addr = request.POST['addr']
     resp = requests.post(create_rpc_url('/end_peering/' + addr))
-    if resp.status_code == 200:
+    if resp.status_code == 200 and resp.text == 'OK':
       messages.success(request,\
         'Your peering termination request was successfully submitted.')
     else:
       messages.error(request,\
         'An error occurred while processing your \
-        peering termination request for ' + addr + '.')
+        peering termination request: ' + resp.text)
     return redirect(reverse('certchain:overview'))
   raise Http404
 

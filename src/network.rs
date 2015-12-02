@@ -665,8 +665,38 @@ impl NetNodeTable {
 
         // Finally, have the FSM queue a new block containing the action
         // and sync the queued block to disk.
-        let action = Action::AddPeer(node.inst_addr,
-                                     node.hostname.clone(), node.port);
+        fsm.push_state(FSMState::QueueNewBlock(vec![
+                Action::AddPeer(node.inst_addr,
+                node.hostname.clone(), node.port)]));
+        fsm.push_state(FSMState::SyncHashchainToDisk);
+        Ok(())
+    }
+
+    pub fn end_peering(&mut self, inst_addr: InstAddress,
+                       hashchain: Arc<RwLock<Hashchain>>,
+                       fsm: Arc<RwLock<FSM>>) -> std::io::Result<()> {
+
+        // Get the peer.
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&inst_addr).unwrap();
+
+        // If removing this peer will result in the institution having
+        // zero peers, abort and inform the user.
+        let ref hashchain = *hashchain.read().unwrap();
+        let action = Action::RemovePeer(node.inst_addr);
+        if hashchain.get_signoff_peers(&vec![action.clone()]).len() == 0 {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                    "You must have at least one peer at all times. \
+                     Add another peer first before removing this one."));
+        }
+
+        // Downgrade peering approval.
+        node.our_peering_approval = PeeringApproval::NotApproved;
+        let ref mut fsm = *fsm.write().unwrap();
+        fsm.push_state(FSMState::SyncNodeTableToDisk);
+
+        // Have the FSM queue a new block containing the action
+        // and sync the queued block to disk.
         fsm.push_state(FSMState::QueueNewBlock(vec![action]));
         fsm.push_state(FSMState::SyncHashchainToDisk);
         Ok(())
@@ -752,17 +782,6 @@ impl NetNodeTable {
                 Ok(())
             }
         }
-    }
-
-    pub fn end_peering(&mut self, inst_addr: InstAddress) -> std::io::Result<()> {
-
-        // Get the peer.
-        let mut node_map = self.node_map.write().unwrap();
-        let mut node = node_map.get_mut(&inst_addr).unwrap();
-
-        // Downgrade peering approval.
-        node.our_peering_approval = PeeringApproval::NotApproved;
-        Ok(())
     }
 
     pub fn is_confirmed_node(&self, node_addr: &InstAddress) -> bool {

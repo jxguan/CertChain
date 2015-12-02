@@ -72,8 +72,9 @@ pub enum DocumentType {
 
 #[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
 pub enum Action {
-    Certify(DocumentId, DocumentType, String),
     AddPeer(InstAddress, String, u16),
+    RemovePeer(InstAddress),
+    Certify(DocumentId, DocumentType, String),
     Revoke(DocumentId),
 }
 
@@ -382,40 +383,52 @@ impl Hashchain {
     /// Determines the peers whose signatures are required for a set of block
     /// actions to be added to the hashchain. This includes existing peers and peers
     /// being added in 'actions', and excludes peers being removed in 'actions'.
+    /// TODO: This method is inefficient as it effectively replays history;
+    /// eventually write this in a more performant manner.
     pub fn get_signoff_peers(&self,
                              actions: &Vec<Action>) -> BTreeSet<InstAddress> {
 
-        // Existing peers must sign off on new_block.
+        // Replay history to determine who our existing peers are,
+        // as they are required to sign off.
+        // We iterate through the chain from front to back; we
+        // cannot use HashMap's iter as its ordering is unpredictable.
         let mut peers = BTreeSet::new();
-        for (_, chain_node) in self.chain.iter() {
-            for action in chain_node.block.actions.iter() {
-                match *action {
-                    Action::AddPeer(inst_addr, _, _) => {
-                        peers.insert(inst_addr);
-                    },
-                    Action::Certify(_, _, _) => (),
-                    Action::Revoke(_) => (),
-                    /*
-                     * TODO: When adding RemovePeer to this
-                     * statement, remove from peer set.
-                     */
+        let mut lookup_hash = self.head_node;
+        while lookup_hash.is_some() {
+            match self.chain.get(&lookup_hash.unwrap()) {
+                None => break,
+                Some(ref chain_node) => {
+                    for action in chain_node.block.actions.iter() {
+                        match *action {
+                            Action::AddPeer(inst_addr, _, _) => {
+                                peers.insert(inst_addr);
+                            },
+                            Action::RemovePeer(inst_addr) => {
+                                peers.remove(&inst_addr);
+                            },
+                            Action::Certify(_, _, _)
+                            | Action::Revoke(_) => (),
+                        }
+                    }
+                    lookup_hash = chain_node.next_block;
                 }
             }
         }
 
-        // New peers must sign off on new block, but
-        // removed peers do not.
+        // Additionally, play the provided actions atop history.
+        // Remember that peers removed in a block are not
+        // required to sign off on that block, and thus are excluded
+        // here as well.
         for action in actions.iter() {
             match *action {
                 Action::AddPeer(inst_addr, _, _) => {
                     peers.insert(inst_addr);
                 },
-                Action::Certify(_, _, _) => (),
-                Action::Revoke(_) => (),
-                /*
-                 * TODO: When adding RemovePeer to this
-                 * statement, remove from peer set.
-                 */
+                Action::RemovePeer(inst_addr) => {
+                    peers.remove(&inst_addr);
+                },
+                Action::Certify(_, _, _)
+                | Action::Revoke(_) => (),
             }
         }
         peers
@@ -572,7 +585,8 @@ impl Hashchain {
                                     }
                                 }
                             },
-                            Action::AddPeer(_, _, _) => {
+                            Action::RemovePeer(_)
+                            | Action::AddPeer(_, _, _) => {
                                 continue;
                             }
                         }
@@ -642,7 +656,8 @@ impl MerkleTree {
         let mut to_revert = HashSet::new();
         for action in actions.iter() {
             match *action {
-                Action::AddPeer(_, _, _) => continue,
+                Action::AddPeer(_, _, _)
+                | Action::RemovePeer(_) => continue,
                 Action::Certify(docid, _, _) => {
                     if self.tree.contains_key(&docid) {
                         return Err(MerkleTreeErr::DuplicateCertification)
@@ -781,7 +796,8 @@ impl MerkleTree {
         // document-related ones.
         for action in block.actions.iter() {
             match *action {
-                Action::AddPeer(_, _, _) => continue,
+                Action::AddPeer(_, _, _)
+                | Action::RemovePeer(_) => continue,
                 Action::Certify(docid, _, _) => {
                     self.tree.insert(docid, MerkleNode {
                         document_id: docid,
@@ -934,9 +950,11 @@ impl DocumentSummary {
             Action::Revoke(_) => {
                 panic!("TODO: Handle Revoke in DocumentSummary constructor.");
             },
-            Action::AddPeer(_, _, _) => {
-                panic!("Cannot create DocumentSummary from AddPeer;
-                        action; calling code needs to prevent this.")
+            a @ Action::RemovePeer(_)
+            | a @ Action::AddPeer(_, _, _) => {
+                panic!("Cannot create DocumentSummary from AddPeer
+                        or RemovePeer; calling code needs to \
+                        prevent this: {:?}", a)
             }
         }
     }
