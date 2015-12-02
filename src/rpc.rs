@@ -65,7 +65,8 @@ pub fn start(config: &CertChainConfig,
                     if path == "/add_node" => {
                     let mut req_body = String::new();
                     req.read_to_string(&mut req_body).unwrap();
-                    add_node(res, node_table.clone(), fsm.clone(), req_body);
+                    add_node(res, node_table.clone(), fsm.clone(),
+                            our_secret_key.clone(), req_body);
                 },
                 (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 13
@@ -377,6 +378,7 @@ fn handle_block_req(res: Response<Fresh>,
 fn add_node(res: Response<Fresh>,
             node_table: Arc<RwLock<NetNodeTable>>,
             fsm: Arc<RwLock<FSM>>,
+            our_secret_key: SecretKey,
             body: String) {
     let node: HashMap<String, String> =
         serde_json::from_str(&body).unwrap();
@@ -430,6 +432,11 @@ fn add_node(res: Response<Fresh>,
     // Register the node.
     let ref mut node_table = *node_table.write().unwrap();
     node_table.register(address, &hostname, port, PeeringApproval::NotApproved);
+
+    // Connect to the node and ask them to prove their identity;
+    // for now, we don't care about there
+    // being a connection error.
+    let _ = node_table.connect(address, Some(&our_secret_key));
 
     // Have the FSM eventually sync the node table to disk.
     let ref mut fsm = *fsm.write().unwrap();

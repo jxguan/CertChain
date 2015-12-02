@@ -120,10 +120,28 @@ pub fn run(config: CertChainConfig) -> () {
         }
     });
 
-    /*
-     * Start the finite state machine, which idles
-     * if there are no states to transition to.
-     */
+    // Monitor the block processing queue in the background.
+    let fsm_clone2 = fsm.clone();
+    let hashchain_clone2 = hashchain.clone();
+    let node_table_clone2 = node_table.clone();
+    thread::spawn(move || {
+        loop {
+            debug!("QUEUE_PROC: processing block queue...");
+            {
+                let mut hashchain = hashchain_clone2.write().unwrap();
+                let blocks_processed = hashchain.process_queue(
+                        node_table_clone2.clone(), &secret_key);
+                if blocks_processed {
+                    fsm_clone2.write().unwrap().push_state(
+                        FSMState::SyncHashchainToDisk);
+                }
+            }
+            debug!("QUEUE_PROC: idling...");
+            thread::sleep_ms(1000);
+        }
+    });
+
+    // Start the FSM.
     loop {
         let next_state = fsm.write().unwrap().pop_state();
         match next_state {
@@ -224,16 +242,6 @@ pub fn run(config: CertChainConfig) -> () {
                 }
             },
             None => {
-                debug!("FSM: processing block queue...");
-                {
-                    let mut hashchain = hashchain.write().unwrap();
-                    let blocks_processed = hashchain.process_queue(
-                            node_table.clone(), &secret_key);
-                    if blocks_processed {
-                        fsm.write().unwrap().push_state(
-                            FSMState::SyncHashchainToDisk);
-                    }
-                }
                 debug!("FSM: idling...");
                 thread::sleep_ms(1000);
             }

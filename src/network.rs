@@ -293,12 +293,20 @@ impl NetNodeTable {
         Ok(())
     }
 
-    /// Connects to a node. If a secret key is provided, we will ask
+    /// Connects to a node, or reconnects if already connected.
+    /// If a secret key is provided, we will ask
     /// that node to confirm their identity.
     pub fn connect(&mut self, node_addr: InstAddress,
                    secret_key: Option<&SecretKey>) -> std::io::Result<()> {
         match self.node_map.write().unwrap().get_mut(&node_addr) {
             Some(mut node) => {
+                // Note that we are forcing a new connection to
+                // be made on each call to this method. This is important
+                // for those times when a socket may be old and the caller
+                // wishes to send a message down a fresh connection to
+                // ensure receipt.
+                node.socket = Socket::new();
+                node.conn_state = ConnectionState::NotConnected;
                 if let Err(_) = node.connect() {
                     return Err(io::Error::new(io::ErrorKind::NotConnected,
                         format!("Node {} is not available, can't connect.",
@@ -347,28 +355,33 @@ impl NetNodeTable {
 
     pub fn handle_identreq(&mut self, identreq: IdentityRequest,
             our_secret_key: &SecretKey) -> std::io::Result<()> {
-        // First, determine if the contents of this request are valid.
-        if let Err(_) = identreq.check_validity(&self.our_inst_addr,
+        // Determine if the contents of this request are valid.
+        if let Err(err) = identreq.check_validity(&self.our_inst_addr,
                 &self.our_hostname, &self.our_port) {
-            panic!("TODO: Log invalid ident req.")
+            panic!("TODO: Log invalid ident req: {:?}", err)
         }
 
-        // Second, ensure the node is registered.
+        // Ensure the node is registered.
         self.register(identreq.from_inst_addr,
                 &identreq.from_hostname, identreq.from_port,
                 PeeringApproval::NotApproved);
+
+        // If we haven't already, connect and request the node's identity.
+        // The node could have disconnected,
+        // and if we send the response down the old socket, it will never
+        // receive it.
+        // TODO: If an error occurs while connecting, queue our IdentResp
+        // in the FSM for later sending.
+        if self.node_map.read().unwrap().get(&identreq.from_inst_addr)
+                .unwrap().identreq.is_none() {
+            let _ = self.connect(identreq.from_inst_addr, Some(our_secret_key));
+        }
+
+        // Get the node (we can unwrap due to registration call above).
         let mut node_map = self.node_map.write().unwrap();
         let mut node = node_map.get_mut(&identreq.from_inst_addr).unwrap();
 
-        // Third, start with a fresh socket. The node could have disconnected,
-        // and if we send the response down the old socket, it will never
-        // receive it. Note that we *do not* reset the identity state;
-        // if the node has already verified their identity, we don't
-        // need to ask again.
-        node.socket = Socket::new();
-        node.conn_state = ConnectionState::NotConnected;
-
-        // Fourth, create a response and send to the node.
+        // Create a response and send to the node.
         let identresp = IdentityResponse::new(self.our_inst_addr,
                 identreq.nonce, &our_secret_key);
         node.send(NetPayload::IdentResp(identresp))
@@ -401,8 +414,10 @@ impl NetNodeTable {
         };
 
         // Third, check the validity of the response's nonce and signature.
-        if let Err(_) = identresp.check_validity(identreq) {
-            panic!("TODO: Log invalid identresp.")
+        if let Err(err) = identresp.check_validity(identreq) {
+            info!("Identreq: {:?}", identreq);
+            info!("Invalid identresp: {:?}", identresp);
+            panic!("TODO: Log invalid identresp: {:?}", err)
         }
 
         // Now that all checks passed, elevate the node's identity status
@@ -615,12 +630,15 @@ impl NetNodeTable {
     pub fn handle_peerreq(&mut self,
             peer_req: PeerRequest) -> std::io::Result<()> {
 
-        // First, determine if the contents of this request are valid.
+        // Determine if the contents of this request are valid.
         if let Err(_) = peer_req.check_validity(&self.our_inst_addr) {
             panic!("TODO: Log invalid peer request.")
         }
 
-        // Second, ensure that we have confirmed the node's identity.
+        // Ensure that we have confirmed the node's identity.
+        // TODO: If we have not, rather than ignore the request,
+        // connnect and request their identity, and queue the
+        // peer request for processing once this has been done.
         if !self.is_confirmed_node(&peer_req.from_inst_addr) {
             return Err(io::Error::new(io::ErrorKind::Other,
                 format!("Ignoring peer request from node {}; their \
@@ -628,11 +646,11 @@ impl NetNodeTable {
                          &peer_req.from_inst_addr)));
         }
 
-        // Third, get the node (we can unwrap due to above check).
+        // Get the node (we can unwrap due to above check).
         let mut node_map = self.node_map.write().unwrap();
         let mut node = node_map.get_mut(&peer_req.from_inst_addr).unwrap();
 
-        // Fourth and finally, adjust peering state accordingly.
+        // Adjust peering state accordingly.
         node.our_peering_approval = PeeringApproval::AwaitingOurApproval;
         Ok(())
     }

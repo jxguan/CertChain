@@ -13,3 +13,7 @@ printf "Removed documents."
 rm data_dir/replicas/*
 rm data_dirs/node*/replicas/*
 printf "Removed replicas."
+
+rm data_dir/nodes.dat
+rm data_dirs/node*/nodes.dat
+printf "Removed node tables."
