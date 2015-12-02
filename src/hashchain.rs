@@ -97,6 +97,9 @@ pub enum AppendErr {
     MissingPeerSignature,
     InvalidPeerSignature,
     UnexpectedSignoffPeers,
+    UnexpectedSignoffPeersHash,
+    InvalidActionFound(MerkleTreeErr),
+    UnexpectedMerkleRootHash,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -195,8 +198,12 @@ impl Hashchain {
     /// This is the authoritative method for checking whether a given
     /// block can be appended to a hashchain instance, be it an institution's
     /// own hashchain or a replica chain belonging to a peer.
+    /// NOTE: This method requires a mutable borrow on self but does not
+    /// actually change its state in a way that persists after returning;
+    /// the explanation is provided in the documentation for
+    /// MerkleTree::compute_root_with_actions.
     pub fn is_block_eligible_for_append(
-            &self, block: &Block,
+            &mut self, block: &Block,
             require_peer_sigs: RequireAllPeerSigs) -> Result<(), AppendErr> {
 
         // The author's signature must be valid.
@@ -265,9 +272,28 @@ impl Hashchain {
         // blocks, this check will typically fail, and if we return this error
         // instead of a missing blocks error, it will not allow the caller
         // to retrieve the blocks.
-        let signoff_peers = self.get_signoff_peers(&block.actions);
-        if signoff_peers != block.signoff_peers {
+        let computed_signoff_peers = self.get_signoff_peers(&block.actions);
+        if block.signoff_peers != computed_signoff_peers {
             return Err(AppendErr::UnexpectedSignoffPeers);
+        }
+        if block.header.signoff_peers_hash !=
+                BlockHeader::signoff_peers_to_hash(&computed_signoff_peers) {
+            return Err(AppendErr::UnexpectedSignoffPeersHash);
+        }
+
+        // Ensure that the block header's merkle root matches what we expect
+        // as well; for the same reason as given above for signoff peer
+        // verification, it's important to do this after
+        // checking for missing blocks.
+        let computed_merkle_root =
+                match self.merkle_tree.compute_root_with_actions(
+            block.header.timestamp, self.chain.len() + 1, &block.actions) {
+            Ok(hash) => hash,
+            Err(merkle_err) =>
+                return Err(AppendErr::InvalidActionFound(merkle_err))
+        };
+        if block.header.merkle_root != computed_merkle_root {
+            return Err(AppendErr::UnexpectedMerkleRootHash);
         }
 
         // When a signature request is received from a peer for its block,
@@ -441,8 +467,9 @@ impl Hashchain {
             // Hashchain state modified, sync to disk.
             return true;
         } else {
+            let proc_block = self.processing_block.as_ref().unwrap().clone();
             match self.is_block_eligible_for_append(
-                    self.processing_block.as_ref().unwrap(),
+                    &proc_block,
                     RequireAllPeerSigs::Yes) {
                 Ok(_) => {
                     info!("HCHAIN: Block is now eligible for append; \
@@ -835,16 +862,6 @@ impl BlockHeader {
             Some(h) => h,
         };
 
-        // Create a string containing each peer's address;
-        // because we are using BTreeSet, iteration will occur
-        // lexicographically, which is important because we want
-        // client-side JS to be able to easily reconstruct this hash.
-        let mut signoff_peers_to_hash = String::from("|");
-        for peer_addr in signoff_peers.iter() {
-            signoff_peers_to_hash = signoff_peers_to_hash
-                + &peer_addr.to_base58() + "|";
-        }
-
         // Create a string containing each node's address and hostname + port.
         // We use BTreeSet here as well in order to ensure lexicographic
         // iteration.
@@ -859,11 +876,25 @@ impl BlockHeader {
             parent: parent_hash,
             author: our_inst_addr,
             merkle_root: merkle_root,
-            signoff_peers_hash: DoubleSha256Hash::hash_string(
-                &signoff_peers_to_hash),
+            signoff_peers_hash:
+                BlockHeader::signoff_peers_to_hash(&signoff_peers),
             node_locations_hash: DoubleSha256Hash::hash_string(
                 &node_locs_to_hash)
         }
+    }
+
+    /// Creates a hash of the concatenation of each peer's address;
+    /// because we are using BTreeSet, iteration will occur
+    /// lexicographically, which is important because we want
+    /// client-side JS to be able to easily reconstruct this hash.
+    fn signoff_peers_to_hash(signoff_peers: &BTreeSet<InstAddress>)
+            -> DoubleSha256Hash {
+        let mut signoff_peers_to_hash = String::from("|");
+        for peer_addr in signoff_peers.iter() {
+            signoff_peers_to_hash = signoff_peers_to_hash
+                + &peer_addr.to_base58() + "|";
+        }
+        DoubleSha256Hash::hash_string(&signoff_peers_to_hash)
     }
 
     pub fn hash(&self) -> DoubleSha256Hash {

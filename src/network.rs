@@ -534,7 +534,7 @@ impl NetNodeTable {
         // If the block is eligible to be appended to our replica of
         // the peer's hashchain, issue a signature for it.
         let ref hc_replica = node.lazy_load_replica(&self.replica_dir);
-        match hc_replica.read().unwrap()
+        match hc_replica.write().unwrap()
                 .is_block_eligible_for_append(&sigreq.block,
                                               RequireAllPeerSigs::No) {
             Ok(_) => {
@@ -549,7 +549,10 @@ impl NetNodeTable {
             | Err(e @ AppendErr::NoSignoffPeersListed)
             | Err(e @ AppendErr::MissingPeerSignature)
             | Err(e @ AppendErr::InvalidPeerSignature)
-            | Err(e @ AppendErr::UnexpectedSignoffPeers) => {
+            | Err(e @ AppendErr::UnexpectedSignoffPeers)
+            | Err(e @ AppendErr::UnexpectedSignoffPeersHash)
+            | Err(e @ AppendErr::InvalidActionFound(_))
+            | Err(e @ AppendErr::UnexpectedMerkleRootHash) => {
                 info!("Peer {} sent us a sigreq for a block that \
                       we are ignoring due to: {:?}", node.inst_addr, e);
                 return Ok(())
@@ -711,7 +714,7 @@ impl NetNodeTable {
         let ref hc_replica = node.lazy_load_replica(&self.replica_dir);
         match node.our_peering_approval {
             PeeringApproval::Approved => {
-                let res = hc_replica.read().unwrap()
+                let res = hc_replica.write().unwrap()
                         .is_block_eligible_for_append(&mf.block,
                                                       RequireAllPeerSigs::Yes);
                 match res {
@@ -734,7 +737,10 @@ impl NetNodeTable {
                     | Err(e @ AppendErr::MissingPeerSignature)
                     | Err(e @ AppendErr::InvalidPeerSignature)
                     | Err(e @ AppendErr::BlockParentAlreadyClaimed)
-                    | Err(e @ AppendErr::UnexpectedSignoffPeers) => {
+                    | Err(e @ AppendErr::UnexpectedSignoffPeers)
+                    | Err(e @ AppendErr::UnexpectedSignoffPeersHash)
+                    | Err(e @ AppendErr::InvalidActionFound(_))
+                    | Err(e @ AppendErr::UnexpectedMerkleRootHash) => {
                         panic!("TODO: Peer has equivocated; set flag and \
                                 stop processing replica updates: {:?}", e);
                     },
