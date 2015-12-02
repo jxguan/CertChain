@@ -167,19 +167,16 @@ fn approve_peer_req(res: Response<Fresh>,
         }
     };
 
-    let ref node_table = *node_table.write().unwrap();
-    if !node_table.is_confirmed_node(&addr) {
-        res.send("The node whose peer request you attempted \
-                 to approve has not confirmed \
-                 their identity.".as_bytes()).unwrap();
-        return;
-    }
-
-    // Have the FSM create a new block adding the peer, with
-    // all current peers + new peer signing off on it.
-    let ref mut fsm = *fsm.write().unwrap();
-    fsm.push_state(FSMState::ApprovePeerRequest(addr));
-    res.send("OK; peer request submitted for approval.".as_bytes()).unwrap();
+    // Approve the peer request; the callee will handle
+    // all further checks and FSM state queueing.
+    let ref mut node_table = *node_table.write().unwrap();
+    match node_table.approve_peerreq(addr, fsm) {
+        Ok(_) => res.send("OK".as_bytes()).unwrap(),
+        Err(err) => {
+            res.send(format!("{}", err).as_bytes()).unwrap();
+            return;
+        }
+    };
 }
 
 fn certify(res: Response<Fresh>,

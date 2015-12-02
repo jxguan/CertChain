@@ -14,7 +14,6 @@ pub enum FSMState {
     ProcessIdentResp(IdentityResponse),
     RequestPeer(InstAddress),
     HandlePeerReq(PeerRequest),
-    ApprovePeerRequest(InstAddress),
     QueueNewBlock(Vec<Action>),
     HandleSigReq(SignatureRequest),
     HandleSigResp(SignatureResponse),

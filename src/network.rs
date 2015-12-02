@@ -644,9 +644,7 @@ impl NetNodeTable {
         // First, ensure that we have confirmed the node's identity.
         if !self.is_confirmed_node(&inst_addr) {
             return Err(io::Error::new(io::ErrorKind::Other,
-                format!("Ignoring approval of peer request for {}; their \
-                         identity has not been confirmed.",
-                         &inst_addr)));
+                "The peer's identity has not been confirmed."));
         }
 
         // Second, get the node (we can unwrap due to above check).
@@ -657,9 +655,7 @@ impl NetNodeTable {
         // of a peering relationship.
         if node.our_peering_approval != PeeringApproval::AwaitingOurApproval {
             return Err(io::Error::new(io::ErrorKind::Other,
-                format!("Ignoring approval of peer request for {}; their \
-                        peering state is not pending our approval.",
-                         &inst_addr)));
+                "The peer is not awaiting your approval."));
         }
 
         // Fourth, adjust peering state accordingly.
