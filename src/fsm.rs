@@ -22,6 +22,7 @@ pub enum FSMState {
     SyncNodeTableToDisk,
     SyncHashchainToDisk,
     SyncReplicaToDisk(InstAddress),
+    IdleForMilliseconds(u32),
 }
 
 impl FSM {

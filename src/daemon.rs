@@ -239,11 +239,15 @@ pub fn run(config: CertChainConfig) -> () {
                 FSMState::SyncReplicaToDisk(inst_addr) => {
                     let ref node_table = *node_table.read().unwrap();
                     node_table.write_replica_to_disk(&inst_addr);
+                },
+                FSMState::IdleForMilliseconds(ms) => {
+                    debug!("FSM: idling...");
+                    thread::sleep_ms(ms);
                 }
             },
             None => {
-                debug!("FSM: idling...");
-                thread::sleep_ms(1000);
+                let ref mut fsm = *fsm.write().unwrap();
+                fsm.push_state(FSMState::IdleForMilliseconds(1000));
             }
         }
     }
