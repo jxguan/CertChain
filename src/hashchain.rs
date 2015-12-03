@@ -560,7 +560,10 @@ impl Hashchain {
     pub fn handle_blocks_req(&self,
                              blocks_req: BlocksRequest,
                              node_table: Arc<RwLock<NetNodeTable>>) {
-        let _ = blocks_req.check_validity(&self.author).is_err();
+        if blocks_req.check_validity(&self.author).is_err() {
+            info!("Ignoring invalid BlocksRequest: {:?}", blocks_req);
+        }
+        panic!("TODO: Loop through hashchain in order, send block manifests.");
     }
 
     pub fn get_certifications(&self,

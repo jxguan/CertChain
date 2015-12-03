@@ -998,9 +998,26 @@ impl BlocksRequest {
                 &our_secret_key)
         }
     }
-    pub fn check_validity(&self, our_addr: &InstAddress)
+    pub fn check_validity(&self, our_inst_addr: &InstAddress)
             -> Result<(), ValidityErr> {
-        panic!("TODO: Implement check_validity for BlocksRequest.");
+
+        // Check individual fields.
+        if let Err(_) = self.to_inst_addr.check_validity() {
+            return Err(ValidityErr::ToInstAddrInvalid);
+        }
+        if self.to_inst_addr != *our_inst_addr {
+            return Err(ValidityErr::ToInstAddrDoesntMatchOurs);
+        }
+        if let Err(_) = self.from_inst_addr.check_validity() {
+            return Err(ValidityErr::FromInstAddrInvalid);
+        }
+
+        // Check validity of message signature.
+        let expected_msg = &DoubleSha256Hash::hash(&format!(
+                "BLOCKSREQUEST:{},{},{}", self.to_inst_addr,
+                self.from_inst_addr, self.after_block_hash).as_bytes()[..]);
+        self.from_signature.check_validity(&expected_msg,
+                                                &self.from_inst_addr)
     }
 }
 
