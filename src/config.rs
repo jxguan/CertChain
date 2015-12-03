@@ -8,6 +8,7 @@ use std::{io, process, convert};
 use std::io::Read;
 use toml;
 use key;
+use address::InstAddress;
 
 #[derive(Debug, RustcDecodable, Clone)]
 pub struct CertChainConfig {
@@ -51,6 +52,12 @@ impl convert::From<toml::DecodeError> for ConfigLoadError {
 impl CertChainConfig {
     pub fn path_to(&self, file_name: &str) -> String {
         format!("{}/{}", self.data_dir, file_name)
+    }
+
+    pub fn get_inst_addr(&self) -> InstAddress {
+        let inst_pubkey = key::compressed_public_key_from_string(
+            &self.compressed_public_key).unwrap();
+        InstAddress::from_pubkey(&inst_pubkey).unwrap()
     }
 }
 

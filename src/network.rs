@@ -214,9 +214,7 @@ impl Encodable for NetNode {
 impl NetNodeTable {
 
     pub fn new(config: &CertChainConfig) -> NetNodeTable {
-        let inst_pubkey = key::compressed_public_key_from_string(
-                &config.compressed_public_key).unwrap();
-        let inst_addr = InstAddress::from_pubkey(&inst_pubkey).unwrap();
+        let inst_addr = config.get_inst_addr();
         info!("This node identifies itself as {}.", inst_addr);
         NetNodeTable {
             node_map: Arc::new(RwLock::new(HashMap::new())),
@@ -892,7 +890,7 @@ impl NetNode {
                     Err(_) => {
                         info!("Unable to open replica file {}; starting \
                                new chain.", replica_path);
-                        Arc::new(RwLock::new(Hashchain::new()))
+                        Arc::new(RwLock::new(Hashchain::new(self.inst_addr)))
                     }
                 }
             }

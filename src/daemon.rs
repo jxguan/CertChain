@@ -37,7 +37,7 @@ pub fn run(config: CertChainConfig) -> () {
         },
         Err(_) => {
             info!("Unable to open hashchain file; starting new chain.");
-            Arc::new(RwLock::new(Hashchain::new()))
+            Arc::new(RwLock::new(Hashchain::new(config.get_inst_addr())))
         }
     };
 
@@ -210,7 +210,9 @@ pub fn run(config: CertChainConfig) -> () {
                     info!("FSM: added signature to processing block.");
                 },
                 FSMState::HandleBlocksReq(blocks_req) => {
-                    panic!("TODO: Handle BlocksRequest.");
+                    let ref hashchain = *hashchain.read().unwrap();
+                    hashchain.handle_blocks_req(blocks_req, node_table.clone());
+                    info!("FSM: handle blocks request.");
                 },
                 FSMState::HandleBlockManifest(mf) => {
                     // At this time, we are only concerned about block

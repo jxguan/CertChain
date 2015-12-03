@@ -5,7 +5,7 @@ use std::collections::{BTreeSet, BTreeMap, HashMap, HashSet};
 use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
-use network::{NetNodeTable, SignatureRequest, BlockManifest};
+use network::{NetNodeTable, SignatureRequest, BlocksRequest, BlockManifest};
 use signature::RecovSignature;
 use secp256k1::key::SecretKey;
 use serde::ser::Serialize;
@@ -17,6 +17,7 @@ pub type DocumentId = DoubleSha256Hash;
 #[derive(Serialize, Deserialize)]
 pub struct Hashchain {
     chain: HashMap<DoubleSha256Hash, ChainNode>,
+    author: InstAddress,
     head_node: Option<DoubleSha256Hash>,
     tail_node: Option<DoubleSha256Hash>,
     merkle_tree: MerkleTree,
@@ -133,9 +134,10 @@ pub struct MerkleProofBranch {
 }
 
 impl Hashchain {
-    pub fn new() -> Hashchain {
+    pub fn new(author: InstAddress) -> Hashchain {
         Hashchain {
             chain: HashMap::new(),
+            author: author,
             head_node: None,
             tail_node: None,
             merkle_tree: MerkleTree::new(),
@@ -208,6 +210,13 @@ impl Hashchain {
     pub fn is_block_eligible_for_append(
             &mut self, block: &Block,
             require_peer_sigs: RequireAllPeerSigs) -> Result<(), AppendErr> {
+
+        // The author of the block must match the author of this chain.
+        if block.header.author != self.author {
+            panic!("Attempted to add block authored by {} to chain authored by \
+                    {}; the caller is doing something wrong.",
+                    block.header.author, self.author);
+        }
 
         // The author's signature must be valid.
         if block.author_signature.check_validity(
@@ -546,6 +555,12 @@ impl Hashchain {
                         to be invalid. Understand why this occurred.");
             }
         }
+    }
+
+    pub fn handle_blocks_req(&self,
+                             blocks_req: BlocksRequest,
+                             node_table: Arc<RwLock<NetNodeTable>>) {
+        let _ = blocks_req.check_validity(&self.author).is_err();
     }
 
     pub fn get_certifications(&self,
