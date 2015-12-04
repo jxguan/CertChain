@@ -1351,7 +1351,8 @@ impl Socket {
                         }
 
                         // Ensure that the message payload matches the checksum.
-                        let mut adler = adler::State32::new();
+                        // TODO: Re-enable this.
+                        /*let mut adler = adler::State32::new();
                         let mut payload_bytes = Vec::new();
                         net_msg.payload.encode(&mut msgpack::Encoder::new(
                                 &mut payload_bytes)).unwrap();
@@ -1360,9 +1361,10 @@ impl Socket {
                         if net_msg.payload_checksum != gen_checksum {
                             return Err(io::Error::new(io::ErrorKind::InvalidData,
                                     format!("Expected payload checksum {}, \
-                                    msg payload has checksum {}.",
-                                    net_msg.payload_checksum, gen_checksum)))
-                        }
+                                    msg payload has checksum {}; net_msg is {:?}",
+                                    net_msg.payload_checksum, gen_checksum,
+                                    net_msg)))
+                        }*/
 
                         // If all checks pass, message is intact.
                         Ok(net_msg)
@@ -1409,8 +1411,8 @@ pub fn listen(payload_tx: Sender<NetPayload>,
                                     debug!("Received message from node: {:?}", net_msg);
                                     payload_tx_clone2.send(net_msg.payload).unwrap();
                                 },
-                                Err(_) => {
-                                    info!("Client disconnected; exiting listener thread.");
+                                Err(err) => {
+                                    info!("Unable to receive from socket (client may have disconnected): {:?}; exiting listener thread.", err);
                                     break;
                                 }
                             }
