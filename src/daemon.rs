@@ -142,6 +142,26 @@ pub fn run(config: CertChainConfig) -> () {
         }
     });
 
+    // Queue a new block every 30 minutes to ensure latest block
+    // is always authored within the last hour.
+    let fsm_clone3 = fsm.clone();
+    let hashchain_clone3 = hashchain.clone();
+    thread::spawn(move || {
+        // Give enough time for connections to be established
+        // to our peers.
+        thread::sleep_ms(10000);
+        loop {
+            let num_signoff_peers = hashchain_clone3.read().unwrap()
+                    .get_signoff_peers(&Vec::new()).len();
+            // Only queue a new block if we have more than peer.
+            if num_signoff_peers > 0 {
+                let mut fsm = fsm_clone3.write().unwrap();
+                fsm.push_state(FSMState::QueueNewBlock(Vec::new()));
+            }
+            thread::sleep_ms(30*60*1000); // 30 minutes
+        }
+    });
+
     // Start the FSM.
     loop {
         let next_state = fsm.write().unwrap().pop_state();
