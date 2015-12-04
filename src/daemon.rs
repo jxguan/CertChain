@@ -229,7 +229,8 @@ pub fn run(config: CertChainConfig) -> () {
                     // we want to recover our own chain.
                     // TODO: Keep this in mind.
                     let ref mut node_table = *node_table.write().unwrap();
-                    match node_table.handle_block_manifest(mf, fsm.clone()) {
+                    match node_table.handle_block_manifest(mf, fsm.clone(),
+                            &secret_key) {
                         Ok(_) => info!("FSM: handled block manifest."),
                         Err(err) => warn!("FSM: unable to handle block \
                                            manifeset: {}", err)

@@ -89,7 +89,7 @@ pub struct BlocksRequest {
     pub from_signature: RecovSignature,
 }
 
-#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug, Serialize, Deserialize)]
 pub struct BlockManifest {
     pub block: Block
 }
@@ -754,7 +754,9 @@ impl NetNodeTable {
     /// and 2) that the block is valid and has not been manipulated.
     pub fn handle_block_manifest(&mut self,
                                  mf: BlockManifest,
-                                 fsm: Arc<RwLock<FSM>>) -> std::io::Result<()> {
+                                 fsm: Arc<RwLock<FSM>>,
+                                 our_secret_key: &SecretKey)
+                                -> std::io::Result<()> {
         // Ensure that we have confirmed the authoring node's
         // identity.
         if !self.is_confirmed_node(&mf.block.header.author) {
@@ -798,11 +800,33 @@ impl NetNodeTable {
                             }
                         };
 
+                        // Likewise, if there is a BlockManifest for a block
+                        // that claims this block as its parent, queue
+                        // it for appending to the hashchain.
+                        match hc_replica.release_block_manifest_pending_sync(
+                                &mf.block.header.hash()) {
+                            None => (),
+                            Some(bm) => {
+                                info!("Re-handling block manifest that was \
+                                      pending during sync: {:?}", bm);
+                                fsm.push_state(
+                                    FSMState::HandleBlockManifest(bm));
+                            }
+                        };
+
                         Ok(())
                     },
-                    Err(AppendErr::MissingBlocksSince(_)) =>
-                        panic!("TODO: Peer's replica is missing blocks; \
-                                sync up with them."),
+                    Err(AppendErr::MissingBlocksSince(after_block_hash)) => {
+                        let blocks_req = BlocksRequest::new(node.inst_addr,
+                            after_block_hash, self.our_inst_addr, &our_secret_key);
+                        info!("Unable to add block in received manifest; \
+                           we are missing blocks \
+                           from {}'s chain; issuing BlocksRequest and holding \
+                           block.", node.inst_addr);
+                        hc_replica.write().unwrap()
+                            .save_block_manifest_during_sync(mf);
+                        return node.send(NetPayload::BlocksReq(blocks_req))
+                    },
                     Err(AppendErr::BlockAlreadyInChain) => {
                         info!("Ignoring block in manifest; already in chain.");
                         Ok(())

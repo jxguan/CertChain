@@ -185,7 +185,7 @@ var check_peer_sigs = function(json, block_header_hash) {
     var peer_str = '|';
     var num_peers = 0;
     var peer_addrs = [];
-    $.each(json['peer_signatures'], function(peer_addr, peer_sig) {
+    $.each(json['signoff_peers'], function(idx, peer_addr) {
         num_peers++;
         peer_str += peer_addr + '|';
         peer_addrs.push(peer_addr)
@@ -307,6 +307,7 @@ var mark_checklist = function(dom_id, result, json) {
             }
         });
         if (all_items_done) {
+            console.log(checklist);
             if (aggregate_result) {
                 $('#progress-status, #checklist').hide();
                 $('#verify-area').removeClass('gray');

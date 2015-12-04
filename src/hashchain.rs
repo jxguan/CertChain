@@ -24,6 +24,7 @@ pub struct Hashchain {
     processing_block: Option<Block>,
     queued_blocks: VecDeque<Block>,
     sigreqs_pending_sync: HashMap<DoubleSha256Hash, SignatureRequest>,
+    block_manifests_pending_sync: HashMap<DoubleSha256Hash, BlockManifest>
 }
 
 #[derive(Serialize, Deserialize)]
@@ -115,6 +116,7 @@ pub enum RequireAllPeerSigs {
 pub struct DocumentStatusProof {
     contents: Value,
     most_recent_block_header: BlockHeader,
+    signoff_peers: BTreeSet<InstAddress>,
     peer_signatures: HashMap<InstAddress, RecovSignature>,
     author_signature: RecovSignature,
     node_locations: BTreeMap<InstAddress, String>,
@@ -144,6 +146,7 @@ impl Hashchain {
             processing_block: None,
             queued_blocks: VecDeque::new(),
             sigreqs_pending_sync: HashMap::new(),
+            block_manifests_pending_sync: HashMap::new(),
         }
     }
 
@@ -165,6 +168,17 @@ impl Hashchain {
         self.sigreqs_pending_sync.remove(&parent_hash)
     }
 
+    pub fn save_block_manifest_during_sync(&mut self, bm: BlockManifest) {
+        self.block_manifests_pending_sync.remove(&bm.block.header.parent);
+        self.block_manifests_pending_sync.insert(bm.block.header.parent, bm);
+    }
+
+    pub fn release_block_manifest_pending_sync(
+            &mut self, parent_hash: &DoubleSha256Hash)
+                -> Option<BlockManifest> {
+        self.block_manifests_pending_sync.remove(&parent_hash)
+    }
+
     pub fn get_document_status_proof(&self, docid: DocumentId, doc_contents: Value)
             -> DocumentStatusProof {
         match self.tail_node {
@@ -174,6 +188,7 @@ impl Hashchain {
                 DocumentStatusProof {
                     contents: doc_contents,
                     most_recent_block_header: block.header.clone(),
+                    signoff_peers: block.signoff_peers.clone(),
                     peer_signatures: block.signoff_signatures.clone(),
                     author_signature: block.author_signature.clone(),
                     node_locations: block.node_locations.clone(),
