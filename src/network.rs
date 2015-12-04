@@ -11,7 +11,6 @@ use rustc_serialize::{Encodable, Decodable, Encoder};
 use address::InstAddress;
 use secp256k1::key::{SecretKey};
 use common::ValidityErr;
-use key;
 use std::fmt::{Display, Formatter};
 use signature::RecovSignature;
 use hash::DoubleSha256Hash;
@@ -557,9 +556,10 @@ impl NetNodeTable {
         // If the block is eligible to be appended to our replica of
         // the peer's hashchain, issue a signature for it.
         let ref hc_replica = node.lazy_load_replica(&self.replica_dir);
-        match hc_replica.write().unwrap()
+        let is_block_eligible_for_append = hc_replica.write().unwrap()
                 .is_block_eligible_for_append(&sigreq.block,
-                                              RequireAllPeerSigs::No) {
+                                              RequireAllPeerSigs::No);
+        match is_block_eligible_for_append {
             Ok(_) => {
                 info!("Signing block {} as requested by {} and sending over \
                       network.", &sigreq.block.header.hash(), node.inst_addr);
@@ -586,6 +586,10 @@ impl NetNodeTable {
             Err(AppendErr::MissingBlocksSince(after_block_hash)) => {
                 let blocks_req = BlocksRequest::new(node.inst_addr,
                     after_block_hash, self.our_inst_addr, &our_secret_key);
+                info!("Unable to sign block in sigreq; we are missing blocks \
+                       from {}'s chain; issuing BlocksRequest and holding \
+                       sigreq.", node.inst_addr);
+                hc_replica.write().unwrap().save_sigreq_during_sync(sigreq);
                 return node.send(NetPayload::BlocksReq(blocks_req))
             },
             Err(AppendErr::BlockParentAlreadyClaimed) =>
@@ -774,10 +778,26 @@ impl NetNodeTable {
                                                       RequireAllPeerSigs::Yes);
                 match res {
                     Ok(_) => {
-                        hc_replica.write().unwrap().append_block(mf.block);
+                        let ref mut hc_replica = hc_replica.write().unwrap();
                         let ref mut fsm = *fsm.write().unwrap();
+                        hc_replica.append_block(mf.block.clone());
                         fsm.push_state(
                             FSMState::SyncReplicaToDisk(node.inst_addr));
+
+                        // If there is a SignatureRequest for a block that
+                        // claims this block as its parent, queue it
+                        // for signing.
+                        match hc_replica.release_sigreq_pending_sync(
+                                &mf.block.header.hash()) {
+                            None => (),
+                            Some(sigreq) => {
+                                info!("Re-queuing sigreq that was pending during
+                                       sync: {:?}", sigreq);
+                                fsm.push_state(
+                                    FSMState::HandleSigReq(sigreq));
+                            }
+                        };
+
                         Ok(())
                     },
                     Err(AppendErr::MissingBlocksSince(_)) =>

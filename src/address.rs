@@ -86,13 +86,11 @@ impl InstAddress {
         // The last 4 bytes of an InstAddress are the
         // first 4 bytes of the checksum of the version + pubkey hash.
         let to_checksum = &address_arr[0..21].to_hex();
-        info!("To checksum: {}", to_checksum);
         let checksum = DoubleSha256Hash::hash_string(&to_checksum);
         address_arr[21] = checksum[0];
         address_arr[22] = checksum[1];
         address_arr[23] = checksum[2];
         address_arr[24] = checksum[3];
-        info!("Address arr: {:?}", address_arr);
 
         let addr = InstAddress {
             data: address_arr

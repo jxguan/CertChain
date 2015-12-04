@@ -10,7 +10,7 @@ use signature::RecovSignature;
 use secp256k1::key::SecretKey;
 use serde::ser::Serialize;
 use serde_json::Value;
-use std::cmp;
+use std::{cmp, thread};
 
 pub type DocumentId = DoubleSha256Hash;
 
@@ -145,6 +145,24 @@ impl Hashchain {
             queued_blocks: VecDeque::new(),
             sigreqs_pending_sync: HashMap::new(),
         }
+    }
+
+    /// Saves the SignatureRequest, indexed by the block parent hash
+    /// claimed by the block. This allows for O(1) checks as we receive
+    /// blocks from peers to see if those blocks are the provided
+    /// block's parent. If a peer aborts a block and issues a SignatureRequest
+    /// for a different block with the same parent, the previous SignatureRequest
+    /// will be replaced with the new one.
+    pub fn save_sigreq_during_sync(&mut self, sigreq: SignatureRequest) {
+        self.sigreqs_pending_sync.remove(&sigreq.block.header.parent);
+        self.sigreqs_pending_sync.insert(sigreq.block.header.parent,
+                                         sigreq);
+    }
+
+    pub fn release_sigreq_pending_sync(
+            &mut self, parent_hash: &DoubleSha256Hash)
+                -> Option<SignatureRequest> {
+        self.sigreqs_pending_sync.remove(&parent_hash)
     }
 
     pub fn get_document_status_proof(&self, docid: DocumentId, doc_contents: Value)
@@ -563,7 +581,56 @@ impl Hashchain {
         if blocks_req.check_validity(&self.author).is_err() {
             info!("Ignoring invalid BlocksRequest: {:?}", blocks_req);
         }
-        panic!("TODO: Loop through hashchain in order, send block manifests.");
+
+        // Determine which hash to lookup first.
+        let mut lookup_hash = {
+            if blocks_req.after_block_hash ==
+                    DoubleSha256Hash::genesis_block_parent_hash() {
+                self.head_node
+            } else {
+                match self.chain.get(&blocks_req.after_block_hash) {
+                    None => {
+                        info!("Ignoring BlocksRequest for blocks after \
+                                {:?}; that block does not exist in this chain.",
+                                blocks_req.after_block_hash);
+                        return;
+                    },
+                    Some(ref chain_node) => chain_node.next_block
+                }
+            }
+        };
+
+        // Collect the blocks to send to the requesting node.
+        // We do this here because we cannot pass a reference to this hashchain
+        // to a spawned thread, as the hashchain does not have a static lifetime.
+        let mut blocks = Vec::new();
+        while lookup_hash.is_some() {
+            match self.chain.get(&lookup_hash.unwrap()) {
+                None => break,
+                Some(ref chain_node) => {
+                    blocks.push(chain_node.block.clone());
+                    lookup_hash = chain_node.next_block;
+                }
+            }
+        }
+
+
+        // Spawn a separate thread to send the requested block to
+        // the requesting node, as there could be many of them.
+        thread::spawn(move || {
+            for block in blocks {
+                let mf = BlockManifest::new(block);
+                match node_table.write().unwrap()
+                        .send_block_manifest(&blocks_req.from_inst_addr,
+                                             mf.clone()) {
+                    Ok(()) => info!("Block manifest sent to {}",
+                                    blocks_req.from_inst_addr),
+                    Err(_) => panic!("TODO: Unable to send block manifest \
+                                      to peer in response to BlocksRequest; \
+                                      some kind of flag/retry needs to be set.")
+                }
+            }
+        });
     }
 
     pub fn get_certifications(&self,
