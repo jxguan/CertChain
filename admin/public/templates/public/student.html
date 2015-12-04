@@ -28,14 +28,14 @@
             <span class="type">{{ cert.doc_type }}</span>
             <span>Certified on {{ cert.cert_timestamp | cc_unix_epoch_to_date }}</span>
             {% if cert.rev_timestamp %}
-            <span>Revoked on {{ cert.rev_timestamp | cc_unix_epoch_to_date }}</span>
+            <span style="color: #D32020"><strong>Revoked on {{ cert.rev_timestamp | cc_unix_epoch_to_date }}</strong></span>
             {% endif %}
           </td>
           <td>
-            <span class="id"><a href="{% url 'public:document' cert.doc_id %}">{{ cert.doc_id }}</a></span>
+            <span class="id"><a href="{{ cert | cc_doc_viewer_url }}">{{ cert.doc_id }}</a></span>
           </td>
           <td>
-            <a class="cc-btn" href="{% url 'public:document' cert.doc_id %}">OPEN</a>
+            <a class="cc-btn" href="{{ cert | cc_doc_viewer_url }}">OPEN</a>
           </td>
         </tr>
       </table>
