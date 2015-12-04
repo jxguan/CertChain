@@ -1305,10 +1305,15 @@ impl Socket {
             Ok(mut guard) => {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
-                        debug!("Writing out net msg to socket.");
+                        debug!("Writing out net msg to socket: {:?}", net_msg);
                         let mut buf_writer = BufWriter::new(tcp_stream);
-                        net_msg.encode(&mut msgpack::Encoder::new(&mut buf_writer)).unwrap();
-                        Ok(())
+                        match net_msg.encode(&mut msgpack::Encoder::new(
+                                &mut buf_writer)) {
+                            Ok(_) => Ok(()),
+                            Err(err) => Err(io::Error::new(io::ErrorKind::Other,
+                                            format!("Unable to encode net_msg to \
+                                            socket BufWriter: {:?}", err)))
+                        }
                     },
                     None => {
                         Err(io::Error::new(io::ErrorKind::NotConnected,

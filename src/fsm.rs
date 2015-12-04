@@ -10,6 +10,7 @@ pub struct FSM {
     states: LinkedList<FSMState>,
 }
 
+#[derive(Debug, Clone)]
 pub enum FSMState {
     RespondToIdentReq(IdentityRequest),
     ProcessIdentResp(IdentityResponse),

@@ -486,7 +486,6 @@ impl Hashchain {
                     b
                 },
                 None => {
-                    debug!("HCHAIN: No queued blocks; nothing to process.");
                     return false
                 }
             };

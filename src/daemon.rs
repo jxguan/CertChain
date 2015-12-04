@@ -129,7 +129,6 @@ pub fn run(config: CertChainConfig) -> () {
     let node_table_clone2 = node_table.clone();
     thread::spawn(move || {
         loop {
-            debug!("QUEUE_PROC: processing block queue...");
             {
                 let mut hashchain = hashchain_clone2.write().unwrap();
                 let blocks_processed = hashchain.process_queue(
@@ -139,7 +138,6 @@ pub fn run(config: CertChainConfig) -> () {
                         FSMState::SyncHashchainToDisk);
                 }
             }
-            debug!("QUEUE_PROC: idling...");
             thread::sleep_ms(1000);
         }
     });
@@ -147,6 +145,15 @@ pub fn run(config: CertChainConfig) -> () {
     // Start the FSM.
     loop {
         let next_state = fsm.write().unwrap().pop_state();
+        let mut log_state = true;
+        let log_str_start = format!(">>> {:?} >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>",
+                                    &next_state);
+        let log_str_end = format!("<<< {:?} <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+                                    &next_state);
+        match next_state {
+            None | Some(FSMState::IdleForMilliseconds(_)) => log_state = false,
+            Some(_) => info!("{}", log_str_start)
+        };
         match next_state {
             Some(state) => match state {
                 FSMState::RespondToIdentReq(identreq) => {
@@ -249,7 +256,6 @@ pub fn run(config: CertChainConfig) -> () {
                     node_table.write_replica_to_disk(&inst_addr);
                 },
                 FSMState::IdleForMilliseconds(ms) => {
-                    debug!("FSM: idling...");
                     thread::sleep_ms(ms);
                 }
             },
@@ -257,6 +263,9 @@ pub fn run(config: CertChainConfig) -> () {
                 let ref mut fsm = *fsm.write().unwrap();
                 fsm.push_state(FSMState::IdleForMilliseconds(1000));
             }
+        };
+        if log_state {
+            info!("{}", log_str_end);
         }
     }
 }
