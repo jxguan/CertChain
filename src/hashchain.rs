@@ -509,12 +509,12 @@ impl Hashchain {
             for peer_addr in &block_to_process.signoff_peers {
                 let sigreq = SignatureRequest::new(peer_addr.clone(),
                         block_to_process.clone(), &our_secret_key);
-                match node_table.write().unwrap().send_sigreq(sigreq) {
+                match node_table.write().unwrap().send_sigreq(sigreq,
+                                                              &our_secret_key) {
                     Ok(()) => info!("Siqreq sent to {}", peer_addr),
                     Err(_) => {
-                        panic!("TODO: What to do if sigreq can't be sent
-                                to a peer? - need to set flag somewhere
-                                so admin can remove peer if necessary.");
+                        panic!("TODO: Handle case where we can't send
+                                a signature request to a peer.")
                     }
                 }
             }

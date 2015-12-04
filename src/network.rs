@@ -464,16 +464,20 @@ impl NetNodeTable {
         }
     }
 
-    pub fn send_sigreq(&mut self, sigreq: SignatureRequest)
+    pub fn send_sigreq(&mut self, sigreq: SignatureRequest,
+                       our_secret_key: &SecretKey)
             -> std::io::Result<()> {
 
         // First, ensure that the provided address maps to a node
         // whose identity has been confirmed.
         if !self.is_confirmed_node(&sigreq.to_inst_addr) {
-            return Err(io::Error::new(io::ErrorKind::Other,
-                format!("Will not send sigreq to node {}; their \
-                         identity has not been confirmed.",
-                         &sigreq.to_inst_addr)));
+            match self.connect(sigreq.to_inst_addr, Some(our_secret_key)) {
+                Ok(_) => (),
+                Err(err) => return Err(io::Error::new(io::ErrorKind::Other,
+                    format!("Will not send sigreq to node {}; their \
+                         unable to connect and confirm identity: {:?}.",
+                         &sigreq.to_inst_addr, err)))
+            }
         }
 
         // Second, get the node (we can unwrap due to above check).

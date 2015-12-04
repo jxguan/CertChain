@@ -8,7 +8,12 @@ from django.core.urlresolvers import reverse
 from django.conf import settings
 from templatetags.certchain_extras import cc_addr_to_name, cc_format_sig_ts
 from certchain.shared import create_rpc_url
-import os, hashlib
+from django import forms
+import os, hashlib, csv
+
+class DocumentForm(forms.Form):
+  docfile = forms.FileField(
+    label='Select a file')
 
 @login_required
 def overview(request):
@@ -103,7 +108,9 @@ def end_peering(request):
 
 @login_required
 def certify(request):
-  return render(request, 'certchain/certify.html', {})
+  return render(request, 'certchain/certify.html',
+    {'diploma_batch_form' : DocumentForm(),
+     'transcript_batch_form' : DocumentForm()})
 
 @login_required
 def manage_certifications(request):
@@ -117,23 +124,74 @@ def manage_certifications(request):
     return render(request, 'certchain/certifications.html', {})
 
 @login_required
-def certify_diploma(request):
+def certify_diploma_batch_prepare(request):
+  if request.method == 'POST':
+    form = DocumentForm(request.POST, request.FILES)
+    if form.is_valid():
+        file_contents = request.FILES['docfile'].read()
+        rows = []
+        for row in file_contents.split('\n'):
+          if len(row) > 0:
+            rows.append(row.split(','))
+        return render(request, 'certchain/certify.html',
+          {'diploma_batch' : rows,
+           'diploma_batch_raw': file_contents,
+           'diploma_batch_form' : form,
+           'transcript_batch_form' : DocumentForm()})
+
+@login_required
+def certify_diploma_batch(request):
+  if request.method == 'POST':
+    batch_csv = request.POST['batch_contents']
+    documents = []
+    for row in batch_csv.split('\n'):
+      cols = row.split(',')
+      if len(cols) == 4:
+        doc = {
+          'commitment': hashlib.sha256(os.urandom(8)).hexdigest(),
+          'student_id': cols[0],
+          'recipient': cols[1],
+          'degree': cols[2],
+          'conferral_date': cols[3]
+        }
+        documents.append(json.dumps(doc, sort_keys=True, separators=(',', ':')))
+    # Be careful here; remember that changing the way the document
+    # is formatted will create different hashes. We also eliminate
+    # space b/w separators so that when we recreate the document
+    # client-side, we get the same string representation for hashing.
+    payload = json.dumps(documents)
+    resp = requests.post(create_rpc_url('/certify/Diploma'),
+      data=payload)
+    if resp.status_code == 200 and resp.text == 'OK':
+      messages.success(request,\
+        'The diplomas have been submitted to the network for certification.')
+    else:
+      messages.error(request,\
+        'An error occurred while processing your \
+        certification request: ' + resp.text)
+    return redirect(reverse('certchain:certify'))
+  raise Http404
+
+@login_required
+def certify_diploma_single(request):
   if request.method == 'POST':
     student_id = request.POST['student_id']
-    payload = {
+    documents = []
+    doc = {
       'commitment': hashlib.sha256(os.urandom(8)).hexdigest(),
       'student_id': student_id,
       'recipient': request.POST['recipient'],
       'degree': request.POST['degree'],
       'conferral_date': request.POST['conferral_date']
     }
+    documents.append(json.dumps(doc, sort_keys=True, separators=(',', ':')))
     # Be careful here; remember that changing the way the document
     # is formatted will create different hashes. We also eliminate
     # space b/w separators so that when we recreate the document
     # client-side, we get the same string representation for hashing.
-    document = json.dumps(payload, sort_keys=True, separators=(',', ':'))
-    resp = requests.post(create_rpc_url('/certify/Diploma/'+student_id),
-      data=document)
+    payload = json.dumps(documents)
+    resp = requests.post(create_rpc_url('/certify/Diploma'),
+      data=payload)
     if resp.status_code == 200 and resp.text == 'OK':
       messages.success(request,\
         'The diploma has been submitted to the network for certification.')
@@ -145,7 +203,56 @@ def certify_diploma(request):
   raise Http404
 
 @login_required
-def certify_transcript(request):
+def certify_transcript_batch_prepare(request):
+  if request.method == 'POST':
+    form = DocumentForm(request.POST, request.FILES)
+    if form.is_valid():
+        file_contents = request.FILES['docfile'].read()
+        rows = []
+        for row in file_contents.split('\n'):
+          if len(row) > 0:
+            rows.append(row.split(','))
+        return render(request, 'certchain/certify.html',
+          {'transcript_batch' : rows,
+           'transcript_batch_raw': file_contents,
+           'transcript_batch_form' : form,
+           'diploma_batch_form' : DocumentForm()})
+
+@login_required
+def certify_transcript_batch(request):
+  if request.method == 'POST':
+    batch_csv = request.POST['batch_contents']
+    documents = []
+    for row in batch_csv.split('\n'):
+      cols = row.split(',')
+      if len(cols) == 4:
+        doc = {
+          'commitment': hashlib.sha256(os.urandom(8)).hexdigest(),
+          'student_id': cols[0],
+          'recipient': cols[1],
+          'gpa': cols[2],
+          'conferral_date': cols[3]
+        }
+        documents.append(json.dumps(doc, sort_keys=True, separators=(',', ':')))
+    # Be careful here; remember that changing the way the document
+    # is formatted will create different hashes. We also eliminate
+    # space b/w separators so that when we recreate the document
+    # client-side, we get the same string representation for hashing.
+    payload = json.dumps(documents)
+    resp = requests.post(create_rpc_url('/certify/Transcript'),
+      data=payload)
+    if resp.status_code == 200 and resp.text == 'OK':
+      messages.success(request,\
+        'The transcripts have been submitted to the network for certification.')
+    else:
+      messages.error(request,\
+        'An error occurred while processing your \
+        certification request: ' + resp.text)
+    return redirect(reverse('certchain:certify'))
+  raise Http404
+
+@login_required
+def certify_transcript_single(request):
   if request.method == 'POST':
     student_id = request.POST['student_id']
     payload = {

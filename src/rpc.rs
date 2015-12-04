@@ -55,11 +55,10 @@ pub fn start(config: &CertChainConfig,
                 (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 9
                         && &path[0..9] == "/certify/" => {
-                    let params = &path[9..].split("/").collect::<Vec<&str>>();
                     let mut req_body = String::new();
                     req.read_to_string(&mut req_body).unwrap();
                     certify(res, fsm.clone(), hashchain.clone(),
-                            &docs_dir, req_body, &params);
+                            &docs_dir, req_body, &path[9..]);
                 },
                 (hyper::Post, AbsolutePath(ref path))
                     if path == "/add_node" => {
@@ -184,17 +183,11 @@ fn certify(res: Response<Fresh>,
            fsm: Arc<RwLock<FSM>>,
            hashchain: Arc<RwLock<Hashchain>>,
            docs_dir_path: &String,
-           document: String,
-           params: &Vec<&str>) {
-
-    // Ensure params are valid.
-    if params.len() != 2 {
-        res.send("Expected <doctype>/<student_id>.".as_bytes()).unwrap();
-        return;
-    }
+           documents: String,
+           doctype_param: &str) {
 
     // Ensure doctype is valid.
-    let doctype = match params[0] {
+    let doctype = match doctype_param {
         "Diploma" => DocumentType::Diploma,
         "Transcript" => DocumentType::Transcript,
         _ => {
@@ -203,55 +196,53 @@ fn certify(res: Response<Fresh>,
         }
     };
 
-    // Ensure student id is valid.
-    let student_id = match params[1].len() {
-        0 => {
-            res.send("Expected non-empty student ID.".as_bytes()).unwrap();
-            return;
-        },
-        _ => String::from(params[1])
-    };
+    let mut actions = Vec::new();
+    let docs: Vec<String> = serde_json::from_str(&documents).unwrap();
+    for doc in docs.iter() {
+        // Compute the document's id.
+        let doc_id = DoubleSha256Hash::hash_string(&doc);
+        info!("Hashed {} to {}", &doc, doc_id);
 
+        // Write the document contents to disk for later retrieval.
+        let doc_file = match File::create(format!("{}/{:?}.txt",
+                                        docs_dir_path, doc_id)) {
+            Ok(f) => f,
+            Err(_) => {
+                res.send("Failed to create file to store document contents;
+                         aborting certification.".as_bytes()).unwrap();
+                return;
+            }
+        };
+        let mut writer = BufWriter::new(doc_file);
+        match writer.write(&doc.as_bytes()[..]) {
+            Ok(_) => (),
+            Err(_) => {
+                res.send("Failed to write document contents to disk;
+                         aborting certification.".as_bytes()).unwrap();
+                return;
+            }
+        };
 
-    // Create a certification action for the document.
-    let doc_id = DoubleSha256Hash::hash_string(&document);
-    info!("Hashed {} to {}", &document, doc_id);
-    let action = Action::Certify(doc_id, doctype, student_id);
+        // Create a certification action for the document.
+        let doc_map: HashMap<String, String> = serde_json::from_str(&doc).unwrap();
+        let student_id = doc_map.get("student_id").unwrap().clone();
+        actions.push(Action::Certify(doc_id, doctype.clone(), student_id));
+    }
 
     // Any block issued by an institution must have at least
     // one signoff peer. This is enforced later, but check it now
     // to give immediate notification to user if this is the case.
     let ref hashchain = *hashchain.read().unwrap();
-    if hashchain.get_signoff_peers(&vec![action.clone()]).len() == 0 {
+    if hashchain.get_signoff_peers(&actions).len() == 0 {
         res.send("You must have at least one peer \
                  to certify documents on the network.".as_bytes()).unwrap();
         return
     }
 
-    // Write the document contents to disk for later retrieval.
-    let doc_file = match File::create(format!("{}/{:?}.txt",
-                                    docs_dir_path, doc_id)) {
-        Ok(f) => f,
-        Err(_) => {
-            res.send("Failed to create file to store document contents;
-                     aborting certification.".as_bytes()).unwrap();
-            return;
-        }
-    };
-    let mut writer = BufWriter::new(doc_file);
-    match writer.write(&document.as_bytes()[..]) {
-        Ok(_) => (),
-        Err(_) => {
-            res.send("Failed to write document contents to disk;
-                     aborting certification.".as_bytes()).unwrap();
-            return;
-        }
-    };
-
     // Have the FSM queue a new block and sync the queued
     // block to disk.
     let ref mut fsm = *fsm.write().unwrap();
-    fsm.push_state(FSMState::QueueNewBlock(vec![action]));
+    fsm.push_state(FSMState::QueueNewBlock(actions));
     fsm.push_state(FSMState::SyncHashchainToDisk);
 
     res.send("OK".as_bytes()).unwrap();

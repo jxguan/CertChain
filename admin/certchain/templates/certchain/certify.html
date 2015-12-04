@@ -8,29 +8,50 @@
   <link href="{% static 'certchain/css/certify.css'%}" rel="stylesheet"/>
 {% endblock stylesheets %}
 
+{% block javascript %}
+  {{ block.super }}
+  <script type="text/javascript" src="{% static 'certchain/js/jquery-1.10.2.min.js'%}"></script>
+{% endblock javascript %}
+
 {% block content %}
+<script type="text/javascript">
+$(document).ready(function() {
+  $('#diploma-manual-btn').on('click', function() {
+    $('#diploma-manual').toggle();
+    $('#diploma-batch').toggle();
+  });
+  $('#transcript-manual-btn').on('click', function() {
+    $('#transcript-manual').toggle();
+    $('#transcript-batch').toggle();
+  });
+});
+</script>
+
 <div class="container cc-container">
   <div class="row">
     <div id="cc-secure-links" class="span12">
       <span><a href="{% url 'certchain:overview' %}">Network Overview</a></span>
       <span>-</span>
-      <span><a class="selected" href="{% url 'certchain:certify' %}">Certify a Document</a></span>
+      <span><a class="selected" href="{% url 'certchain:certify' %}">Certify Documents</a></span>
       <span>-</span>
       <span><a href="{% url 'certchain:manage_certifications' %}">Manage Certifications</a></span>
     </div>
   </div>
 
   <div class="row">
-    <div class="span12">
-      <h2>Certify a Diploma</h2>
-      <p>Fill out the diploma fields below; once submitted, a certification transaction will be sent out on the network for processing.</p>
+    <div class="span10">
+      <h2>Certify Diplomas</h2>
+      <p>Upload a CSV file containing the diplomas to be certified; once submitted, a certification transaction will be sent out on the network for processing.</p>
+    </div>
+    <div class="span2">
+      <button id="diploma-manual-btn" class="cc-btn">MANUAL ENTRY</button>
     </div>
   </div>
 
   <div class="row">
     <div class="span12">
-      <div id="cc-new-diploma">
-        <form method="post" action="{% url 'certchain:certify_diploma' %}">
+      <div class="certify-area">
+        <form id="diploma-manual" class="cc-manual" method="post" action="{% url 'certchain:certify_diploma_single' %}">
           {% csrf_token %}
           <div>
             <label>Student ID</label>
@@ -50,6 +71,41 @@
           </div>
           <input class="cc-btn" type="submit" value="CERTIFY"/>
         </form>
+        <form id="diploma-batch" class="cc-batch" action="{% url 'certchain:certify_diploma_batch_prepare' %}" method="post" enctype="multipart/form-data">
+          <div class="file-selector">
+            {% csrf_token %}
+            {{ diploma_batch_form.non_field_errors }}
+            {{ diploma_batch_form.docfile.label_tag }}
+            {{ diploma_batch_form.docfile.help_text }}
+            {{ diploma_batch_form.docfile.errors }}
+            <input type="file" name="docfile" value="Browse"/>
+            <input type="submit" value="Upload"/>
+          </div>
+        </form>
+        {% if diploma_batch %}
+        <hr/>
+        <table class="table table-striped">
+          <tr>
+            <th>Student ID</th>
+            <th>Recipient</th>
+            <th>Degree</th>
+            <th>Date</th>
+          </tr>
+          {% for row in diploma_batch %}
+          <tr>
+            <td>{{ row.0 }}</td>
+            <td>{{ row.1 }}</td>
+            <td>{{ row.2 }}</td>
+            <td>{{ row.3 }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+        <form class="confirmation" method="post" action="{% url 'certchain:certify_diploma_batch' %}">
+          {% csrf_token %}
+          <input type="hidden" name="batch_contents" value="{{ diploma_batch_raw }}"/>
+          <input class="cc-btn" type="submit" value="CONFIRM AND CERTIFY"/>
+        </form>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -57,16 +113,19 @@
   <br/><br/>
 
   <div class="row">
-    <div class="span12">
-      <h2>Certify a Transcript</h2>
+    <div class="span10">
+      <h2>Certify Transcripts</h2>
       <p>Fill out the transcript fields below; once submitted, a certification transaction will be sent out on the network for processing.</p>
+    </div>
+    <div class="span2">
+      <button id="transcript-manual-btn" class="cc-btn">MANUAL ENTRY</button>
     </div>
   </div>
 
   <div class="row">
     <div class="span12">
-      <div id="cc-new-diploma">
-        <form method="post" action="{% url 'certchain:certify_transcript' %}">
+      <div class="certify-area">
+        <form id="transcript-manual" class="cc-manual" method="post" action="{% url 'certchain:certify_transcript_single' %}">
           {% csrf_token %}
           <div>
             <label>Student ID</label>
@@ -86,10 +145,43 @@
           </div>
           <input class="cc-btn" type="submit" value="CERTIFY"/>
         </form>
+        <form id="transcript-batch" class="cc-batch" action="{% url 'certchain:certify_transcript_batch_prepare' %}" method="post" enctype="multipart/form-data">
+          <div class="file-selector">
+            {% csrf_token %}
+            {{ transcript_batch_form.non_field_errors }}
+            {{ transcript_batch_form.docfile.label_tag }}
+            {{ transcript_batch_form.docfile.help_text }}
+            {{ transcript_batch_form.docfile.errors }}
+            <input type="file" name="docfile" value="Browse"/>
+            <input type="submit" value="Upload"/>
+          </div>
+        </form>
+        {% if transcript_batch %}
+        <hr/>
+        <table class="table table-striped">
+          <tr>
+            <th>Student ID</th>
+            <th>Recipient</th>
+            <th>GPA</th>
+            <th>Date</th>
+          </tr>
+          {% for row in transcript_batch %}
+          <tr>
+            <td>{{ row.0 }}</td>
+            <td>{{ row.1 }}</td>
+            <td>{{ row.2 }}</td>
+            <td>{{ row.3 }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+        <form class="confirmation" method="post" action="{% url 'certchain:certify_transcript_batch' %}">
+          {% csrf_token %}
+          <input type="hidden" name="batch_contents" value="{{ transcript_batch_raw }}"/>
+          <input class="cc-btn" type="submit" value="CONFIRM AND CERTIFY"/>
+        </form>
+        {% endif %}
       </div>
     </div>
   </div>
 </div>
 {% endblock content %}
-
-
