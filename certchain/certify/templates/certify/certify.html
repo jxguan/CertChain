@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% load staticfiles %}
+
+{% block stylesheets %}
+  {{ block.super }}
+  <link href="{% static 'certify/css/certify.css'%}" rel="stylesheet"/>
+{% endblock stylesheets %}
+
+{% block content %}
+  <div class="row">
+    <div class="span12">
+      <h2>Verify and View a Document</h2>
+      <p>You can verify and view a document by either providing the link to the
+         document or by uploading a local copy of the document.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <div id="cc-new-diploma">
+        <form method="post" action="{% url 'certify:certify_document' %}">
+          {% csrf_token %}
+          <div>
+            <label>Link to the Document</label>
+            <input name="document_url" type="text"/>
+          </div>
+          <input class="cc-btn" type="submit" value="VIEW DOCUMENT"/>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <br/><br/>
+
+  <div class="row">
+    <div class="span12">
+      <div id="cc-new-diploma">
+        <form method="post" action="{% url 'certify:certify_document' %}"
+          enctype="multipart/form-data">
+          {% csrf_token %}
+          <div>
+            <label>Document File</label>
+            <input name="document_file" type="file"/>
+          </div>
+          <input class="cc-btn" type="submit" value="VIEW DOCUMENT"/>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+
+

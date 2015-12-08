@@ -1,0 +1,141 @@
+{% load staticfiles %}
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>{% block title %}CertChain{% endblock title %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="https://sfs.virginia.edu/sites/sfs.virginia.edu/themes/financial_services/favicon.ico">
+
+   <!-- MQUINN: Localizing font files for now, in order to demo application when not connected to the Internet. -->
+    <!-- <link href='//fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600,700,400italic' rel='stylesheet' type='text/css'> -->
+    <style>
+      @font-face {
+        font-family: 'Source Sans Pro';
+        font-style: normal;
+        font-weight: 300;
+        src: local('Source Sans Pro Light'), local('SourceSansPro-Light'), url({% static 'fonts/toadOcfmlt9b38dHJxOBGMw1o1eFRj7wYC6JbISqOjY.ttf' %}) format('truetype');
+      }
+      @font-face {
+        font-family: 'Source Sans Pro';
+        font-style: normal;
+        font-weight: 400;
+        src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url({% static 'fonts/ODelI1aHBYDBqgeIAH2zlNzbP97U9sKh0jjxbPbfOKg.ttf' %}) format('truetype');
+      }
+      @font-face {
+        font-family: 'Source Sans Pro';
+        font-style: normal;
+        font-weight: 600;
+        src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url({% static 'fonts/toadOcfmlt9b38dHJxOBGNNE-IuDiR70wI4zXaKqWCM.ttf' %}) format('truetype');
+      }
+      @font-face {
+        font-family: 'Source Sans Pro';
+        font-style: normal;
+        font-weight: 700;
+        src: local('Source Sans Pro Bold'), local('SourceSansPro-Bold'), url({% static 'fonts/toadOcfmlt9b38dHJxOBGLsbIrGiHa6JIepkyt5c0A0.ttf' %}) format('truetype');
+      }
+      @font-face {
+        font-family: 'Source Sans Pro';
+        font-style: italic;
+        font-weight: 400;
+        src: local('Source Sans Pro Italic'), local('SourceSansPro-It'), url({% static 'fonts/M2Jd71oPJhLKp0zdtTvoM0DauxaEVho0aInXGvhmB4k.ttf' %}) format('truetype');
+      }
+    </style>
+
+    {% block stylesheets %}
+      <link href="{% static 'css/su-identity/su-identity.css' %}" rel="stylesheet">
+      <link href="{% static 'css/lib/bootstrap.css' %}" rel="stylesheet">
+      <link href="{% static 'css/lib/bootstrap-responsive.css' %}" rel="stylesheet">
+      <link href="{% static 'css/su-identity/wilbur.css' %}" rel="stylesheet">
+      <link href="{% static 'css/su-identity/custom.css' %}" rel="stylesheet">
+      <link href="{% static 'css/certchain.css' %}" rel="stylesheet">
+    {% endblock stylesheets %}
+
+    <!-- Le HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="https://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <!--[if IE 8]>
+      <link rel="stylesheet" type="text/css" href="https://www.stanford.edu/su-identity/css/ie/ie8.css" />
+    <![endif]-->
+    <!--[if IE 7]>
+      <link rel="stylesheet" type="text/css" href="https://www.stanford.edu/su-identity/css/ie/ie7.css" />
+    <![endif]-->
+  </head>
+  <body class="home">
+    <div id="su-wrap">
+      <div id="su-content"> 
+    
+        <!-- Brandbar snippet start -->
+        <div id="brandbar" class="cc-uva-brandbar">
+          <!-- .container end --> 
+        </div>
+        <!-- #brandbar end --> 
+
+        <!-- Brandbar snippet end -->
+        <div class="navbar"> 
+          <!-- Department -->
+          <div id="header">
+            <div class="container">
+              <div class="row">
+                <div class="span6">
+                 
+                  <div id="site"><!-- class="two-lines" or class="show-parent" -->
+                    <div id="name">
+                      CertChain
+                    </div>
+                  </div>
+                </div>
+                <div class="span6">
+                  <div id="cc-auth-bar">
+                    {% block authbar %}{% endblock authbar %}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- /.container --> 
+          </div>
+          <!-- /#header -->
+        </div>
+        <!-- /.navbar -->
+
+        <div class="container">
+          <div class="row">
+            {% if messages %}
+            <ul id="cc-messages">
+                {% for message in messages %}
+                <li {% if message.tags %} class="{{ message.tags }}"{% endif %}>
+                  {{ message }}
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+          </div>
+        </div>
+
+        <div id="content">
+          <div class="container cc-container">
+            {% block content %}{% endblock content %}
+          </div>
+        </div>
+    
+        <div id="push"><!--/ for sticky footer/--></div>
+      </div>
+      <!-- / #content -->
+    </div>
+    <!-- /#wrap -->
+
+    <!-- Global footer snippet start -->
+    <div id="global-footer" class="cc-uva-footer">
+      <div class="container">
+        <div class="row">
+          <!-- #bottom-logo end -->
+          <div id="bottom-text" class="span10">
+          </div>
+        </div> <!-- .row end --> 
+      </div> <!-- .container end --> 
+    </div> <!-- global-footer end -->
+    <!-- Global footer snippet end -->
+  </body>
+</html>
