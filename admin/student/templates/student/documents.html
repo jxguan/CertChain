@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% load certchain_extras %}
+{% load staticfiles %}
+
+{% block stylesheets %}
+  {{ block.super }}
+  <link href="{% static 'public/css/student.css'%}" rel="stylesheet"/>
+{% endblock stylesheets %}
+
+{% block authbar %}
+<span class="cc-bar-entry">
+  {{ studentId }}
+  </span>
+<a class="cc-btn" href="/student/logout">LOGOUT</a>
+{% endblock authbar %}
+
+{% block content %}
+<div class="container cc-container">
+
+  {% for doc_type, certs in certs_by_type %}
+  <div class="row student-header">
+    <div class="span12">
+      <h2>{{doc_type}}s</h2>
+      <p>The student with ID {{ studentId }} has received the {{doc_type}}s listed below.</p>
+    </div>
+  </div>
+
+  {% for cert in certs %}
+  <div class="row student-doc">
+    <div class="span12">
+      <table>
+        <tr>
+          <td>
+            <span class="type">{{ cert.doc_type }}</span>
+            <span>Certified on {{ cert.cert_timestamp | cc_unix_epoch_to_date }}</span>
+            {% if cert.rev_timestamp %}
+            <span>Revoked on {{ cert.rev_timestamp | cc_unix_epoch_to_date }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if cert.doc_type == 'Diploma'%}
+            <span class="id"><a href="{% url 'public:diploma' cert.doc_id %}">{{ cert.doc_id }}</a></span>
+            {% else %}
+            <span class="id"><a href="{% url 'public:transcript' cert.doc_id %}">{{ cert.doc_id }}</a></span>
+            {% endif %}
+          </td>
+          <td>
+            <a class="cc-btn" href="{% url 'public:raw_document' cert.doc_id %}"
+              download="{{ cert.doc_id }}.cert">DOWNLOAD</a>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+  {% endfor %}
+  
+</div>
+{% endblock content %}
+
+

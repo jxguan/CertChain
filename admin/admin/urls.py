@@ -8,4 +8,5 @@ urlpatterns = patterns('',
     url(r'^logout/', auth_views.logout),
     url(r'^secure/', include('certchain.urls', namespace='certchain')),
     url(r'^public/', include('public.urls', namespace='public')),
+    url(r'^student/', include('student.urls', namespace='student')),
 )
