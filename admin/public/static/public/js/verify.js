@@ -184,9 +184,11 @@ var check_peer_sigs = function(json, block_header_hash) {
     // Is there at least one other peer signatory?
     var peer_str = '|';
     var num_peers = 0;
-    $.each(json['peer_signatures'], function(k, v) {
+    var peer_addrs = [];
+    $.each(json['signoff_peers'], function(idx, peer_addr) {
         num_peers++;
-        peer_str += k + '|'
+        peer_str += peer_addr + '|';
+        peer_addrs.push(peer_addr)
     });
     var block_header = json['most_recent_block_header'];
     var peer_str_hash = double_sha256(peer_str);
@@ -199,40 +201,46 @@ var check_peer_sigs = function(json, block_header_hash) {
 
     // Have all peers (of which there must be >= 1)
     // signed the block header?
-    var map = {};
     if (num_peers > 0) {
-        $.each(json['peer_signatures'], function(k, v) {
-            /*
-             * TODO: If you are here because you have multiple
-             * peers and are getting a simultaneous use error
-             * for secp256k1, you will need to chain the calls
-             * to happen one after the other here.
-             */
-            recover_sig_inst_addr(block_header_hash,
-                v).then(function(inst_addr) {
-                    map[k] = (inst_addr == k);
-
-                    // If we now have T/F results for all
-                    // peer sigs, make sure are all valid.
-                    if (map.length == json['peer_signatures'].length) {
-                        var areAnyInvalid = false;
-                        $.each(map, function(k, v) {
-                            if (!v) {
-                                areAnyInvalid = true;
-                                return false;
-                            }
-                        });
-                        if (!areAnyInvalid) {
-                            mark_checklist('all-peers-signed', true, json);
-                        } else {
-                            mark_checklist('all-peers-signed', false, json);
-                        }
-                    }
-                }
-            );
-        });
+        verify_peer_sigs_sequentially(json, block_header_hash, peer_addrs, {});
     } else {
         $('#all-peers-signed').addClass('invalid');
+    }
+};
+
+/*
+ * We can only have one secp256k1 operation ongoing at a time. Therefore,
+ * we must chain the peer verification calls such that they happen sequentially.
+ * This recursive method takes care of that.
+ */
+var verify_peer_sigs_sequentially = function(json, block_header_hash, peer_addrs_remaining, result_map) {
+    if (peer_addrs_remaining.length > 0) {
+        var peer_addr = peer_addrs_remaining[0];
+        var peer_sig = json['peer_signatures'][peer_addr];
+        console.log('Verifying peer signature for ' + peer_addr + ': ' + peer_sig);
+        recover_sig_inst_addr(block_header_hash, peer_sig)
+            .then(function(recovered_addr) {
+                result_map[peer_addr] = (recovered_addr == peer_addr);
+                peer_addrs_remaining.shift();
+                verify_peer_sigs_sequentially(json, block_header_hash,
+                    peer_addrs_remaining, result_map);
+            }
+        );
+    } else {
+        var areAnyInvalid = false;
+        $.each(json['peer_signatures'], function(peer_addr, peer_sig) {
+            var result = result_map[peer_addr];
+            if (!result) {
+                areAnyInvalid = true;
+                return false;
+            }
+        });
+
+        if (!areAnyInvalid) {
+            mark_checklist('all-peers-signed', true, json);
+        } else {
+            mark_checklist('all-peers-signed', false, json);
+        }
     }
 };
 
@@ -299,6 +307,7 @@ var mark_checklist = function(dom_id, result, json) {
             }
         });
         if (all_items_done) {
+            console.log(checklist);
             if (aggregate_result) {
                 $('#progress-status, #checklist').hide();
                 $('#verify-area').removeClass('gray');

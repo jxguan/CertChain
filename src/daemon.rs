@@ -37,7 +37,7 @@ pub fn run(config: CertChainConfig) -> () {
         },
         Err(_) => {
             info!("Unable to open hashchain file; starting new chain.");
-            Arc::new(RwLock::new(Hashchain::new()))
+            Arc::new(RwLock::new(Hashchain::new(config.get_inst_addr())))
         }
     };
 
@@ -113,6 +113,9 @@ pub fn run(config: CertChainConfig) -> () {
                 NetPayload::SigResp(sigresp) => {
                     fsm.push_state(FSMState::HandleSigResp(sigresp));
                 },
+                NetPayload::BlocksReq(blocksreq) => {
+                    fsm.push_state(FSMState::HandleBlocksReq(blocksreq));
+                },
                 NetPayload::BlockManifest(manifest) => {
                     fsm.push_state(FSMState::HandleBlockManifest(manifest));
                 }
@@ -120,12 +123,57 @@ pub fn run(config: CertChainConfig) -> () {
         }
     });
 
-    /*
-     * Start the finite state machine, which idles
-     * if there are no states to transition to.
-     */
+    // Monitor the block processing queue in the background.
+    let fsm_clone2 = fsm.clone();
+    let hashchain_clone2 = hashchain.clone();
+    let node_table_clone2 = node_table.clone();
+    thread::spawn(move || {
+        loop {
+            {
+                let mut hashchain = hashchain_clone2.write().unwrap();
+                let blocks_processed = hashchain.process_queue(
+                        node_table_clone2.clone(), &secret_key);
+                if blocks_processed {
+                    fsm_clone2.write().unwrap().push_state(
+                        FSMState::SyncHashchainToDisk);
+                }
+            }
+            thread::sleep_ms(1000);
+        }
+    });
+
+    // Queue a new block every 30 minutes to ensure latest block
+    // is always authored within the last hour.
+    let fsm_clone3 = fsm.clone();
+    let hashchain_clone3 = hashchain.clone();
+    thread::spawn(move || {
+        // Give enough time for connections to be established
+        // to our peers.
+        thread::sleep_ms(10000);
+        loop {
+            let num_signoff_peers = hashchain_clone3.read().unwrap()
+                    .get_signoff_peers(&Vec::new()).len();
+            // Only queue a new block if we have more than peer.
+            if num_signoff_peers > 0 {
+                let mut fsm = fsm_clone3.write().unwrap();
+                fsm.push_state(FSMState::QueueNewBlock(Vec::new()));
+            }
+            thread::sleep_ms(30*60*1000); // 30 minutes
+        }
+    });
+
+    // Start the FSM.
     loop {
         let next_state = fsm.write().unwrap().pop_state();
+        let mut log_state = true;
+        let log_str_start = format!(">>> {:?} >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>",
+                                    &next_state);
+        let log_str_end = format!("<<< {:?} <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+                                    &next_state);
+        match next_state {
+            None | Some(FSMState::IdleForMilliseconds(_)) => log_state = false,
+            Some(_) => info!("{}", log_str_start)
+        };
         match next_state {
             Some(state) => match state {
                 FSMState::RespondToIdentReq(identreq) => {
@@ -160,14 +208,6 @@ pub fn run(config: CertChainConfig) -> () {
                                           err)
                     };
                 },
-                FSMState::ApprovePeerRequest(addr) => {
-                    match node_table.write().unwrap()
-                        .approve_peerreq(addr, fsm.clone()) {
-                        Ok(_) => info!("FSM: approved peer request."),
-                        Err(err) => warn!("FSM: unable to approve peer \
-                                            request: {}", err)
-                    };
-                },
                 FSMState::HandleSigReq(sigreq) => {
                     match node_table.write().unwrap()
                             .handle_sigreq(sigreq, fsm.clone(), &secret_key) {
@@ -196,6 +236,11 @@ pub fn run(config: CertChainConfig) -> () {
                         peer_addr, peer_sig);
                     info!("FSM: added signature to processing block.");
                 },
+                FSMState::HandleBlocksReq(blocks_req) => {
+                    let ref hashchain = *hashchain.read().unwrap();
+                    hashchain.handle_blocks_req(blocks_req, node_table.clone());
+                    info!("FSM: handle blocks request.");
+                },
                 FSMState::HandleBlockManifest(mf) => {
                     // At this time, we are only concerned about block
                     // manifests for other nodes, not ourself. However,
@@ -204,7 +249,8 @@ pub fn run(config: CertChainConfig) -> () {
                     // we want to recover our own chain.
                     // TODO: Keep this in mind.
                     let ref mut node_table = *node_table.write().unwrap();
-                    match node_table.handle_block_manifest(mf, fsm.clone()) {
+                    match node_table.handle_block_manifest(mf, fsm.clone(),
+                            &secret_key) {
                         Ok(_) => info!("FSM: handled block manifest."),
                         Err(err) => warn!("FSM: unable to handle block \
                                            manifeset: {}", err)
@@ -229,22 +275,18 @@ pub fn run(config: CertChainConfig) -> () {
                 FSMState::SyncReplicaToDisk(inst_addr) => {
                     let ref node_table = *node_table.read().unwrap();
                     node_table.write_replica_to_disk(&inst_addr);
+                },
+                FSMState::IdleForMilliseconds(ms) => {
+                    thread::sleep_ms(ms);
                 }
             },
             None => {
-                debug!("FSM: processing block queue...");
-                {
-                    let mut hashchain = hashchain.write().unwrap();
-                    let blocks_processed = hashchain.process_queue(
-                            node_table.clone(), &secret_key);
-                    if blocks_processed {
-                        fsm.write().unwrap().push_state(
-                            FSMState::SyncHashchainToDisk);
-                    }
-                }
-                debug!("FSM: idling...");
-                thread::sleep_ms(1000);
+                let ref mut fsm = *fsm.write().unwrap();
+                fsm.push_state(FSMState::IdleForMilliseconds(1000));
             }
+        };
+        if log_state {
+            info!("{}", log_str_end);
         }
     }
 }

@@ -43,6 +43,9 @@
       }
     </style>
 
+    {% block javascript %}
+    {% endblock javascript %}
+
     {% block stylesheets %}
       <link href="{% static 'css/su-identity/su-identity.css' %}" rel="stylesheet">
       <link href="{% static 'css/lib/bootstrap.css' %}" rel="stylesheet">
@@ -69,7 +72,7 @@
     
         <!-- Brandbar snippet start -->
         <div id="brandbar" class="cc-uva-brandbar">
-          <div class="container"> <a href=""> <img id="stf-brand" src="{% static 'images/uva_logo.png' %}" width="153" height="22" alt="University of Virginia"> </a> </div>
+          <div class="container"></div>
           <!-- .container end --> 
         </div>
         <!-- #brandbar end --> 

@@ -5,24 +5,26 @@ use std::collections::{BTreeSet, BTreeMap, HashMap, HashSet};
 use std::collections::vec_deque::VecDeque;
 use time;
 use std::sync::{Arc, RwLock};
-use network::{NetNodeTable, SignatureRequest, BlockManifest};
+use network::{NetNodeTable, SignatureRequest, BlocksRequest, BlockManifest};
 use signature::RecovSignature;
 use secp256k1::key::SecretKey;
-use common::ValidityErr;
 use serde::ser::Serialize;
 use serde_json::Value;
-use std::cmp;
+use std::{cmp, thread};
 
 pub type DocumentId = DoubleSha256Hash;
 
 #[derive(Serialize, Deserialize)]
 pub struct Hashchain {
     chain: HashMap<DoubleSha256Hash, ChainNode>,
+    author: InstAddress,
     head_node: Option<DoubleSha256Hash>,
     tail_node: Option<DoubleSha256Hash>,
     merkle_tree: MerkleTree,
     processing_block: Option<Block>,
     queued_blocks: VecDeque<Block>,
+    sigreqs_pending_sync: HashMap<DoubleSha256Hash, SignatureRequest>,
+    block_manifests_pending_sync: HashMap<DoubleSha256Hash, BlockManifest>
 }
 
 #[derive(Serialize, Deserialize)]
@@ -73,8 +75,9 @@ pub enum DocumentType {
 
 #[derive(Serialize, Deserialize, RustcEncodable, RustcDecodable, Clone, Debug)]
 pub enum Action {
-    Certify(DocumentId, DocumentType, String),
     AddPeer(InstAddress, String, u16),
+    RemovePeer(InstAddress),
+    Certify(DocumentId, DocumentType, String),
     Revoke(DocumentId),
 }
 
@@ -93,12 +96,27 @@ pub enum AppendErr {
     BlockAlreadyInChain,
     BlockParentAlreadyClaimed,
     ChainStateCorrupted,
+    NoSignoffPeersListed,
+    AuthorSignatureInvalid,
+    MissingPeerSignature,
+    InvalidPeerSignature,
+    UnexpectedSignoffPeers,
+    UnexpectedSignoffPeersHash,
+    InvalidActionFound(MerkleTreeErr),
+    UnexpectedMerkleRootHash,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum RequireAllPeerSigs {
+    Yes,
+    No
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DocumentStatusProof {
     contents: Value,
     most_recent_block_header: BlockHeader,
+    signoff_peers: BTreeSet<InstAddress>,
     peer_signatures: HashMap<InstAddress, RecovSignature>,
     author_signature: RecovSignature,
     node_locations: BTreeMap<InstAddress, String>,
@@ -118,15 +136,47 @@ pub struct MerkleProofBranch {
 }
 
 impl Hashchain {
-    pub fn new() -> Hashchain {
+    pub fn new(author: InstAddress) -> Hashchain {
         Hashchain {
             chain: HashMap::new(),
+            author: author,
             head_node: None,
             tail_node: None,
             merkle_tree: MerkleTree::new(),
             processing_block: None,
             queued_blocks: VecDeque::new(),
+            sigreqs_pending_sync: HashMap::new(),
+            block_manifests_pending_sync: HashMap::new(),
         }
+    }
+
+    /// Saves the SignatureRequest, indexed by the block parent hash
+    /// claimed by the block. This allows for O(1) checks as we receive
+    /// blocks from peers to see if those blocks are the provided
+    /// block's parent. If a peer aborts a block and issues a SignatureRequest
+    /// for a different block with the same parent, the previous SignatureRequest
+    /// will be replaced with the new one.
+    pub fn save_sigreq_during_sync(&mut self, sigreq: SignatureRequest) {
+        self.sigreqs_pending_sync.remove(&sigreq.block.header.parent);
+        self.sigreqs_pending_sync.insert(sigreq.block.header.parent,
+                                         sigreq);
+    }
+
+    pub fn release_sigreq_pending_sync(
+            &mut self, parent_hash: &DoubleSha256Hash)
+                -> Option<SignatureRequest> {
+        self.sigreqs_pending_sync.remove(&parent_hash)
+    }
+
+    pub fn save_block_manifest_during_sync(&mut self, bm: BlockManifest) {
+        self.block_manifests_pending_sync.remove(&bm.block.header.parent);
+        self.block_manifests_pending_sync.insert(bm.block.header.parent, bm);
+    }
+
+    pub fn release_block_manifest_pending_sync(
+            &mut self, parent_hash: &DoubleSha256Hash)
+                -> Option<BlockManifest> {
+        self.block_manifests_pending_sync.remove(&parent_hash)
     }
 
     pub fn get_document_status_proof(&self, docid: DocumentId, doc_contents: Value)
@@ -138,6 +188,7 @@ impl Hashchain {
                 DocumentStatusProof {
                     contents: doc_contents,
                     most_recent_block_header: block.header.clone(),
+                    signoff_peers: block.signoff_peers.clone(),
                     peer_signatures: block.signoff_signatures.clone(),
                     author_signature: block.author_signature.clone(),
                     node_locations: block.node_locations.clone(),
@@ -182,64 +233,141 @@ impl Hashchain {
         }
     }
 
-    /// Determines if the provided block can be appended to the hashchain.
+    /// This is the authoritative method for checking whether a given
+    /// block can be appended to a hashchain instance, be it an institution's
+    /// own hashchain or a replica chain belonging to a peer.
+    /// NOTE: This method requires a mutable borrow on self but does not
+    /// actually change its state in a way that persists after returning;
+    /// the explanation is provided in the documentation for
+    /// MerkleTree::compute_root_with_actions.
     pub fn is_block_eligible_for_append(
-            &self, block: &Block) -> Result<(), AppendErr> {
+            &mut self, block: &Block,
+            require_peer_sigs: RequireAllPeerSigs) -> Result<(), AppendErr> {
+
+        // The author of the block must match the author of this chain.
+        if block.header.author != self.author {
+            panic!("Attempted to add block authored by {} to chain authored by \
+                    {}; the caller is doing something wrong.",
+                    block.header.author, self.author);
+        }
+
+        // The author's signature must be valid.
+        if block.author_signature.check_validity(
+                        &block.header.hash(), &block.header.author).is_err() {
+            return Err(AppendErr::AuthorSignatureInvalid);
+        }
+
+        // Blocks must have at least one signoff peer.
+        if block.signoff_peers.len() == 0 {
+            return Err(AppendErr::NoSignoffPeersListed);
+        }
 
         // Is this block already present in the chain?
         if self.chain.contains_key(&block.header.hash()) {
             return Err(AppendErr::BlockAlreadyInChain)
         }
 
-        // Is this the genesis block?
         if block.header.parent == DoubleSha256Hash::genesis_block_parent_hash() {
-            if self.head_node == None
-                && self.tail_node == None
-                && self.chain.len() == 0 {
-                return Ok(())
-            } else {
+            // If this is the genesis block, ensure our replica state
+            // reflects that expectation.
+            if self.head_node != None
+                    || self.tail_node != None
+                    || self.chain.len() > 0 {
                 return Err(AppendErr::ChainStateCorrupted)
+            }
+        } else {
+            // Otherwise, if this is not the genesis block, determine
+            // if we are missing blocks or if the parent has already been
+            // claimed.
+            match self.tail_node {
+                None => {
+                    // If we have nothing in the replica chain and the peer
+                    // is sending us a non-genesis block, we have to sync
+                    // our replica up starting from the genesis hash (000000...).
+                    return Err(AppendErr::MissingBlocksSince(
+                            DoubleSha256Hash::genesis_block_parent_hash()))
+                },
+                Some(tail_hash) => {
+                    match self.chain.get(&block.header.parent) {
+                        None => {
+                            // If we don't have the block's parent, we must
+                            // be missing blocks issued since our recorded tail.
+                            return Err(AppendErr::MissingBlocksSince(tail_hash));
+                        },
+                        Some(parent_block_node) => {
+                            // Is the parent already claimed?
+                            if parent_block_node.next_block.is_some() {
+                                return Err(AppendErr::BlockParentAlreadyClaimed);
+                            }
+                            // If the parent is not already claimed, it should
+                            // be the tail of our append-only hashchain. Do a
+                            // sanity check to be sure.
+                            if tail_hash != parent_block_node.block.header.hash() {
+                                return Err(AppendErr::ChainStateCorrupted)
+                            }
+                        }
+                    }
+                }
+            };
+        }
+
+        // The signoff peers in the block must match those that we expect
+        // based on what we know of the replica. IT IS IMPORTANT that this
+        // check come after the check for missing blocks; if there are missing
+        // blocks, this check will typically fail, and if we return this error
+        // instead of a missing blocks error, it will not allow the caller
+        // to retrieve the blocks.
+        let computed_signoff_peers = self.get_signoff_peers(&block.actions);
+        if block.signoff_peers != computed_signoff_peers {
+            return Err(AppendErr::UnexpectedSignoffPeers);
+        }
+        if block.header.signoff_peers_hash !=
+                BlockHeader::signoff_peers_to_hash(&computed_signoff_peers) {
+            return Err(AppendErr::UnexpectedSignoffPeersHash);
+        }
+
+        // Ensure that the block header's merkle root matches what we expect
+        // as well; for the same reason as given above for signoff peer
+        // verification, it's important to do this after
+        // checking for missing blocks.
+        let computed_merkle_root =
+                match self.merkle_tree.compute_root_with_actions(
+            block.header.timestamp, self.chain.len() + 1, &block.actions) {
+            Ok(hash) => hash,
+            Err(merkle_err) =>
+                return Err(AppendErr::InvalidActionFound(merkle_err))
+        };
+        if block.header.merkle_root != computed_merkle_root {
+            return Err(AppendErr::UnexpectedMerkleRootHash);
+        }
+
+        // When a signature request is received from a peer for its block,
+        // we don't require all peer signatures to be present, hence the option.
+        // All other use cases will generally want to require that all
+        // peer signatures be present.
+        if require_peer_sigs == RequireAllPeerSigs::Yes {
+            for peer_addr in &block.signoff_peers {
+                match block.signoff_signatures.get(&peer_addr) {
+                    None => return Err(AppendErr::MissingPeerSignature),
+                    Some(peer_sig) => {
+                        if peer_sig.check_validity(
+                            &block.header.hash(), &peer_addr).is_err() {
+                            return Err(AppendErr::InvalidPeerSignature);
+                        }
+                    }
+                };
             }
         }
 
-        match self.tail_node {
-            None => {
-                // If we have nothing in the replica chain and the peer
-                // is sending us a non-genesis block, we have to sync
-                // our replica up starting from the genesis hash (000000...).
-                return Err(AppendErr::MissingBlocksSince(
-                        DoubleSha256Hash::genesis_block_parent_hash()))
-            },
-            Some(tail_hash) => {
-                match self.chain.get(&block.header.parent) {
-                    None => {
-                        // If we don't have the block's parent, we must
-                        // be missing blocks issued since our recorded tail.
-                        return Err(AppendErr::MissingBlocksSince(tail_hash));
-                    },
-                    Some(parent_block_node) => {
-                        // Is the parent already claimed?
-                        if parent_block_node.next_block.is_some() {
-                            return Err(AppendErr::BlockParentAlreadyClaimed);
-                        }
-                        // If the parent is not already claimed, it should
-                        // be the tail of our append-only hashchain. Do a
-                        // sanity check to be sure.
-                        if tail_hash != parent_block_node.block.header.hash() {
-                            return Err(AppendErr::ChainStateCorrupted)
-                        }
-                        return Ok(())
-                    }
-                }
-            }
-        }
+        Ok(())
     }
 
     pub fn append_block(&mut self, block: Block) {
 
         // Make absolutely sure that this block is eligible
         // to be appended to the chain.
-        match self.is_block_eligible_for_append(&block) {
+        match self.is_block_eligible_for_append(&block,
+                                                RequireAllPeerSigs::Yes) {
             Ok(_) => {
                 let block_header_hash = block.header.hash();
                 self.chain.insert(block_header_hash.clone(),
@@ -299,39 +427,52 @@ impl Hashchain {
     /// Determines the peers whose signatures are required for a set of block
     /// actions to be added to the hashchain. This includes existing peers and peers
     /// being added in 'actions', and excludes peers being removed in 'actions'.
-    fn get_signoff_peers(&self, actions: &Vec<Action>) -> BTreeSet<InstAddress> {
+    /// TODO: This method is inefficient as it effectively replays history;
+    /// eventually write this in a more performant manner.
+    pub fn get_signoff_peers(&self,
+                             actions: &Vec<Action>) -> BTreeSet<InstAddress> {
 
-        // Existing peers must sign off on new_block.
+        // Replay history to determine who our existing peers are,
+        // as they are required to sign off.
+        // We iterate through the chain from front to back; we
+        // cannot use HashMap's iter as its ordering is unpredictable.
         let mut peers = BTreeSet::new();
-        for (_, chain_node) in self.chain.iter() {
-            for action in chain_node.block.actions.iter() {
-                match *action {
-                    Action::AddPeer(inst_addr, _, _) => {
-                        peers.insert(inst_addr);
-                    },
-                    Action::Certify(_, _, _) => (),
-                    Action::Revoke(_) => (),
-                    /*
-                     * TODO: When adding RemovePeer to this
-                     * statement, remove from peer set.
-                     */
+        let mut lookup_hash = self.head_node;
+        while lookup_hash.is_some() {
+            match self.chain.get(&lookup_hash.unwrap()) {
+                None => break,
+                Some(ref chain_node) => {
+                    for action in chain_node.block.actions.iter() {
+                        match *action {
+                            Action::AddPeer(inst_addr, _, _) => {
+                                peers.insert(inst_addr);
+                            },
+                            Action::RemovePeer(inst_addr) => {
+                                peers.remove(&inst_addr);
+                            },
+                            Action::Certify(_, _, _)
+                            | Action::Revoke(_) => (),
+                        }
+                    }
+                    lookup_hash = chain_node.next_block;
                 }
             }
         }
 
-        // New peers must sign off on new block, but
-        // removed peers do not.
+        // Additionally, play the provided actions atop history.
+        // Remember that peers removed in a block are not
+        // required to sign off on that block, and thus are excluded
+        // here as well.
         for action in actions.iter() {
             match *action {
                 Action::AddPeer(inst_addr, _, _) => {
                     peers.insert(inst_addr);
                 },
-                Action::Certify(_, _, _) => (),
-                Action::Revoke(_) => (),
-                /*
-                 * TODO: When adding RemovePeer to this
-                 * statement, remove from peer set.
-                 */
+                Action::RemovePeer(inst_addr) => {
+                    peers.remove(&inst_addr);
+                },
+                Action::Certify(_, _, _)
+                | Action::Revoke(_) => (),
             }
         }
         peers
@@ -360,7 +501,6 @@ impl Hashchain {
                     b
                 },
                 None => {
-                    debug!("HCHAIN: No queued blocks; nothing to process.");
                     return false
                 }
             };
@@ -369,12 +509,12 @@ impl Hashchain {
             for peer_addr in &block_to_process.signoff_peers {
                 let sigreq = SignatureRequest::new(peer_addr.clone(),
                         block_to_process.clone(), &our_secret_key);
-                match node_table.write().unwrap().send_sigreq(sigreq) {
+                match node_table.write().unwrap().send_sigreq(sigreq,
+                                                              &our_secret_key) {
                     Ok(()) => info!("Siqreq sent to {}", peer_addr),
                     Err(_) => {
-                        panic!("TODO: What to do if sigreq can't be sent
-                                to a peer? - need to set flag somewhere
-                                so admin can remove peer if necessary.");
+                        panic!("TODO: Handle case where we can't send
+                                a signature request to a peer.")
                     }
                 }
             }
@@ -383,35 +523,39 @@ impl Hashchain {
             // Hashchain state modified, sync to disk.
             return true;
         } else {
-            if self.processing_block.as_ref().unwrap()
-                    .has_all_required_signatures() {
-                info!("HCHAIN: All required signatures for processing \
-                       block received; adding to chain and broadcasting.");
-                let block = self.processing_block.as_ref().unwrap().clone();
-                self.append_block(block.clone());
-                self.processing_block = None;
+            let proc_block = self.processing_block.as_ref().unwrap().clone();
+            match self.is_block_eligible_for_append(
+                    &proc_block,
+                    RequireAllPeerSigs::Yes) {
+                Ok(_) => {
+                    info!("HCHAIN: Block is now eligible for append; \
+                           adding to chain and broadcasting.");
+                    let block = self.processing_block.as_ref().unwrap().clone();
+                    self.append_block(block.clone());
+                    self.processing_block = None;
 
-                // Broadcast the signed block to all signoff peers so
-                // they can include it in their replicas.
-                for peer_addr in &block.signoff_peers {
-                    let mf = BlockManifest::new(block.clone());
-                    match node_table.write().unwrap()
-                            .send_block_manifest(peer_addr, mf.clone()) {
-                        Ok(()) => info!("Block manifest sent to {}", peer_addr),
-                        Err(_) => panic!("TODO: Unable to send block manifest \
-                                          to peer; a flag/retry interval needs \
-                                          to be set. This is not critical \
-                                          because next signing will involve \
-                                          sync, but should be done anyway.")
+                    // Broadcast the signed block to all signoff peers so
+                    // they can include it in their replicas.
+                    for peer_addr in &block.signoff_peers {
+                        let mf = BlockManifest::new(block.clone());
+                        match node_table.write().unwrap()
+                                .send_block_manifest(peer_addr, mf.clone()) {
+                            Ok(()) => info!("Block manifest sent to {}", peer_addr),
+                            Err(_) => panic!("TODO: Unable to send block manifest \
+                                              to peer; a flag/retry interval needs \
+                                              to be set. This is not critical \
+                                              because next signing will involve \
+                                              sync, but should be done anyway.")
+                        }
                     }
+                    return true;
+                },
+                Err(err) => {
+                    info!("HCHAIN: Block is not yet \
+                          eligible for append: {:?}", err);
+                    return false;
                 }
-
-                return true;
-            } else {
-                info!("HCHAIN: Block is not yet valid: {:?}",
-                      self.processing_block.as_ref().unwrap().signoff_signatures);
-                return false;
-            }
+            };
         }
     }
 
@@ -443,6 +587,64 @@ impl Hashchain {
                         to be invalid. Understand why this occurred.");
             }
         }
+    }
+
+    pub fn handle_blocks_req(&self,
+                             blocks_req: BlocksRequest,
+                             node_table: Arc<RwLock<NetNodeTable>>) {
+        if blocks_req.check_validity(&self.author).is_err() {
+            info!("Ignoring invalid BlocksRequest: {:?}", blocks_req);
+        }
+
+        // Determine which hash to lookup first.
+        let mut lookup_hash = {
+            if blocks_req.after_block_hash ==
+                    DoubleSha256Hash::genesis_block_parent_hash() {
+                self.head_node
+            } else {
+                match self.chain.get(&blocks_req.after_block_hash) {
+                    None => {
+                        info!("Ignoring BlocksRequest for blocks after \
+                                {:?}; that block does not exist in this chain.",
+                                blocks_req.after_block_hash);
+                        return;
+                    },
+                    Some(ref chain_node) => chain_node.next_block
+                }
+            }
+        };
+
+        // Collect the blocks to send to the requesting node.
+        // We do this here because we cannot pass a reference to this hashchain
+        // to a spawned thread, as the hashchain does not have a static lifetime.
+        let mut blocks = Vec::new();
+        while lookup_hash.is_some() {
+            match self.chain.get(&lookup_hash.unwrap()) {
+                None => break,
+                Some(ref chain_node) => {
+                    blocks.push(chain_node.block.clone());
+                    lookup_hash = chain_node.next_block;
+                }
+            }
+        }
+
+
+        // Spawn a separate thread to send the requested block to
+        // the requesting node, as there could be many of them.
+        thread::spawn(move || {
+            for block in blocks {
+                let mf = BlockManifest::new(block);
+                match node_table.write().unwrap()
+                        .send_block_manifest(&blocks_req.from_inst_addr,
+                                             mf.clone()) {
+                    Ok(()) => info!("Block manifest sent to {}",
+                                    blocks_req.from_inst_addr),
+                    Err(_) => panic!("TODO: Unable to send block manifest \
+                                      to peer in response to BlocksRequest; \
+                                      some kind of flag/retry needs to be set.")
+                }
+            }
+        });
     }
 
     pub fn get_certifications(&self,
@@ -484,7 +686,8 @@ impl Hashchain {
                                     }
                                 }
                             },
-                            Action::AddPeer(_, _, _) => {
+                            Action::RemovePeer(_)
+                            | Action::AddPeer(_, _, _) => {
                                 continue;
                             }
                         }
@@ -554,7 +757,8 @@ impl MerkleTree {
         let mut to_revert = HashSet::new();
         for action in actions.iter() {
             match *action {
-                Action::AddPeer(_, _, _) => continue,
+                Action::AddPeer(_, _, _)
+                | Action::RemovePeer(_) => continue,
                 Action::Certify(docid, _, _) => {
                     if self.tree.contains_key(&docid) {
                         return Err(MerkleTreeErr::DuplicateCertification)
@@ -693,7 +897,8 @@ impl MerkleTree {
         // document-related ones.
         for action in block.actions.iter() {
             match *action {
-                Action::AddPeer(_, _, _) => continue,
+                Action::AddPeer(_, _, _)
+                | Action::RemovePeer(_) => continue,
                 Action::Certify(docid, _, _) => {
                     self.tree.insert(docid, MerkleNode {
                         document_id: docid,
@@ -760,31 +965,6 @@ impl Block {
             node_locations: node_locations,
         }
     }
-
-    pub fn is_authors_signature_valid(&self) -> Result<(), ValidityErr> {
-        let expected_msg = self.header.hash();
-        self.author_signature.check_validity(&expected_msg, &self.header.author)
-    }
-
-
-    fn has_all_required_signatures(&self) -> bool {
-        for peer_addr in &self.signoff_peers {
-            match self.signoff_signatures.get(&peer_addr) {
-                None => return false,
-                Some(peer_sig) => {
-                    // If peer's signature is invalid, panic; this
-                    // should never occur.
-                    if peer_sig.check_validity(
-                        &self.header.hash(), &peer_addr).is_err() {
-                        panic!("Peer's signature is invalid during \
-                                required signature check; this should
-                                never happen, understand why.");
-                    }
-                }
-            }
-        }
-        true
-    }
 }
 
 impl BlockHeader {
@@ -798,16 +978,6 @@ impl BlockHeader {
             None => DoubleSha256Hash::genesis_block_parent_hash(),
             Some(h) => h,
         };
-
-        // Create a string containing each peer's address;
-        // because we are using BTreeSet, iteration will occur
-        // lexicographically, which is important because we want
-        // client-side JS to be able to easily reconstruct this hash.
-        let mut signoff_peers_to_hash = String::from("|");
-        for peer_addr in signoff_peers.iter() {
-            signoff_peers_to_hash = signoff_peers_to_hash
-                + &peer_addr.to_base58() + "|";
-        }
 
         // Create a string containing each node's address and hostname + port.
         // We use BTreeSet here as well in order to ensure lexicographic
@@ -823,11 +993,25 @@ impl BlockHeader {
             parent: parent_hash,
             author: our_inst_addr,
             merkle_root: merkle_root,
-            signoff_peers_hash: DoubleSha256Hash::hash_string(
-                &signoff_peers_to_hash),
+            signoff_peers_hash:
+                BlockHeader::signoff_peers_to_hash(&signoff_peers),
             node_locations_hash: DoubleSha256Hash::hash_string(
                 &node_locs_to_hash)
         }
+    }
+
+    /// Creates a hash of the concatenation of each peer's address;
+    /// because we are using BTreeSet, iteration will occur
+    /// lexicographically, which is important because we want
+    /// client-side JS to be able to easily reconstruct this hash.
+    fn signoff_peers_to_hash(signoff_peers: &BTreeSet<InstAddress>)
+            -> DoubleSha256Hash {
+        let mut signoff_peers_to_hash = String::from("|");
+        for peer_addr in signoff_peers.iter() {
+            signoff_peers_to_hash = signoff_peers_to_hash
+                + &peer_addr.to_base58() + "|";
+        }
+        DoubleSha256Hash::hash_string(&signoff_peers_to_hash)
     }
 
     pub fn hash(&self) -> DoubleSha256Hash {
@@ -867,9 +1051,11 @@ impl DocumentSummary {
             Action::Revoke(_) => {
                 panic!("TODO: Handle Revoke in DocumentSummary constructor.");
             },
-            Action::AddPeer(_, _, _) => {
-                panic!("Cannot create DocumentSummary from AddPeer;
-                        action; calling code needs to prevent this.")
+            a @ Action::RemovePeer(_)
+            | a @ Action::AddPeer(_, _, _) => {
+                panic!("Cannot create DocumentSummary from AddPeer
+                        or RemovePeer; calling code needs to \
+                        prevent this: {:?}", a)
             }
         }
     }

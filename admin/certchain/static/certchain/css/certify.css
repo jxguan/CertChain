@@ -1,30 +1,60 @@
-#cc-new-diploma {
+.certify-area {
   background-color: #E6E6E6;
   border-radius: 5px;
   padding: 10px;
   box-shadow: rgba(0, 0, 0, 0.1) 0px 3px 5px 0px inset;
 }
 
-#cc-new-diploma > form {
+.certify-area > form {
   margin: 0;
   padding: 0;
 }
 
-#cc-new-diploma > form > div {
+form.cc-manual > div {
   display: inline-block;
   padding: 0 20px;
 }
 
-#cc-new-diploma label {
+form.cc-manual label {
   font-weight: bold;
   color: black;
 }
 
-#cc-new-diploma input[type='submit'] {
+form.cc-manual input[type='submit'] {
   float: right;
   margin: 20px;
 }
 
-#cc-new-diploma input[type='text'] {
+form.cc-manual input[type='text'] {
   width: 140px;
+}
+
+form.cc-manual {
+  display: none;
+}
+
+form.cc-batch label {
+  display: inline;
+  font-size: 1.3em;
+  margin-right: 15px;
+}
+
+form.cc-batch .file-selector {
+  text-align: center;
+}
+
+.certify-area table {
+  width: 100%;
+  font-size: 1.3em;
+  line-height: 150%;
+}
+
+.certify-area table th,
+.certify-area table td {
+  text-align: center !important;
+}
+
+form.confirmation input[type='submit'] {
+  margin: 15px auto;
+  display: block;
 }

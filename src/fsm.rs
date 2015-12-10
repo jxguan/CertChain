@@ -1,6 +1,7 @@
 use std::collections::{LinkedList};
 use network::{IdentityRequest, IdentityResponse, PeerRequest,
-              SignatureRequest, SignatureResponse, BlockManifest};
+              SignatureRequest, SignatureResponse, BlocksRequest,
+              BlockManifest};
 use address::InstAddress;
 use hashchain::Action;
 use signature::RecovSignature;
@@ -9,20 +10,22 @@ pub struct FSM {
     states: LinkedList<FSMState>,
 }
 
+#[derive(Debug, Clone)]
 pub enum FSMState {
     RespondToIdentReq(IdentityRequest),
     ProcessIdentResp(IdentityResponse),
     RequestPeer(InstAddress),
     HandlePeerReq(PeerRequest),
-    ApprovePeerRequest(InstAddress),
     QueueNewBlock(Vec<Action>),
     HandleSigReq(SignatureRequest),
     HandleSigResp(SignatureResponse),
     AddSignatureToProcessingBlock(InstAddress, RecovSignature),
+    HandleBlocksReq(BlocksRequest),
     HandleBlockManifest(BlockManifest),
     SyncNodeTableToDisk,
     SyncHashchainToDisk,
     SyncReplicaToDisk(InstAddress),
+    IdleForMilliseconds(u32),
 }
 
 impl FSM {

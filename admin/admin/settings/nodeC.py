@@ -1,8 +1,7 @@
 from .base import *
 
-ALLOWED_HOSTS = ['tokyo.certchain.org', 'localhost']
-INSTITUTION_CERTCHAIN_NODE_HOSTNAME = 'localhost'
-INSTITUTION_CERTCHAIN_NODE_RPC_PORT = '4001'
+INSTITUTION_CERTCHAIN_NODE_HOSTNAME = 'tokyo'
+INSTITUTION_CERTCHAIN_NODE_RPC_PORT = '6001'
 
 TEMPLATE_DIRS = [
   os.path.join(BASE_DIR, 'templates'),

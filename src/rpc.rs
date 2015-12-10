@@ -4,7 +4,7 @@ use hyper::net::Fresh;
 use hyper::uri::RequestUri::AbsolutePath;
 use config::CertChainConfig;
 use std::sync::{Arc, RwLock};
-use network::NetNodeTable;
+use network::{NetNodeTable, PeeringApproval};
 use rustc_serialize::json;
 use address::InstAddress;
 use fsm::{FSM, FSMState};
@@ -16,6 +16,7 @@ use hashchain::{DocumentType, Action, Hashchain};
 use secp256k1::key::{SecretKey};
 use serde_json;
 use serde_json::Value;
+use std::collections::HashMap;
 
 const RPC_LISTEN : &'static str = "0.0.0.0";
 
@@ -54,11 +55,23 @@ pub fn start(config: &CertChainConfig,
                 (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 9
                         && &path[0..9] == "/certify/" => {
-                    let params = &path[9..].split("/").collect::<Vec<&str>>();
                     let mut req_body = String::new();
                     req.read_to_string(&mut req_body).unwrap();
-                    certify(res, fsm.clone(),
-                            &docs_dir, req_body, &params);
+                    certify(res, fsm.clone(), hashchain.clone(),
+                            &docs_dir, req_body, &path[9..]);
+                },
+                (hyper::Post, AbsolutePath(ref path))
+                    if path == "/add_node" => {
+                    let mut req_body = String::new();
+                    req.read_to_string(&mut req_body).unwrap();
+                    add_node(res, node_table.clone(), fsm.clone(),
+                            our_secret_key.clone(), req_body);
+                },
+                (hyper::Post, AbsolutePath(ref path))
+                    if path.len() > 13
+                        && &path[0..13] == "/remove_node/" => {
+                    remove_node(res, fsm.clone(),
+                            node_table.clone(), &path[13..]);
                 },
                 (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 8
@@ -84,7 +97,7 @@ pub fn start(config: &CertChainConfig,
                 (hyper::Post, AbsolutePath(ref path))
                     if path.len() > 13
                         && &path[0..13] == "/end_peering/" => {
-                    end_peering(res, fsm.clone(),
+                    end_peering(res, hashchain.clone(), fsm.clone(),
                             node_table.clone(), &path[13..]);
                 },
                 (hyper::Get, AbsolutePath(ref path))
@@ -129,7 +142,7 @@ fn handle_peer_request(res: Response<Fresh>,
             // Have the FSM eventually sync node table to disk.
             let ref mut fsm = *fsm.write().unwrap();
             fsm.push_state(FSMState::SyncNodeTableToDisk);
-            res.send("OK; peer request submitted.".as_bytes()).unwrap();
+            res.send("OK".as_bytes()).unwrap();
         },
         Err(err) => {
             res.send(format!("An error prevented your peer request from \
@@ -154,35 +167,27 @@ fn approve_peer_req(res: Response<Fresh>,
         }
     };
 
-    let ref node_table = *node_table.write().unwrap();
-    if !node_table.is_confirmed_node(&addr) {
-        res.send("The node whose peer request you attempted \
-                 to approve has not confirmed \
-                 their identity.".as_bytes()).unwrap();
-        return;
-    }
-
-    // Have the FSM create a new block adding the peer, with
-    // all current peers + new peer signing off on it.
-    let ref mut fsm = *fsm.write().unwrap();
-    fsm.push_state(FSMState::ApprovePeerRequest(addr));
-    res.send("OK; peer request submitted for approval.".as_bytes()).unwrap();
+    // Approve the peer request; the callee will handle
+    // all further checks and FSM state queueing.
+    let ref mut node_table = *node_table.write().unwrap();
+    match node_table.approve_peerreq(addr, fsm) {
+        Ok(_) => res.send("OK".as_bytes()).unwrap(),
+        Err(err) => {
+            res.send(format!("{}", err).as_bytes()).unwrap();
+            return;
+        }
+    };
 }
 
 fn certify(res: Response<Fresh>,
            fsm: Arc<RwLock<FSM>>,
+           hashchain: Arc<RwLock<Hashchain>>,
            docs_dir_path: &String,
-           document: String,
-           params: &Vec<&str>) {
-
-    // Ensure params are valid.
-    if params.len() != 2 {
-        res.send("Expected <doctype>/<student_id>.".as_bytes()).unwrap();
-        return;
-    }
+           documents: String,
+           doctype_param: &str) {
 
     // Ensure doctype is valid.
-    let doctype = match params[0] {
+    let doctype = match doctype_param {
         "Diploma" => DocumentType::Diploma,
         "Transcript" => DocumentType::Transcript,
         _ => {
@@ -191,49 +196,56 @@ fn certify(res: Response<Fresh>,
         }
     };
 
-    // Ensure student id is valid.
-    let student_id = match params[1].len() {
-        0 => {
-            res.send("Expected non-empty student ID.".as_bytes()).unwrap();
-            return;
-        },
-        _ => String::from(params[1])
-    };
+    let mut actions = Vec::new();
+    let docs: Vec<String> = serde_json::from_str(&documents).unwrap();
+    for doc in docs.iter() {
+        // Compute the document's id.
+        let doc_id = DoubleSha256Hash::hash_string(&doc);
+        info!("Hashed {} to {}", &doc, doc_id);
 
-    // First, hash the document to obtain its ID.
-    let doc_id = DoubleSha256Hash::hash_string(&document);
-    info!("Hashed {} to {}", &document, doc_id);
+        // Write the document contents to disk for later retrieval.
+        let doc_file = match File::create(format!("{}/{:?}.txt",
+                                        docs_dir_path, doc_id)) {
+            Ok(f) => f,
+            Err(_) => {
+                res.send("Failed to create file to store document contents;
+                         aborting certification.".as_bytes()).unwrap();
+                return;
+            }
+        };
+        let mut writer = BufWriter::new(doc_file);
+        match writer.write(&doc.as_bytes()[..]) {
+            Ok(_) => (),
+            Err(_) => {
+                res.send("Failed to write document contents to disk;
+                         aborting certification.".as_bytes()).unwrap();
+                return;
+            }
+        };
 
-    // Second, write the document contents to disk for later retrieval.
-    let doc_file = match File::create(format!("{}/{:?}.txt",
-                                    docs_dir_path, doc_id)) {
-        Ok(f) => f,
-        Err(_) => {
-            res.send("Failed to create file to store document contents;
-                     aborting certification.".as_bytes()).unwrap();
-            return;
-        }
-    };
-    let mut writer = BufWriter::new(doc_file);
-    match writer.write(&document.as_bytes()[..]) {
-        Ok(_) => (),
-        Err(_) => {
-            res.send("Failed to write document contents to disk;
-                     aborting certification.".as_bytes()).unwrap();
-            return;
-        }
-    };
+        // Create a certification action for the document.
+        let doc_map: HashMap<String, String> = serde_json::from_str(&doc).unwrap();
+        let student_id = doc_map.get("student_id").unwrap().clone();
+        actions.push(Action::Certify(doc_id, doctype.clone(), student_id));
+    }
 
-    // Third, create a certification action for the document.
-    let action = Action::Certify(doc_id, doctype, student_id);
+    // Any block issued by an institution must have at least
+    // one signoff peer. This is enforced later, but check it now
+    // to give immediate notification to user if this is the case.
+    let ref hashchain = *hashchain.read().unwrap();
+    if hashchain.get_signoff_peers(&actions).len() == 0 {
+        res.send("You must have at least one peer \
+                 to certify documents on the network.".as_bytes()).unwrap();
+        return
+    }
 
     // Have the FSM queue a new block and sync the queued
     // block to disk.
     let ref mut fsm = *fsm.write().unwrap();
-    fsm.push_state(FSMState::QueueNewBlock(vec![action]));
+    fsm.push_state(FSMState::QueueNewBlock(actions));
     fsm.push_state(FSMState::SyncHashchainToDisk);
 
-    res.send("OK; certification submitted.".as_bytes()).unwrap();
+    res.send("OK".as_bytes()).unwrap();
 }
 
 fn revoke(res: Response<Fresh>,
@@ -303,9 +315,10 @@ fn handle_document_req(res: Response<Fresh>,
 }
 
 fn end_peering(res: Response<Fresh>,
-                       fsm: Arc<RwLock<FSM>>,
-                       node_table: Arc<RwLock<NetNodeTable>>,
-                       addr_param: &str) {
+               hashchain: Arc<RwLock<Hashchain>>,
+               fsm: Arc<RwLock<FSM>>,
+               node_table: Arc<RwLock<NetNodeTable>>,
+               addr_param: &str) {
 
     // Convert the address parameter into an InstAddress.
     let addr = match InstAddress::from_string(addr_param) {
@@ -317,14 +330,16 @@ fn end_peering(res: Response<Fresh>,
         }
     };
 
-    // Downgrade our approval of peering with this addr.
+    // End peering; the callee will handle
+    // all further checks and FSM state queueing.
     let ref mut node_table = *node_table.write().unwrap();
-    node_table.end_peering(addr).unwrap();
-
-    // Have the FSM eventually sync node table to disk.
-    let ref mut fsm = *fsm.write().unwrap();
-    fsm.push_state(FSMState::SyncNodeTableToDisk);
-    res.send("OK; peering ended.".as_bytes()).unwrap();
+    match node_table.end_peering(addr, hashchain, fsm) {
+        Ok(_) => res.send("OK".as_bytes()).unwrap(),
+        Err(err) => {
+            res.send(format!("{}", err).as_bytes()).unwrap();
+            return;
+        }
+    };
 }
 
 fn handle_block_req(res: Response<Fresh>,
@@ -349,4 +364,103 @@ fn handle_block_req(res: Response<Fresh>,
             res.send(json.as_bytes()).unwrap();
         }
     }
+}
+
+fn add_node(res: Response<Fresh>,
+            node_table: Arc<RwLock<NetNodeTable>>,
+            fsm: Arc<RwLock<FSM>>,
+            our_secret_key: SecretKey,
+            body: String) {
+    let node: HashMap<String, String> =
+        serde_json::from_str(&body).unwrap();
+
+    let hostname = match node.get("hostname") {
+        Some(h) => {
+            if h.len() == 0 {
+                res.send("Expected non-blank hostname.".as_bytes()).unwrap();
+                return
+            }
+            h.clone()
+        },
+        None => {
+            res.send("Expected hostname.".as_bytes()).unwrap();
+            return
+        }
+    };
+
+    let port = match node.get("port") {
+        Some(p) => {
+            match p.parse::<u16>() {
+                Ok(u) => u,
+                Err(_) => {
+                    res.send("Expected 16-bit port.".as_bytes()).unwrap();
+                    return
+                }
+            }
+        },
+        None => {
+            res.send("Expected port.".as_bytes()).unwrap();
+            return
+        }
+    };
+
+    let address = match node.get("address") {
+        Some(a) => {
+            match InstAddress::from_string(&a) {
+                Ok(addr) => addr,
+                Err(_) => {
+                    res.send("Invalid address provided.".as_bytes()).unwrap();
+                    return
+                }
+            }
+        },
+        None => {
+            res.send("Expected address.".as_bytes()).unwrap();
+            return
+        }
+    };
+
+    // Register the node.
+    let ref mut node_table = *node_table.write().unwrap();
+    node_table.register(address, &hostname, port, PeeringApproval::NotApproved);
+
+    // Connect to the node and ask them to prove their identity;
+    // for now, we don't care about there
+    // being a connection error.
+    let _ = node_table.connect(address, Some(&our_secret_key));
+
+    // Have the FSM eventually sync the node table to disk.
+    let ref mut fsm = *fsm.write().unwrap();
+    fsm.push_state(FSMState::SyncNodeTableToDisk);
+
+    res.send("OK".as_bytes()).unwrap();
+}
+
+fn remove_node(res: Response<Fresh>,
+            fsm: Arc<RwLock<FSM>>,
+            node_table: Arc<RwLock<NetNodeTable>>,
+            inst_addr: &str) {
+    let addr = match InstAddress::from_string(&inst_addr) {
+        Ok(addr) => addr,
+        Err(_) => {
+            res.send("Invalid address provided.".as_bytes()).unwrap();
+            return
+        }
+    };
+
+    // Remove the node.
+    let ref mut node_table = *node_table.write().unwrap();
+    match node_table.remove_node(addr) {
+        Ok(_) => (),
+        Err(err) => {
+            res.send(format!("{}", err).as_bytes()).unwrap();
+            return
+        }
+    };
+
+    // Have the FSM eventually sync the node table to disk.
+    let ref mut fsm = *fsm.write().unwrap();
+    fsm.push_state(FSMState::SyncNodeTableToDisk);
+
+    res.send("OK".as_bytes()).unwrap();
 }

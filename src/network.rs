@@ -11,7 +11,6 @@ use rustc_serialize::{Encodable, Decodable, Encoder};
 use address::InstAddress;
 use secp256k1::key::{SecretKey};
 use common::ValidityErr;
-use key;
 use std::fmt::{Display, Formatter};
 use signature::RecovSignature;
 use hash::DoubleSha256Hash;
@@ -21,7 +20,8 @@ use rand::Rng;
 use compress::checksum::adler;
 use std::collections::{HashMap, BTreeSet, BTreeMap};
 use msgpack;
-use hashchain::{Hashchain, Action, Block, AppendErr};
+use hashchain::{Hashchain, Action, Block,
+                AppendErr, RequireAllPeerSigs};
 use fsm::{FSM, FSMState};
 use std::fs::File;
 use serde_json;
@@ -46,6 +46,7 @@ pub enum NetPayload {
     PeerReq(PeerRequest),
     SigReq(SignatureRequest),
     SigResp(SignatureResponse),
+    BlocksReq(BlocksRequest),
     BlockManifest(BlockManifest),
 }
 
@@ -61,7 +62,8 @@ pub struct IdentityRequest {
     pub from_signature: RecovSignature,
 }
 
-#[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug,
+         Serialize, Deserialize)]
 pub struct SignatureRequest {
     pub nonce: u64,
     pub to_inst_addr: InstAddress,
@@ -80,6 +82,14 @@ pub struct SignatureResponse {
 }
 
 #[derive(RustcEncodable, RustcDecodable, Clone, Debug)]
+pub struct BlocksRequest {
+    pub to_inst_addr: InstAddress,
+    pub from_inst_addr: InstAddress,
+    pub after_block_hash: DoubleSha256Hash,
+    pub from_signature: RecovSignature,
+}
+
+#[derive(RustcEncodable, RustcDecodable, Clone, Debug, Serialize, Deserialize)]
 pub struct BlockManifest {
     pub block: Block
 }
@@ -203,9 +213,7 @@ impl Encodable for NetNode {
 impl NetNodeTable {
 
     pub fn new(config: &CertChainConfig) -> NetNodeTable {
-        let inst_pubkey = key::compressed_public_key_from_string(
-                &config.compressed_public_key).unwrap();
-        let inst_addr = InstAddress::from_pubkey(&inst_pubkey).unwrap();
+        let inst_addr = config.get_inst_addr();
         info!("This node identifies itself as {}.", inst_addr);
         NetNodeTable {
             node_map: Arc::new(RwLock::new(HashMap::new())),
@@ -264,12 +272,48 @@ impl NetNodeTable {
         }
     }
 
-    /// Connects to a node. If a secret key is provided, we will ask
+    /// Removes a node from the node table.
+    pub fn remove_node(&mut self,
+                    node_addr: InstAddress) -> std::io::Result<()> {
+        let mut node_map = self.node_map.write().unwrap();
+        match node_map.get(&node_addr) {
+            Some(node) => {
+                if node.our_peering_approval != PeeringApproval::NotApproved {
+                    // Technically speaking, we really only care if the node
+                    // is considered a peer according to our hashchain; approval
+                    // is only used as a proxy for that here temporarily.
+                    // TODO: Eventually convert this to a check against the
+                    // hashchain, rather then looking at the approval status
+                    // (will need to issue RemovePeer action when removing a peer).
+                    return Err(io::Error::new(io::ErrorKind::Other,
+                        format!("You must end peering with this \
+                                node before you can remove it.")))
+                }
+            },
+            None => {
+                info!("Ignoring call to remove node {}; \
+                        it does not exist.", node_addr);
+                return Ok(())
+            }
+        };
+        node_map.remove(&node_addr);
+        Ok(())
+    }
+
+    /// Connects to a node, or reconnects if already connected.
+    /// If a secret key is provided, we will ask
     /// that node to confirm their identity.
     pub fn connect(&mut self, node_addr: InstAddress,
                    secret_key: Option<&SecretKey>) -> std::io::Result<()> {
         match self.node_map.write().unwrap().get_mut(&node_addr) {
             Some(mut node) => {
+                // Note that we are forcing a new connection to
+                // be made on each call to this method. This is important
+                // for those times when a socket may be old and the caller
+                // wishes to send a message down a fresh connection to
+                // ensure receipt.
+                node.socket = Socket::new();
+                node.conn_state = ConnectionState::NotConnected;
                 if let Err(_) = node.connect() {
                     return Err(io::Error::new(io::ErrorKind::NotConnected,
                         format!("Node {} is not available, can't connect.",
@@ -318,28 +362,33 @@ impl NetNodeTable {
 
     pub fn handle_identreq(&mut self, identreq: IdentityRequest,
             our_secret_key: &SecretKey) -> std::io::Result<()> {
-        // First, determine if the contents of this request are valid.
-        if let Err(_) = identreq.check_validity(&self.our_inst_addr,
+        // Determine if the contents of this request are valid.
+        if let Err(err) = identreq.check_validity(&self.our_inst_addr,
                 &self.our_hostname, &self.our_port) {
-            panic!("TODO: Log invalid ident req.")
+            panic!("TODO: Log invalid ident req: {:?}", err)
         }
 
-        // Second, ensure the node is registered.
+        // Ensure the node is registered.
         self.register(identreq.from_inst_addr,
                 &identreq.from_hostname, identreq.from_port,
                 PeeringApproval::NotApproved);
+
+        // If we haven't already, connect and request the node's identity.
+        // The node could have disconnected,
+        // and if we send the response down the old socket, it will never
+        // receive it.
+        // TODO: If an error occurs while connecting, queue our IdentResp
+        // in the FSM for later sending.
+        if self.node_map.read().unwrap().get(&identreq.from_inst_addr)
+                .unwrap().identreq.is_none() {
+            let _ = self.connect(identreq.from_inst_addr, Some(our_secret_key));
+        }
+
+        // Get the node (we can unwrap due to registration call above).
         let mut node_map = self.node_map.write().unwrap();
         let mut node = node_map.get_mut(&identreq.from_inst_addr).unwrap();
 
-        // Third, start with a fresh socket. The node could have disconnected,
-        // and if we send the response down the old socket, it will never
-        // receive it. Note that we *do not* reset the identity state;
-        // if the node has already verified their identity, we don't
-        // need to ask again.
-        node.socket = Socket::new();
-        node.conn_state = ConnectionState::NotConnected;
-
-        // Fourth, create a response and send to the node.
+        // Create a response and send to the node.
         let identresp = IdentityResponse::new(self.our_inst_addr,
                 identreq.nonce, &our_secret_key);
         node.send(NetPayload::IdentResp(identresp))
@@ -372,8 +421,10 @@ impl NetNodeTable {
         };
 
         // Third, check the validity of the response's nonce and signature.
-        if let Err(_) = identresp.check_validity(identreq) {
-            panic!("TODO: Log invalid identresp.")
+        if let Err(err) = identresp.check_validity(identreq) {
+            info!("Identreq: {:?}", identreq);
+            info!("Invalid identresp: {:?}", identresp);
+            panic!("TODO: Log invalid identresp: {:?}", err)
         }
 
         // Now that all checks passed, elevate the node's identity status
@@ -413,16 +464,20 @@ impl NetNodeTable {
         }
     }
 
-    pub fn send_sigreq(&mut self, sigreq: SignatureRequest)
+    pub fn send_sigreq(&mut self, sigreq: SignatureRequest,
+                       our_secret_key: &SecretKey)
             -> std::io::Result<()> {
 
         // First, ensure that the provided address maps to a node
         // whose identity has been confirmed.
         if !self.is_confirmed_node(&sigreq.to_inst_addr) {
-            return Err(io::Error::new(io::ErrorKind::Other,
-                format!("Will not send sigreq to node {}; their \
-                         identity has not been confirmed.",
-                         &sigreq.to_inst_addr)));
+            match self.connect(sigreq.to_inst_addr, Some(our_secret_key)) {
+                Ok(_) => (),
+                Err(err) => return Err(io::Error::new(io::ErrorKind::Other,
+                    format!("Will not send sigreq to node {}; their \
+                         unable to connect and confirm identity: {:?}.",
+                         &sigreq.to_inst_addr, err)))
+            }
         }
 
         // Second, get the node (we can unwrap due to above check).
@@ -502,16 +557,13 @@ impl NetNodeTable {
             }
         }
 
-        /*
-         * TODO
-         * Before attempting insert into hashchain, play the actions
-         * against past actions to determine if actions are
-         * valid (and validate integrity of block's signatures, etc.).
-         */
-
+        // If the block is eligible to be appended to our replica of
+        // the peer's hashchain, issue a signature for it.
         let ref hc_replica = node.lazy_load_replica(&self.replica_dir);
-        match hc_replica.read().unwrap()
-                .is_block_eligible_for_append(&sigreq.block) {
+        let is_block_eligible_for_append = hc_replica.write().unwrap()
+                .is_block_eligible_for_append(&sigreq.block,
+                                              RequireAllPeerSigs::No);
+        match is_block_eligible_for_append {
             Ok(_) => {
                 info!("Signing block {} as requested by {} and sending over \
                       network.", &sigreq.block.header.hash(), node.inst_addr);
@@ -520,11 +572,30 @@ impl NetNodeTable {
                     sigreq.block.header.hash(), &our_secret_key);
                 return node.send(NetPayload::SigResp(sigresp))
             },
+            Err(e @ AppendErr::AuthorSignatureInvalid)
+            | Err(e @ AppendErr::NoSignoffPeersListed)
+            | Err(e @ AppendErr::MissingPeerSignature)
+            | Err(e @ AppendErr::InvalidPeerSignature)
+            | Err(e @ AppendErr::UnexpectedSignoffPeers)
+            | Err(e @ AppendErr::UnexpectedSignoffPeersHash)
+            | Err(e @ AppendErr::InvalidActionFound(_))
+            | Err(e @ AppendErr::UnexpectedMerkleRootHash) => {
+                info!("Peer {} sent us a sigreq for a block that \
+                      we are ignoring due to: {:?}", node.inst_addr, e);
+                return Ok(())
+            },
             Err(AppendErr::BlockAlreadyInChain) =>
                 panic!("TODO: Handle case where block is already in replica; \
                         (should just ignore and make a log entry)."),
-            Err(AppendErr::MissingBlocksSince(_)) =>
-                panic!("TODO: Handle case where we are missing replica blocks."),
+            Err(AppendErr::MissingBlocksSince(after_block_hash)) => {
+                let blocks_req = BlocksRequest::new(node.inst_addr,
+                    after_block_hash, self.our_inst_addr, &our_secret_key);
+                info!("Unable to sign block in sigreq; we are missing blocks \
+                       from {}'s chain; issuing BlocksRequest and holding \
+                       sigreq.", node.inst_addr);
+                hc_replica.write().unwrap().save_sigreq_during_sync(sigreq);
+                return node.send(NetPayload::BlocksReq(blocks_req))
+            },
             Err(AppendErr::BlockParentAlreadyClaimed) =>
                 panic!("TODO: Handle case where block parent is already claimed."),
             Err(AppendErr::ChainStateCorrupted) =>
@@ -578,12 +649,15 @@ impl NetNodeTable {
     pub fn handle_peerreq(&mut self,
             peer_req: PeerRequest) -> std::io::Result<()> {
 
-        // First, determine if the contents of this request are valid.
+        // Determine if the contents of this request are valid.
         if let Err(_) = peer_req.check_validity(&self.our_inst_addr) {
             panic!("TODO: Log invalid peer request.")
         }
 
-        // Second, ensure that we have confirmed the node's identity.
+        // Ensure that we have confirmed the node's identity.
+        // TODO: If we have not, rather than ignore the request,
+        // connnect and request their identity, and queue the
+        // peer request for processing once this has been done.
         if !self.is_confirmed_node(&peer_req.from_inst_addr) {
             return Err(io::Error::new(io::ErrorKind::Other,
                 format!("Ignoring peer request from node {}; their \
@@ -591,11 +665,11 @@ impl NetNodeTable {
                          &peer_req.from_inst_addr)));
         }
 
-        // Third, get the node (we can unwrap due to above check).
+        // Get the node (we can unwrap due to above check).
         let mut node_map = self.node_map.write().unwrap();
         let mut node = node_map.get_mut(&peer_req.from_inst_addr).unwrap();
 
-        // Fourth and finally, adjust peering state accordingly.
+        // Adjust peering state accordingly.
         node.our_peering_approval = PeeringApproval::AwaitingOurApproval;
         Ok(())
     }
@@ -607,9 +681,7 @@ impl NetNodeTable {
         // First, ensure that we have confirmed the node's identity.
         if !self.is_confirmed_node(&inst_addr) {
             return Err(io::Error::new(io::ErrorKind::Other,
-                format!("Ignoring approval of peer request for {}; their \
-                         identity has not been confirmed.",
-                         &inst_addr)));
+                "The peer's identity has not been confirmed."));
         }
 
         // Second, get the node (we can unwrap due to above check).
@@ -620,9 +692,7 @@ impl NetNodeTable {
         // of a peering relationship.
         if node.our_peering_approval != PeeringApproval::AwaitingOurApproval {
             return Err(io::Error::new(io::ErrorKind::Other,
-                format!("Ignoring approval of peer request for {}; their \
-                        peering state is not pending our approval.",
-                         &inst_addr)));
+                "The peer is not awaiting your approval."));
         }
 
         // Fourth, adjust peering state accordingly.
@@ -632,8 +702,38 @@ impl NetNodeTable {
 
         // Finally, have the FSM queue a new block containing the action
         // and sync the queued block to disk.
-        let action = Action::AddPeer(node.inst_addr,
-                                     node.hostname.clone(), node.port);
+        fsm.push_state(FSMState::QueueNewBlock(vec![
+                Action::AddPeer(node.inst_addr,
+                node.hostname.clone(), node.port)]));
+        fsm.push_state(FSMState::SyncHashchainToDisk);
+        Ok(())
+    }
+
+    pub fn end_peering(&mut self, inst_addr: InstAddress,
+                       hashchain: Arc<RwLock<Hashchain>>,
+                       fsm: Arc<RwLock<FSM>>) -> std::io::Result<()> {
+
+        // Get the peer.
+        let mut node_map = self.node_map.write().unwrap();
+        let mut node = node_map.get_mut(&inst_addr).unwrap();
+
+        // If removing this peer will result in the institution having
+        // zero peers, abort and inform the user.
+        let ref hashchain = *hashchain.read().unwrap();
+        let action = Action::RemovePeer(node.inst_addr);
+        if hashchain.get_signoff_peers(&vec![action.clone()]).len() == 0 {
+            return Err(io::Error::new(io::ErrorKind::Other,
+                    "You must have at least one peer at all times. \
+                     Add another peer first before removing this one."));
+        }
+
+        // Downgrade peering approval.
+        node.our_peering_approval = PeeringApproval::NotApproved;
+        let ref mut fsm = *fsm.write().unwrap();
+        fsm.push_state(FSMState::SyncNodeTableToDisk);
+
+        // Have the FSM queue a new block containing the action
+        // and sync the queued block to disk.
         fsm.push_state(FSMState::QueueNewBlock(vec![action]));
         fsm.push_state(FSMState::SyncHashchainToDisk);
         Ok(())
@@ -658,7 +758,9 @@ impl NetNodeTable {
     /// and 2) that the block is valid and has not been manipulated.
     pub fn handle_block_manifest(&mut self,
                                  mf: BlockManifest,
-                                 fsm: Arc<RwLock<FSM>>) -> std::io::Result<()> {
+                                 fsm: Arc<RwLock<FSM>>,
+                                 our_secret_key: &SecretKey)
+                                -> std::io::Result<()> {
         // Ensure that we have confirmed the authoring node's
         // identity.
         if !self.is_confirmed_node(&mf.block.header.author) {
@@ -677,30 +779,77 @@ impl NetNodeTable {
         let ref hc_replica = node.lazy_load_replica(&self.replica_dir);
         match node.our_peering_approval {
             PeeringApproval::Approved => {
-                let res = hc_replica.read().unwrap()
-                        .is_block_eligible_for_append(&mf.block);
+                let res = hc_replica.write().unwrap()
+                        .is_block_eligible_for_append(&mf.block,
+                                                      RequireAllPeerSigs::Yes);
                 match res {
                     Ok(_) => {
-                        hc_replica.write().unwrap().append_block(mf.block);
+                        let ref mut hc_replica = hc_replica.write().unwrap();
                         let ref mut fsm = *fsm.write().unwrap();
+                        hc_replica.append_block(mf.block.clone());
                         fsm.push_state(
                             FSMState::SyncReplicaToDisk(node.inst_addr));
+
+                        // If there is a SignatureRequest for a block that
+                        // claims this block as its parent, queue it
+                        // for signing.
+                        match hc_replica.release_sigreq_pending_sync(
+                                &mf.block.header.hash()) {
+                            None => (),
+                            Some(sigreq) => {
+                                info!("Re-queuing sigreq that was pending during
+                                       sync: {:?}", sigreq);
+                                fsm.push_state(
+                                    FSMState::HandleSigReq(sigreq));
+                            }
+                        };
+
+                        // Likewise, if there is a BlockManifest for a block
+                        // that claims this block as its parent, queue
+                        // it for appending to the hashchain.
+                        match hc_replica.release_block_manifest_pending_sync(
+                                &mf.block.header.hash()) {
+                            None => (),
+                            Some(bm) => {
+                                info!("Re-handling block manifest that was \
+                                      pending during sync: {:?}", bm);
+                                fsm.push_state(
+                                    FSMState::HandleBlockManifest(bm));
+                            }
+                        };
+
                         Ok(())
                     },
-                    Err(AppendErr::MissingBlocksSince(_)) =>
-                        panic!("TODO: Peer's replica is missing blocks; \
-                                sync up with them."),
+                    Err(AppendErr::MissingBlocksSince(after_block_hash)) => {
+                        let blocks_req = BlocksRequest::new(node.inst_addr,
+                            after_block_hash, self.our_inst_addr, &our_secret_key);
+                        info!("Unable to add block in received manifest; \
+                           we are missing blocks \
+                           from {}'s chain; issuing BlocksRequest and holding \
+                           block.", node.inst_addr);
+                        hc_replica.write().unwrap()
+                            .save_block_manifest_during_sync(mf);
+                        return node.send(NetPayload::BlocksReq(blocks_req))
+                    },
                     Err(AppendErr::BlockAlreadyInChain) => {
                         info!("Ignoring block in manifest; already in chain.");
                         Ok(())
                     },
-                    Err(AppendErr::BlockParentAlreadyClaimed) => {
+                    Err(e @ AppendErr::AuthorSignatureInvalid)
+                    | Err(e @ AppendErr::NoSignoffPeersListed)
+                    | Err(e @ AppendErr::MissingPeerSignature)
+                    | Err(e @ AppendErr::InvalidPeerSignature)
+                    | Err(e @ AppendErr::BlockParentAlreadyClaimed)
+                    | Err(e @ AppendErr::UnexpectedSignoffPeers)
+                    | Err(e @ AppendErr::UnexpectedSignoffPeersHash)
+                    | Err(e @ AppendErr::InvalidActionFound(_))
+                    | Err(e @ AppendErr::UnexpectedMerkleRootHash) => {
                         panic!("TODO: Peer has equivocated; set flag and \
-                                stop processing replica updates.");
+                                stop processing replica updates: {:?}", e);
                     },
                     Err(AppendErr::ChainStateCorrupted) =>
                         panic!("TODO: Peer's replica is corrupted; determine \
-                                 why.")
+                                 why."),
                 }
             },
             _ => {
@@ -710,17 +859,6 @@ impl NetNodeTable {
                 Ok(())
             }
         }
-    }
-
-    pub fn end_peering(&mut self, inst_addr: InstAddress) -> std::io::Result<()> {
-
-        // Get the peer.
-        let mut node_map = self.node_map.write().unwrap();
-        let mut node = node_map.get_mut(&inst_addr).unwrap();
-
-        // Downgrade peering approval.
-        node.our_peering_approval = PeeringApproval::NotApproved;
-        Ok(())
     }
 
     pub fn is_confirmed_node(&self, node_addr: &InstAddress) -> bool {
@@ -800,7 +938,7 @@ impl NetNode {
                     Err(_) => {
                         info!("Unable to open replica file {}; starting \
                                new chain.", replica_path);
-                        Arc::new(RwLock::new(Hashchain::new()))
+                        Arc::new(RwLock::new(Hashchain::new(self.inst_addr)))
                     }
                 }
             }
@@ -889,6 +1027,45 @@ impl Display for NetNode {
         try!(write!(f, "NetNode[{}, {}:{}]", self.inst_addr,
                     self.hostname, self.port));
         Ok(())
+    }
+}
+
+impl BlocksRequest {
+    pub fn new(to_inst_addr: InstAddress,
+               after_block_hash: DoubleSha256Hash,
+               our_inst_addr: InstAddress,
+               our_secret_key: &SecretKey) -> BlocksRequest {
+        let to_hash = format!("BLOCKSREQUEST:{},{},{}", to_inst_addr,
+                              our_inst_addr, after_block_hash);
+        BlocksRequest {
+            to_inst_addr: to_inst_addr,
+            from_inst_addr: our_inst_addr,
+            after_block_hash: after_block_hash,
+            from_signature: RecovSignature::sign(
+                &DoubleSha256Hash::hash(&to_hash.as_bytes()[..]),
+                &our_secret_key)
+        }
+    }
+    pub fn check_validity(&self, our_inst_addr: &InstAddress)
+            -> Result<(), ValidityErr> {
+
+        // Check individual fields.
+        if let Err(_) = self.to_inst_addr.check_validity() {
+            return Err(ValidityErr::ToInstAddrInvalid);
+        }
+        if self.to_inst_addr != *our_inst_addr {
+            return Err(ValidityErr::ToInstAddrDoesntMatchOurs);
+        }
+        if let Err(_) = self.from_inst_addr.check_validity() {
+            return Err(ValidityErr::FromInstAddrInvalid);
+        }
+
+        // Check validity of message signature.
+        let expected_msg = &DoubleSha256Hash::hash(&format!(
+                "BLOCKSREQUEST:{},{},{}", self.to_inst_addr,
+                self.from_inst_addr, self.after_block_hash).as_bytes()[..]);
+        self.from_signature.check_validity(&expected_msg,
+                                                &self.from_inst_addr)
     }
 }
 
@@ -1156,10 +1333,15 @@ impl Socket {
             Ok(mut guard) => {
                 match *guard.deref_mut() {
                     Some(ref mut tcp_stream) => {
-                        debug!("Writing out net msg to socket.");
+                        debug!("Writing out net msg to socket: {:?}", net_msg);
                         let mut buf_writer = BufWriter::new(tcp_stream);
-                        net_msg.encode(&mut msgpack::Encoder::new(&mut buf_writer)).unwrap();
-                        Ok(())
+                        match net_msg.encode(&mut msgpack::Encoder::new(
+                                &mut buf_writer)) {
+                            Ok(_) => Ok(()),
+                            Err(err) => Err(io::Error::new(io::ErrorKind::Other,
+                                            format!("Unable to encode net_msg to \
+                                            socket BufWriter: {:?}", err)))
+                        }
                     },
                     None => {
                         Err(io::Error::new(io::ErrorKind::NotConnected,
@@ -1197,7 +1379,8 @@ impl Socket {
                         }
 
                         // Ensure that the message payload matches the checksum.
-                        let mut adler = adler::State32::new();
+                        // TODO: Re-enable this.
+                        /*let mut adler = adler::State32::new();
                         let mut payload_bytes = Vec::new();
                         net_msg.payload.encode(&mut msgpack::Encoder::new(
                                 &mut payload_bytes)).unwrap();
@@ -1206,9 +1389,10 @@ impl Socket {
                         if net_msg.payload_checksum != gen_checksum {
                             return Err(io::Error::new(io::ErrorKind::InvalidData,
                                     format!("Expected payload checksum {}, \
-                                    msg payload has checksum {}.",
-                                    net_msg.payload_checksum, gen_checksum)))
-                        }
+                                    msg payload has checksum {}; net_msg is {:?}",
+                                    net_msg.payload_checksum, gen_checksum,
+                                    net_msg)))
+                        }*/
 
                         // If all checks pass, message is intact.
                         Ok(net_msg)
@@ -1255,8 +1439,8 @@ pub fn listen(payload_tx: Sender<NetPayload>,
                                     debug!("Received message from node: {:?}", net_msg);
                                     payload_tx_clone2.send(net_msg.payload).unwrap();
                                 },
-                                Err(_) => {
-                                    info!("Client disconnected; exiting listener thread.");
+                                Err(err) => {
+                                    info!("Unable to receive from socket (client may have disconnected): {:?}; exiting listener thread.", err);
                                     break;
                                 }
                             }

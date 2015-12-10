@@ -14,7 +14,7 @@
     <div id="cc-secure-links" class="span12">
       <span><a class="selected" href="{% url 'certchain:overview' %}">Network Status</a></span>
       <span>-</span>
-      <span><a href="{% url 'certchain:certify' %}">Certify a Document</a></span>
+      <span><a href="{% url 'certchain:certify' %}">Certify Documents</a></span>
       <span>-</span>
       <span><a href="{% url 'certchain:manage_certifications' %}">Manage Certifications</a></span>
     </div>
@@ -45,10 +45,43 @@
   </div>
 
   <br/>
+  <br/>
 
   <div class="row">
     <div class="span12">
-      <h2>Network Nodes</h2>
+      <h2>Add a Node</h2>
+      <p>You will initiate and maintain connections with nodes that you enter here, and can optionally choose to peer with them after they are added to the list below.</p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      <div id="add-node">
+        <form method="post" action="{% url 'certchain:add_node' %}">
+         {% csrf_token %}
+          <div>
+            <label>Hostname</label>
+            <input name="hostname" type="text"/>
+          </div>
+          <div>
+            <label>Port</label>
+            <input name="port" type="text"/>
+          </div>
+          <div>
+            <label>Address</label>
+            <input name="address" type="text"/>
+          </div>
+          <input class="cc-btn" type="submit" value="ADD NODE"/>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <br/>
+
+  <div class="row">
+    <div class="span12">
+      <h2>Known Nodes</h2>
       <p>Your institution maintains contact with the institutions below.</p>
     </div>
   </div>
@@ -56,11 +89,11 @@
   {% for _, node in network.node_map.items %}
   <div class="netnode">
     <div class="row">
-      <div class="span4">
+      <div class="span3">
         <span>{{ node.hostname }}</span>
         <label>Hostname</label>
       </div>
-      <div class="span2">
+      <div class="span1">
         <span>{{ node.port }}</span>
         <label>Port</label>
       </div>
@@ -68,18 +101,26 @@
         <span>{{ node.inst_addr }}</span>
         <label>Address</label>
       </div>
+      <div class="span2">
+        <form class="forget-node" method="post" action="{% url 'certchain:remove_node' %}">
+          {% csrf_token %}
+          <input name="inst_addr" type="hidden" value="{{ node.inst_addr }}"/>
+          <input class="cc-btn" type="submit" value="FORGET NODE"/>
+        </form>
+      </div>
     </div>
   </div>
   <div class="netnode-states">
     <table>
       <tr>
         {% if node.conn_state == 'Connected' %}
-        <td>
-          <span class="state green">CONNECTION</span>
-        </td>
-        <td>
-          Your institution is connected to this node.
-        </td>
+          {% if node.ident_state == 'Confirmed' %}
+          <td><span class="state green">CONNECTION</span></td>
+          <td>Your institution is connected to this node.</td>
+          {% else %}
+          <td><span class="state yellow">CONNECTION</span></td>
+          <td>Your institution is connected to this node, but they have not proved their identity to you.</td>
+          {% endif %}
         <td></td>
         {% else %}
         <td>
@@ -87,25 +128,6 @@
         </td>
         <td>
           Your institution is not connected to this node.
-        </td>
-        <td></td>
-        {% endif %}
-      </tr>
-      <tr>
-        {% if node.ident_state == 'Confirmed' %}
-        <td>
-          <span class="state green">IDENTITY</span>
-        </td>
-        <td>
-          This node has proved their identity to you.
-        </td>
-        <td></td>
-        {% else %}
-        <td>
-          <span class="state red">IDENTITY</span>
-        </td>
-        <td>
-          This node has not proved their identity to you.
         </td>
         <td></td>
         {% endif %}
@@ -192,16 +214,6 @@
     </div>
     {% endif %}
   </div>
-  
-  <!-- <div class="row">
-    <div class="span12">
-      <strong>Connection State</strong>: {{ node.conn_state }}
-      <br/>
-      <strong>Identity State</strong>: {{ node.ident_state }}
-      <br/>
-      <strong>Peering State</strong>: {{ node.peering_state }}
-    </div>
-  </div> -->
   {% empty %}
   <div class="row">
     <div class="span12">
@@ -210,4 +222,5 @@
   </div>
   {% endfor %}
 </div>
+
 {% endblock %}
